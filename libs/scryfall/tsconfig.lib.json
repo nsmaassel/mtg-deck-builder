@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "outDir": "../../dist/libs/scryfall" },
+  "include": ["src/**/*.ts"],
+  "exclude": ["**/*.spec.ts"]
+}

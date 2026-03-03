@@ -1,0 +1,30 @@
+{
+  "name": "mtg-deck-builder",
+  "version": "0.1.0",
+  "description": "MTG Commander deck builder from your collection",
+  "private": true,
+  "scripts": {
+    "dev:api": "nx serve api",
+    "dev:web": "nx serve web",
+    "test": "nx run-many --target=test --all",
+    "test:affected": "nx affected --target=test",
+    "build": "nx run-many --target=build --all",
+    "lint": "nx run-many --target=lint --all",
+    "typecheck": "nx run-many --target=typecheck --all"
+  },
+  "keywords": ["mtg", "magic-the-gathering", "commander", "deck-builder"],
+  "author": "nsmaassel",
+  "license": "MIT",
+  "packageManager": "pnpm@10.30.3",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@vitest/coverage-v8": "^4.0.18",
+    "nx": "^22.5.3",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}
+

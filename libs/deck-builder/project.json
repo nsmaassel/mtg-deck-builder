@@ -1,0 +1,17 @@
+{
+  "name": "deck-builder",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/deck-builder/src",
+  "projectType": "library",
+  "tags": ["type:lib", "scope:deck-builder"],
+  "targets": {
+    "test": {
+      "executor": "@nx/vite:test",
+      "options": { "config": "libs/deck-builder/vite.config.ts" }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": { "command": "tsc --noEmit -p libs/deck-builder/tsconfig.json" }
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "collection",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/collection/src",
+  "projectType": "library",
+  "tags": ["type:lib", "scope:collection"],
+  "targets": {
+    "test": {
+      "executor": "@nx/vite:test",
+      "options": { "config": "libs/collection/vite.config.ts" }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": { "command": "tsc --noEmit -p libs/collection/tsconfig.json" }
+    }
+  }
+}

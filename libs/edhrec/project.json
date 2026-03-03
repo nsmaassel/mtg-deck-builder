@@ -1,0 +1,17 @@
+{
+  "name": "edhrec",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/edhrec/src",
+  "projectType": "library",
+  "tags": ["type:lib", "scope:edhrec"],
+  "targets": {
+    "test": {
+      "executor": "@nx/vite:test",
+      "options": { "config": "libs/edhrec/vite.config.ts" }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": { "command": "tsc --noEmit -p libs/edhrec/tsconfig.json" }
+    }
+  }
+}

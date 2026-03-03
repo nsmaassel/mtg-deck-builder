@@ -1,0 +1,28 @@
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "rootDir": ".",
+    "sourceMap": true,
+    "declaration": false,
+    "moduleResolution": "node",
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "importHelpers": true,
+    "target": "ES2022",
+    "module": "CommonJS",
+    "lib": ["ES2022"],
+    "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "baseUrl": ".",
+    "paths": {
+      "@mtg/collection": ["libs/collection/src/index.ts"],
+      "@mtg/scryfall": ["libs/scryfall/src/index.ts"],
+      "@mtg/edhrec": ["libs/edhrec/src/index.ts"],
+      "@mtg/deck-builder": ["libs/deck-builder/src/index.ts"],
+      "@mtg/ai-advisor": ["libs/ai-advisor/src/index.ts"]
+    }
+  },
+  "exclude": ["node_modules", "tmp"]
+}
