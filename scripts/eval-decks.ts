@@ -64,6 +64,10 @@ interface EvalResult {
   missingStaples: number;
   flags: string[];
   score: number; // 0–100
+  bracket: number; // Official Commander Bracket 1-5
+  bracketLabel: string;
+  gameChangers: number;
+  combos: number;
 }
 
 function flag(label: string, value: number, thresholds: { min: number; max: number; target: number }): string | null {
@@ -106,6 +110,7 @@ async function evalCommander(name: string, note: string): Promise<EvalResult> {
     commander: name, note, ok: false,
     totalCards: 0, slots: { ramp:0, draw:0, interaction:0, winConditions:0, synergy:0, lands:0, flex:0 },
     avgCmc: 0, staplesCoverage: 0, missingStaples: 0,
+    bracket: 0, bracketLabel: '—', gameChangers: 0, combos: 0,
   };
 
   try {
@@ -124,6 +129,7 @@ async function evalCommander(name: string, note: string): Promise<EvalResult> {
       deck: { totalCards: number; slots: Record<string, unknown[]> };
       analysis: { averageCmc: number; staplesCoveragePercent: number };
       gaps: { missingStaples: unknown[] };
+      powerLevel?: { bracket: number; label: string; signals: { gameChangers: string[]; twoCardComboCount: number } };
     };
 
     const filled: Omit<EvalResult, 'flags' | 'score'> = {
@@ -142,6 +148,10 @@ async function evalCommander(name: string, note: string): Promise<EvalResult> {
       avgCmc: data.analysis.averageCmc,
       staplesCoverage: data.analysis.staplesCoveragePercent,
       missingStaples: data.gaps.missingStaples.length,
+      bracket: data.powerLevel?.bracket ?? 0,
+      bracketLabel: data.powerLevel?.label ?? '—',
+      gameChangers: data.powerLevel?.signals.gameChangers.length ?? 0,
+      combos: data.powerLevel?.signals.twoCardComboCount ?? 0,
     };
 
     return { ...filled, ...score(filled) };
@@ -151,9 +161,10 @@ async function evalCommander(name: string, note: string): Promise<EvalResult> {
 }
 
 function renderTable(results: EvalResult[]) {
-  const cols = ['Commander', 'Score', 'Cards', 'Ramp', 'Draw', 'Interact', 'Win', 'Syn', 'Lands', 'CMC', 'Staples%', 'Flags'];
+  const cols = ['Commander', 'Bracket', 'Score', 'Cards', 'Ramp', 'Draw', 'Interact', 'Win', 'Syn', 'Lands', 'CMC', 'Staples%', 'GC', 'Combos', 'Flags'];
   const rows = results.map(r => [
-    r.commander.substring(0, 28),
+    r.commander.substring(0, 26),
+    r.ok ? `${r.bracket} ${r.bracketLabel}` : '—',
     r.ok ? String(r.score) : 'ERROR',
     String(r.totalCards),
     String(r.slots.ramp),
@@ -164,6 +175,8 @@ function renderTable(results: EvalResult[]) {
     String(r.slots.lands),
     String(r.avgCmc),
     String(r.staplesCoverage) + '%',
+    String(r.gameChangers),
+    String(r.combos),
     r.error ? `❌ ${r.error}` : r.flags.length ? r.flags.join(' | ') : '✓',
   ]);
 

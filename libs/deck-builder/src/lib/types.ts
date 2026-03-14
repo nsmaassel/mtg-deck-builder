@@ -80,6 +80,7 @@ export interface BuildDeckResult {
 
 // Re-export so consumers can import from @mtg/deck-builder
 export type { PowerLevelResult, Bracket } from '@mtg/power-level';
+export { assessPowerLevelWithCombos } from '@mtg/power-level';
 
 /** Slot targets per constitution spec */
 export const SLOT_TARGETS: Record<SlotName, number> = {

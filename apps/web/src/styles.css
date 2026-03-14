@@ -87,3 +87,42 @@ textarea { resize: vertical; }
 .back-btn:hover { color: #e0e0e0; }
 
 .error-banner { background: #5a1a1a; border: 1px solid #8b2020; border-radius: 6px; padding: 1rem; margin-top: 1rem; color: #ffaaaa; }
+
+/* Power level badge */
+.power-level-badge {
+  border: 2px solid #555; border-radius: 10px; padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem; background: #0e1829;
+}
+.power-level-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+.bracket-label { font-size: 1.1rem; font-weight: 700; }
+.power-score { font-size: 1.4rem; font-weight: 800; color: #c9a227; }
+
+.power-signals { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
+.signal-chip {
+  padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600;
+}
+.signal-red    { background: #4a1a1a; color: #ff8888; border: 1px solid #7a3030; }
+.signal-orange { background: #3a2a0a; color: #ffaa44; border: 1px solid #6a4a1a; }
+.signal-neutral { background: #1e2a3a; color: #aabbcc; border: 1px solid #3a4a5a; }
+
+.power-explanation { margin-top: 0.5rem; }
+.power-explanation summary { cursor: pointer; color: #888; font-size: 0.85rem; }
+.power-explanation summary:hover { color: #ccc; }
+.power-explanation ul { margin-top: 0.5rem; padding-left: 1.25rem; }
+.power-explanation li { font-size: 0.82rem; color: #aaa; line-height: 1.5; }
+
+.target-suggestions {
+  margin-top: 0.75rem; padding: 0.75rem; background: #1a2a1a;
+  border-radius: 6px; border: 1px solid #3a5a3a;
+}
+.target-suggestions strong { color: #88cc88; font-size: 0.88rem; display: block; margin-bottom: 0.4rem; }
+.target-suggestions ul { padding-left: 1.25rem; }
+.target-suggestions li { font-size: 0.82rem; color: #aaccaa; line-height: 1.6; }
+
+/* Owned/unowned card distinction */
+.card-unowned .card-name { color: #bbb; }
+.unowned-dot { color: #666; margin-right: 0.3rem; font-size: 0.7rem; }
+
+/* Form hints */
+.label-hint { font-weight: 400; color: #888; font-size: 0.85rem; margin-left: 0.3rem; }
+.form-hint { display: block; margin-top: 0.35rem; color: #888; font-size: 0.8rem; }

@@ -4,6 +4,7 @@ import { getCardByName, ScryfallNotFoundError } from '@mtg/scryfall';
 import { getCommanderData, EDHRecNotFoundError } from '@mtg/edhrec';
 import { buildDeck } from '@mtg/deck-builder';
 import type { Bracket } from '@mtg/power-level';
+import { assessPowerLevelWithCombos } from '@mtg/power-level';
 import { explainDeck } from '@mtg/ai-advisor';
 
 export async function deckRoutes(app: FastifyInstance): Promise<void> {
@@ -134,7 +135,10 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
         options: { mode, budgetMaxPrice, targetBracket },
       });
 
-      return reply.send(result);
+      // Enhance power level with Commander Spellbook combo detection (async, best-effort)
+      const powerLevel = await assessPowerLevelWithCombos(result.deck, result.analysis, targetBracket);
+
+      return reply.send({ ...result, powerLevel });
     },
   });
 

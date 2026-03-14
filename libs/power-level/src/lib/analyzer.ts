@@ -1,6 +1,8 @@
 import type { DeckList, DeckAnalysis } from '@mtg/deck-builder';
 import { findGameChangers } from './game-changers.js';
 import { findTutors } from './tutors.js';
+import { findCombos } from './combos.js';
+import type { ComboResult } from './combos.js';
 
 export type Bracket = 1 | 2 | 3 | 4 | 5;
 export type BracketLabel = 'Exhibition' | 'Core' | 'Enhanced' | 'Optimized' | 'cEDH';
@@ -20,6 +22,10 @@ export interface PowerLevelSignals {
   staplesCoverage: number;
   /** Ratio of fast mana (0-1 CMC ramp) to total ramp */
   fastManaRatio: number;
+  /** Known combo lines detected via Commander Spellbook (may be empty if not fetched) */
+  combos: ComboResult[];
+  /** Number of 2-card combo lines detected */
+  twoCardComboCount: number;
 }
 
 export interface PowerLevelResult {
@@ -68,6 +74,9 @@ const BRACKET_TO_SCORE: Record<Bracket, number> = {
  * framework (WotC, 2024). Returns bracket 1–5, a derived 1–10 score, and a
  * plain-English explanation of every signal that influenced the result.
  *
+ * This is the synchronous variant — combo detection is skipped (combos=[]).
+ * Use assessPowerLevelWithCombos() when you need combo data.
+ *
  * @param deck      The built deck list (100 cards)
  * @param analysis  The DeckAnalysis from buildDeck() — provides avgCmc + staples coverage
  * @param targetBracket  Optional target bracket — if provided, generates swap suggestions
@@ -75,6 +84,30 @@ const BRACKET_TO_SCORE: Record<Bracket, number> = {
 export function assessPowerLevel(
   deck: DeckList,
   analysis: DeckAnalysis,
+  targetBracket?: Bracket,
+): PowerLevelResult {
+  return _assess(deck, analysis, [], targetBracket);
+}
+
+/**
+ * Async variant that also queries Commander Spellbook for combo lines.
+ * Combo detection is best-effort — any network failure returns the same
+ * result as assessPowerLevel() with combos=[].
+ */
+export async function assessPowerLevelWithCombos(
+  deck: DeckList,
+  analysis: DeckAnalysis,
+  targetBracket?: Bracket,
+): Promise<PowerLevelResult> {
+  const allCards = [deck.commander, ...Object.values(deck.slots).flat()];
+  const combos = await findCombos(allCards.map(c => c.name));
+  return _assess(deck, analysis, combos, targetBracket);
+}
+
+function _assess(
+  deck: DeckList,
+  analysis: DeckAnalysis,
+  combos: ComboResult[],
   targetBracket?: Bracket,
 ): PowerLevelResult {
   const allCards = [deck.commander, ...Object.values(deck.slots).flat()];
@@ -93,6 +126,8 @@ export function assessPowerLevel(
   const fastManaCount = rampCards.filter(c => c.cmc <= 1).length;
   const fastManaRatio = rampCards.length > 0 ? fastManaCount / rampCards.length : 0;
 
+  const twoCardComboCount = combos.filter(c => c.cardCount <= 2).length;
+
   const signals: PowerLevelSignals = {
     gameChangers,
     tierATutors,
@@ -101,6 +136,8 @@ export function assessPowerLevel(
     interactionCount,
     staplesCoverage: analysis.staplesCoveragePercent,
     fastManaRatio,
+    combos,
+    twoCardComboCount,
   };
 
   // --- Determine bracket ---
@@ -127,10 +164,9 @@ function computeBracket(signals: PowerLevelSignals, explanation: string[]): Brac
   const gc = signals.gameChangers.length;
   const tierA = signals.tierATutors.length;
   const tierB = signals.tierBTutors.length;
-  const { avgCmc, fastManaRatio, staplesCoverage } = signals;
+  const { avgCmc, fastManaRatio, staplesCoverage, twoCardComboCount } = signals;
 
   // --- Bracket 5 (cEDH): full optimization, combo density ---
-  // Indicators: many game changers, tier-A tutors, very low CMC, high staples
   if (gc >= 6 && tierA >= 2 && avgCmc > 0 && avgCmc < 2.0) {
     explanation.push(`cEDH-level: ${gc} Game Changers, ${tierA} Tier-A tutors, avg CMC ${avgCmc}`);
     return 5;
@@ -139,8 +175,17 @@ function computeBracket(signals: PowerLevelSignals, explanation: string[]): Brac
     explanation.push(`${gc} Game Changers present — exceeds typical Bracket 4 density`);
     return 5;
   }
+  if (twoCardComboCount >= 2 && tierA >= 2 && avgCmc > 0 && avgCmc < 2.5) {
+    explanation.push(`${twoCardComboCount} two-card infinite combos + ${tierA} Tier-A tutors — cEDH-adjacent`);
+    return 5;
+  }
 
   // --- Bracket 4 (Optimized): tuned deck, may have late-game combo ---
+  // A confirmed two-card infinite combo pushes to Bracket 4 regardless of GC count
+  if (twoCardComboCount >= 1 && gc >= 1) {
+    explanation.push(`${twoCardComboCount} two-card combo line(s) detected + ${gc} Game Changer(s)`);
+    return 4;
+  }
   if (gc >= 4) {
     explanation.push(`${gc} Game Changers (${signals.gameChangers.join(', ')}) — Bracket 4 territory`);
     if (tierA >= 1) {
@@ -158,6 +203,12 @@ function computeBracket(signals: PowerLevelSignals, explanation: string[]): Brac
   }
 
   // --- Bracket 3 (Enhanced): synergy-focused, some power staples ---
+  // A two-card combo without other cEDH signals is still Bracket 3 floor
+  if (twoCardComboCount >= 1) {
+    explanation.push(`${twoCardComboCount} two-card combo line(s) detected — Bracket 3 minimum`);
+    if (gc >= 1) explanation.push(`Also has ${gc} Game Changer(s): ${signals.gameChangers.join(', ')}`);
+    return 3;
+  }
   if (gc >= 1) {
     explanation.push(`${gc} Game Changer(s) present: ${signals.gameChangers.join(', ')}`);
     explanation.push('At least one Game Changer pushes the deck to Bracket 3 minimum');

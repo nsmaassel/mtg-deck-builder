@@ -36,6 +36,8 @@ export type CollectionParseResult = {
 };
 
 export type BuildMode = 'prefer-owned' | 'owned-only' | 'budget';
+export type Bracket = 1 | 2 | 3 | 4 | 5;
+export type BracketLabel = 'Exhibition' | 'Core' | 'Enhanced' | 'Optimized' | 'cEDH';
 
 export type BuildDeckResult = {
   deck: {
@@ -54,6 +56,23 @@ export type BuildDeckResult = {
     missingStaples: Array<{ name: string; edhrec_inclusion: number; usdPrice: number | null; wouldFillSlot: string }>;
     budgetUpgrades: Array<{ name: string; edhrec_inclusion: number; usdPrice: number | null; wouldFillSlot: string }>;
     premiumUpgrades: Array<{ name: string; edhrec_inclusion: number; usdPrice: number | null; wouldFillSlot: string }>;
+  };
+  powerLevel: {
+    bracket: Bracket;
+    score: number;
+    label: BracketLabel;
+    signals: {
+      gameChangers: string[];
+      tierATutors: string[];
+      tierBTutors: string[];
+      avgCmc: number;
+      interactionCount: number;
+      staplesCoverage: number;
+      fastManaRatio: number;
+      twoCardComboCount: number;
+    };
+    explanation: string[];
+    targetSuggestions?: string[];
   };
 };
 
@@ -75,10 +94,10 @@ export const api = {
       body: JSON.stringify({ collectionText }),
     }),
 
-  buildDeck: (collectionText: string, commanderName: string, mode: BuildMode = 'prefer-owned', budgetMaxPrice?: number) =>
+  buildDeck: (collectionText: string, commanderName: string, mode: BuildMode = 'prefer-owned', budgetMaxPrice?: number, targetBracket?: Bracket) =>
     request<BuildDeckResult>('/decks/build-from-commander', {
       method: 'POST',
-      body: JSON.stringify({ collectionText, commanderName, options: { mode, budgetMaxPrice } }),
+      body: JSON.stringify({ collectionText, commanderName, options: { mode, budgetMaxPrice, targetBracket } }),
     }),
 
   explainDeck: (deck: BuildDeckResult['deck'], commanderName: string) =>

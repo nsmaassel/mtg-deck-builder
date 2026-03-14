@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { api } from '../api';
-import type { BuildDeckResult, BuildMode } from '../api';
+import type { BuildDeckResult, BuildMode, Bracket } from '../api';
 
 interface BuildFormProps {
   onResult: (result: BuildDeckResult) => void;
@@ -13,6 +13,14 @@ const MODE_LABELS: Record<BuildMode, string> = {
   'budget': '💰 Budget — owned first, fill with cheap picks',
 };
 
+const BRACKET_OPTIONS: Array<{ value: Bracket; label: string }> = [
+  { value: 1, label: '1 — Exhibition (kitchen table, precon-lite)' },
+  { value: 2, label: '2 — Core (precon-level, few staples)' },
+  { value: 3, label: '3 — Enhanced (optimized synergies, some staples)' },
+  { value: 4, label: '4 — Optimized (tuned, efficient, may combo)' },
+  { value: 5, label: '5 — cEDH (competitive, turn-3 wins)' },
+];
+
 export function BuildForm({ onResult, onError }: BuildFormProps) {
   const [collectionText, setCollectionText] = useState('');
   const [commanderName, setCommanderName] = useState('');
@@ -21,6 +29,7 @@ export function BuildForm({ onResult, onError }: BuildFormProps) {
   const [searching, setSearching] = useState(false);
   const [mode, setMode] = useState<BuildMode>('prefer-owned');
   const [budgetMaxPrice, setBudgetMaxPrice] = useState(5);
+  const [targetBracket, setTargetBracket] = useState<Bracket | undefined>(undefined);
 
   const handleCommanderSearch = useCallback(async (query: string) => {
     setCommanderName(query);
@@ -49,6 +58,7 @@ export function BuildForm({ onResult, onError }: BuildFormProps) {
         commanderName,
         mode,
         mode === 'budget' ? budgetMaxPrice : undefined,
+        targetBracket,
       );
       setSuggestions([]);
       onResult(result);
@@ -57,7 +67,7 @@ export function BuildForm({ onResult, onError }: BuildFormProps) {
     } finally {
       setBuilding(false);
     }
-  }, [collectionText, commanderName, mode, budgetMaxPrice, onResult, onError]);
+  }, [collectionText, commanderName, mode, budgetMaxPrice, targetBracket, onResult, onError]);
 
   return (
     <form className="build-form" onSubmit={handleBuild}>
@@ -129,6 +139,22 @@ export function BuildForm({ onResult, onError }: BuildFormProps) {
           <small>Only recommends unowned cards at or below this price.</small>
         </div>
       )}
+
+      <div className="form-group">
+        <label htmlFor="target-bracket">Target Power Level <span className="label-hint">(optional)</span></label>
+        <select
+          id="target-bracket"
+          value={targetBracket ?? ''}
+          onChange={e => setTargetBracket(e.target.value ? Number(e.target.value) as Bracket : undefined)}
+          className="mode-select"
+        >
+          <option value="">— No target (score only) —</option>
+          {BRACKET_OPTIONS.map(opt => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+        <small className="form-hint">Get suggestions for reaching this bracket after the build.</small>
+      </div>
 
       <button type="submit" disabled={building} className="build-btn">
         {building ? 'Building deck...' : '⚔️ Build Deck'}
