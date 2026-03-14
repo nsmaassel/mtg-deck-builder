@@ -1,4 +1,4 @@
-export { getCommanderData, getThemeData, toSlug, clearCache } from './lib/client';
+export { getCommanderData, getThemeData, toEDHRecSlug, clearCache } from './lib/client';
 export {
   EDHRecCardSchema,
   EDHRecCommanderDataSchema,

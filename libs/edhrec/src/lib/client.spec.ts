@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getCommanderData, getThemeData, toSlug, clearCache } from './client';
+import { getCommanderData, getThemeData, toEDHRecSlug, clearCache } from './client';
 import { EDHRecNotFoundError, EDHRecError } from './schemas';
 
 function makeEDHRecResponse(cardviews: Array<Record<string, unknown>>) {
@@ -34,11 +34,14 @@ beforeEach(() => {
   clearCache();
 });
 
-describe('toSlug', () => {
-  it('converts commander name to slug', () => {
-    expect(toSlug("Atraxa, Praetors' Voice")).toBe('atraxa-praetors-voice');
-    expect(toSlug('Rhys the Redeemed')).toBe('rhys-the-redeemed');
-    expect(toSlug('Adrix and Nev, Twincasters')).toBe('adrix-and-nev-twincasters');
+describe('toEDHRecSlug', () => {
+  it('converts commander name to EDHRec URL slug', () => {
+    expect(toEDHRecSlug("Atraxa, Praetors' Voice")).toBe('atraxa-praetors-voice');
+    expect(toEDHRecSlug('Rhys the Redeemed')).toBe('rhys-the-redeemed');
+    expect(toEDHRecSlug('Adrix and Nev, Twincasters')).toBe('adrix-and-nev-twincasters');
+    // TMNT-style names with & and special chars
+    expect(toEDHRecSlug('Don & Leo, Problem Solvers')).toBe('don-leo-problem-solvers');
+    expect(toEDHRecSlug('Heroes in a Half Shell')).toBe('heroes-in-a-half-shell');
   });
 });
 

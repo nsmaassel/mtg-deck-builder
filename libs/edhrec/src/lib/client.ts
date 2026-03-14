@@ -30,7 +30,16 @@ const TAG_TO_LABEL: Record<string, string> = {
   newcards: 'synergy',
 };
 
-export function toSlug(name: string): string {
+/**
+ * Convert a card name to an EDHRec URL slug.
+ *
+ * EDHRec's slug format: lowercase, non-alphanumeric runs → single hyphen, trim hyphens.
+ * Example: "Don & Leo, Problem Solvers" → "don-leo-problem-solvers"
+ *
+ * NOTE: This is EDHRec-specific. Other MTG sites (Scryfall, MTGGoldfish, etc.)
+ * use different identifier schemes — there is no community-wide slug standard.
+ */
+export function toEDHRecSlug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
@@ -87,7 +96,7 @@ function parseCardlists(
  * Results are cached in memory by slug for the lifetime of the process.
  */
 export async function getCommanderData(commanderName: string): Promise<EDHRecCommanderData> {
-  const slug = toSlug(commanderName);
+  const slug = toEDHRecSlug(commanderName);
 
   const cached = commanderCache.get(slug);
   if (cached) return cached;
@@ -120,7 +129,7 @@ export async function getCommanderData(commanderName: string): Promise<EDHRecCom
  * Fetch card recommendations for a theme/archetype.
  */
 export async function getThemeData(theme: string): Promise<EDHRecThemeData> {
-  const slug = toSlug(theme);
+  const slug = toEDHRecSlug(theme);
 
   const cached = themeCache.get(slug);
   if (cached) return cached;
