@@ -3,6 +3,7 @@ import { parseArenaCollection } from '@mtg/collection';
 import { getCardByName, ScryfallNotFoundError } from '@mtg/scryfall';
 import { getCommanderData, EDHRecNotFoundError } from '@mtg/edhrec';
 import { buildDeck } from '@mtg/deck-builder';
+import type { Bracket } from '@mtg/power-level';
 import { explainDeck } from '@mtg/ai-advisor';
 
 export async function deckRoutes(app: FastifyInstance): Promise<void> {
@@ -10,7 +11,11 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
     Body: {
       collectionText: string;
       commanderName: string;
-      options?: { mode?: 'prefer-owned' | 'owned-only' | 'budget'; budgetMaxPrice?: number };
+      options?: {
+        mode?: 'prefer-owned' | 'owned-only' | 'budget';
+        budgetMaxPrice?: number;
+        targetBracket?: Bracket;
+      };
     };
   }>('/api/decks/build-from-commander', {
     schema: {
@@ -25,6 +30,7 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
             properties: {
               mode: { type: 'string', enum: ['prefer-owned', 'owned-only', 'budget'] },
               budgetMaxPrice: { type: 'number', minimum: 0 },
+              targetBracket: { type: 'number', minimum: 1, maximum: 5 },
             },
           },
         },
@@ -34,6 +40,7 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
       const { collectionText, commanderName, options } = request.body;
       const mode = options?.mode ?? 'prefer-owned';
       const budgetMaxPrice = options?.budgetMaxPrice ?? 5;
+      const targetBracket = options?.targetBracket;
 
       const parseResult = parseArenaCollection(collectionText);
 
@@ -124,7 +131,7 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
         edhrecCards,
         collection: parseResult.collection,
         collectionScryfallData,
-        options: { mode, budgetMaxPrice },
+        options: { mode, budgetMaxPrice, targetBracket },
       });
 
       return reply.send(result);

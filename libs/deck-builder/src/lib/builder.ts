@@ -13,6 +13,7 @@ import type {
 } from './types';
 import { SLOT_TARGETS, TOTAL_DECK_SIZE } from './types';
 import { scoreCard, labelToSlot, isColorLegal, basicLandForColor } from './scoring';
+import { assessPowerLevel } from '@mtg/power-level';
 
 const BASIC_LANDS = new Set(['plains', 'island', 'swamp', 'mountain', 'forest', 'wastes',
   'snow-covered plains', 'snow-covered island', 'snow-covered swamp',
@@ -115,8 +116,9 @@ export function buildDeck(input: BuildDeckInput): BuildDeckResult {
   const deck: DeckList = { commander: commanderDeckCard, slots, totalCards };
   const analysis = analyzeDeck(deck, commanderCard.name, edhrecCards);
   const gaps = buildGapReport(edhrecCards, usedNames, collection, collectionScryfallData, commanderColorIdentity);
+  const powerLevel = assessPowerLevel(deck, analysis, input.options?.targetBracket);
 
-  return { deck, analysis, gaps };
+  return { deck, analysis, gaps, powerLevel };
 }
 
 function fillUnderfilled(

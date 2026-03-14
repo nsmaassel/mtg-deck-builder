@@ -1,6 +1,7 @@
 import type { ScryfallCard } from '@mtg/scryfall';
 import type { EDHRecCard } from '@mtg/edhrec';
 import type { CollectionMap } from '@mtg/collection';
+import type { PowerLevelResult, Bracket } from '@mtg/power-level';
 
 export interface DeckCard {
   name: string;
@@ -55,6 +56,11 @@ export interface BuildDeckOptions {
   mode?: BuildMode;
   /** USD price ceiling per card when mode is 'budget'. Defaults to 5. */
   budgetMaxPrice?: number;
+  /**
+   * Target power bracket (1–5, Official Commander Brackets).
+   * When provided, the result includes suggestions for reaching this bracket.
+   */
+  targetBracket?: Bracket;
 }
 
 export interface BuildDeckInput {
@@ -69,7 +75,11 @@ export interface BuildDeckResult {
   deck: DeckList;
   analysis: DeckAnalysis;
   gaps: GapReport;
+  powerLevel: PowerLevelResult;
 }
+
+// Re-export so consumers can import from @mtg/deck-builder
+export type { PowerLevelResult, Bracket } from '@mtg/power-level';
 
 /** Slot targets per constitution spec */
 export const SLOT_TARGETS: Record<SlotName, number> = {

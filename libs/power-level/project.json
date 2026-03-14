@@ -1,0 +1,17 @@
+{
+  "name": "power-level",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/power-level/src",
+  "projectType": "library",
+  "tags": ["type:lib", "scope:power-level"],
+  "targets": {
+    "test": {
+      "executor": "@nx/vite:test",
+      "options": { "config": "libs/power-level/vite.config.ts" }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": { "command": "tsc --noEmit -p libs/power-level/tsconfig.json" }
+    }
+  }
+}

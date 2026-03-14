@@ -4,11 +4,7 @@ import { resolve } from 'path';
 export default defineConfig({
   resolve: {
     alias: {
-      '@mtg/collection': resolve(__dirname, '../../libs/collection/src/index.ts'),
-      '@mtg/scryfall': resolve(__dirname, '../../libs/scryfall/src/index.ts'),
-      '@mtg/edhrec': resolve(__dirname, '../../libs/edhrec/src/index.ts'),
       '@mtg/deck-builder': resolve(__dirname, '../../libs/deck-builder/src/index.ts'),
-      '@mtg/ai-advisor': resolve(__dirname, '../../libs/ai-advisor/src/index.ts'),
       '@mtg/power-level': resolve(__dirname, '../../libs/power-level/src/index.ts'),
     },
   },

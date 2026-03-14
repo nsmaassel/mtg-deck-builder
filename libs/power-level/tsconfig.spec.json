@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "outDir": "../../dist/libs/power-level", "types": ["vitest/globals"] },
+  "include": ["src/**/*.spec.ts"]
+}

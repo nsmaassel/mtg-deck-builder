@@ -21,7 +21,8 @@
       "@mtg/scryfall": ["libs/scryfall/src/index.ts"],
       "@mtg/edhrec": ["libs/edhrec/src/index.ts"],
       "@mtg/deck-builder": ["libs/deck-builder/src/index.ts"],
-      "@mtg/ai-advisor": ["libs/ai-advisor/src/index.ts"]
+      "@mtg/ai-advisor": ["libs/ai-advisor/src/index.ts"],
+      "@mtg/power-level": ["libs/power-level/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]
