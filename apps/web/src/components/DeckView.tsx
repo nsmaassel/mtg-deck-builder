@@ -96,12 +96,25 @@ export function DeckView({ result, onExplain, explaining, explanation }: DeckVie
 
         {powerLevel.targetSuggestions && powerLevel.targetSuggestions.length > 0 && (
           <div className="target-suggestions">
-            <strong>💡 Suggestions to reach your target:</strong>
-            <ul>
-              {powerLevel.targetSuggestions.map((s, i) => (
-                <li key={i}>{s}</li>
-              ))}
-            </ul>
+            <strong>💡 Suggestions to reach Bracket {powerLevel.signals.gameChangers.length > 0 ? powerLevel.bracket - 1 : powerLevel.bracket + 1}:</strong>
+            {powerLevel.targetSuggestions.map((swap, i) => (
+              <div key={i} className="swap-suggestion">
+                <div className="swap-remove">
+                  ✂️ <strong>{swap.remove}</strong>
+                  <span className="swap-reason"> — {swap.removeReason}</span>
+                </div>
+                {swap.alternatives.length > 0 && (
+                  <div className="swap-alternatives">
+                    <span className="swap-alt-label">↪ Replace with:</span>
+                    {swap.alternatives.map(alt => (
+                      <span key={alt.name} className="swap-alt-chip" title={`${alt.inclusion}% inclusion`}>
+                        {alt.name} <em>{alt.inclusion}%</em>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>

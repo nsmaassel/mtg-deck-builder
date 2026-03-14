@@ -135,8 +135,16 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
         options: { mode, budgetMaxPrice, targetBracket },
       });
 
+      // Build candidate pool for swap suggestions: EDHRec cards not in the final deck
+      const deckNames = new Set(
+        [result.deck.commander, ...Object.values(result.deck.slots).flat()].map(c => c.name.toLowerCase())
+      );
+      const edhrecCandidates = edhrecCards
+        .filter(c => !deckNames.has(c.name.toLowerCase()))
+        .map(c => ({ name: c.name, inclusion: c.inclusion, label: c.label }));
+
       // Enhance power level with Commander Spellbook combo detection (async, best-effort)
-      const powerLevel = await assessPowerLevelWithCombos(result.deck, result.analysis, targetBracket);
+      const powerLevel = await assessPowerLevelWithCombos(result.deck, result.analysis, targetBracket, edhrecCandidates);
 
       return reply.send({ ...result, powerLevel });
     },

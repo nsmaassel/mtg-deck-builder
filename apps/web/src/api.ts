@@ -72,7 +72,12 @@ export type BuildDeckResult = {
       twoCardComboCount: number;
     };
     explanation: string[];
-    targetSuggestions?: string[];
+    targetSuggestions?: Array<{
+      remove: string;
+      removeReason: string;
+      removeSlot: string;
+      alternatives: Array<{ name: string; inclusion: number; slot: string }>;
+    }>;
   };
 };
 

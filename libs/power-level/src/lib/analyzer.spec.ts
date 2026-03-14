@@ -114,7 +114,10 @@ describe('assessPowerLevel', () => {
     const result = assessPowerLevel(deck, analysis, 2);
     expect(result.targetSuggestions).toBeDefined();
     expect(result.targetSuggestions!.length).toBeGreaterThan(0);
-    expect(result.targetSuggestions!.some(s => s.toLowerCase().includes('game changer'))).toBe(true);
+    // Each suggestion is a SwapSuggestion with a remove field
+    expect(result.targetSuggestions![0]).toHaveProperty('remove');
+    expect(result.targetSuggestions![0]).toHaveProperty('removeReason');
+    expect(result.targetSuggestions![0]).toHaveProperty('alternatives');
   });
 
   it('does not include targetSuggestions when already at target bracket', () => {
@@ -127,9 +130,16 @@ describe('assessPowerLevel', () => {
   it('provides power-up suggestions when target is higher than actual', () => {
     const deck = makeDeck(['Llanowar Elves', 'Rampant Growth']);
     const analysis = makeAnalysis(3.0, 20);
-    const result = assessPowerLevel(deck, analysis, 3);
+    // Supply a candidate pool including a Game Changer
+    const candidates = [
+      { name: 'Rhystic Study', inclusion: 72, label: 'draw' },
+      { name: 'Cyclonic Rift', inclusion: 65, label: 'interaction' },
+    ];
+    const result = assessPowerLevel(deck, analysis, 3, candidates);
     expect(result.targetSuggestions).toBeDefined();
-    expect(result.targetSuggestions!.some(s => s.toLowerCase().includes('game changer'))).toBe(true);
+    // Should suggest adding Rhystic Study or Cyclonic Rift
+    const suggestedNames = result.targetSuggestions!.flatMap(s => s.alternatives.map(a => a.name));
+    expect(suggestedNames.some(n => ['Rhystic Study', 'Cyclonic Rift'].includes(n))).toBe(true);
   });
 
   it('exposes game changer names in signals', () => {

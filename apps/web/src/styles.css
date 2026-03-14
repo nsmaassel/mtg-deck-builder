@@ -115,9 +115,19 @@ textarea { resize: vertical; }
   margin-top: 0.75rem; padding: 0.75rem; background: #1a2a1a;
   border-radius: 6px; border: 1px solid #3a5a3a;
 }
-.target-suggestions strong { color: #88cc88; font-size: 0.88rem; display: block; margin-bottom: 0.4rem; }
-.target-suggestions ul { padding-left: 1.25rem; }
-.target-suggestions li { font-size: 0.82rem; color: #aaccaa; line-height: 1.6; }
+.target-suggestions > strong { color: #88cc88; font-size: 0.88rem; display: block; margin-bottom: 0.6rem; }
+.swap-suggestion { margin-bottom: 0.75rem; padding-bottom: 0.75rem; border-bottom: 1px solid #2a3a2a; }
+.swap-suggestion:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+.swap-remove { font-size: 0.84rem; margin-bottom: 0.35rem; }
+.swap-remove strong { color: #ff9999; }
+.swap-reason { color: #888; font-size: 0.78rem; }
+.swap-alternatives { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.3rem; }
+.swap-alt-label { color: #aaa; font-size: 0.78rem; }
+.swap-alt-chip {
+  background: #1e3a1e; border: 1px solid #3a6a3a; border-radius: 4px;
+  padding: 0.15rem 0.5rem; font-size: 0.78rem; color: #aaccaa; cursor: default;
+}
+.swap-alt-chip em { color: #669966; font-style: normal; margin-left: 0.3rem; font-size: 0.72rem; }
 
 /* Owned/unowned card distinction */
 .card-unowned .card-name { color: #bbb; }

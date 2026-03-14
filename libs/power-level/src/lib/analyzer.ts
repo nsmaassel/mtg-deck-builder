@@ -1,8 +1,20 @@
 import type { DeckList, DeckAnalysis } from '@mtg/deck-builder';
-import { findGameChangers } from './game-changers.js';
+import { findGameChangers, GAME_CHANGERS } from './game-changers.js';
 import { findTutors } from './tutors.js';
 import { findCombos } from './combos.js';
 import type { ComboResult } from './combos.js';
+
+/**
+ * Minimal EDHRec card shape needed for swap suggestions.
+ * Callers pass this in; power-level doesn't import @mtg/edhrec directly.
+ */
+export interface EdhrecCandidate {
+  name: string;
+  /** Normalized inclusion rate 0–100 */
+  inclusion: number;
+  /** EDHRec section label (e.g. 'ramp', 'draw', 'interaction', 'synergy') */
+  label: string;
+}
 
 export type Bracket = 1 | 2 | 3 | 4 | 5;
 export type BracketLabel = 'Exhibition' | 'Core' | 'Enhanced' | 'Optimized' | 'cEDH';
@@ -28,6 +40,29 @@ export interface PowerLevelSignals {
   twoCardComboCount: number;
 }
 
+/** A ranked alternative to a card being removed to lower bracket */
+export interface SwapAlternative {
+  name: string;
+  /** EDHRec inclusion rate 0–100 — higher = more popular for this commander */
+  inclusion: number;
+  slot: string;
+}
+
+/** One specific swap: remove a high-power card, add one of the alternatives */
+export interface SwapSuggestion {
+  /** The card to remove from the deck */
+  remove: string;
+  /** Human-readable reason why this card raises the bracket */
+  removeReason: string;
+  /** Which deck slot this card occupies */
+  removeSlot: string;
+  /**
+   * Ranked replacement candidates (up to 3) from EDHRec recommendations.
+   * Empty if no candidate pool was provided at assessment time.
+   */
+  alternatives: SwapAlternative[];
+}
+
 export interface PowerLevelResult {
   /** Official WotC Commander Bracket (1–5) */
   bracket: Bracket;
@@ -43,10 +78,11 @@ export interface PowerLevelResult {
    */
   explanation: string[];
   /**
-   * Suggestions for reaching `targetBracket` (only present when targetBracket
-   * is provided and differs from the actual bracket).
+   * Specific swap suggestions for reaching `targetBracket`.
+   * Each entry names a card to remove + ranked EDHRec alternatives.
+   * Only present when targetBracket differs from actual bracket.
    */
-  targetSuggestions?: string[];
+  targetSuggestions?: SwapSuggestion[];
 }
 
 const BRACKET_LABELS: Record<Bracket, BracketLabel> = {
@@ -77,31 +113,37 @@ const BRACKET_TO_SCORE: Record<Bracket, number> = {
  * This is the synchronous variant — combo detection is skipped (combos=[]).
  * Use assessPowerLevelWithCombos() when you need combo data.
  *
- * @param deck      The built deck list (100 cards)
- * @param analysis  The DeckAnalysis from buildDeck() — provides avgCmc + staples coverage
- * @param targetBracket  Optional target bracket — if provided, generates swap suggestions
+ * @param deck             The built deck list (100 cards)
+ * @param analysis         The DeckAnalysis from buildDeck()
+ * @param targetBracket    Optional — if provided, generates swap suggestions
+ * @param edhrecCandidates Optional — EDHRec cards NOT in the deck, used to
+ *                         populate swap alternatives in targetSuggestions
  */
 export function assessPowerLevel(
   deck: DeckList,
   analysis: DeckAnalysis,
   targetBracket?: Bracket,
+  edhrecCandidates?: EdhrecCandidate[],
 ): PowerLevelResult {
-  return _assess(deck, analysis, [], targetBracket);
+  return _assess(deck, analysis, [], targetBracket, edhrecCandidates);
 }
 
 /**
  * Async variant that also queries Commander Spellbook for combo lines.
  * Combo detection is best-effort — any network failure returns the same
  * result as assessPowerLevel() with combos=[].
+ *
+ * @param edhrecCandidates Optional EDHRec cards NOT in the deck, for swap suggestions
  */
 export async function assessPowerLevelWithCombos(
   deck: DeckList,
   analysis: DeckAnalysis,
   targetBracket?: Bracket,
+  edhrecCandidates?: EdhrecCandidate[],
 ): Promise<PowerLevelResult> {
   const allCards = [deck.commander, ...Object.values(deck.slots).flat()];
   const combos = await findCombos(allCards.map(c => c.name));
-  return _assess(deck, analysis, combos, targetBracket);
+  return _assess(deck, analysis, combos, targetBracket, edhrecCandidates);
 }
 
 function _assess(
@@ -109,6 +151,7 @@ function _assess(
   analysis: DeckAnalysis,
   combos: ComboResult[],
   targetBracket?: Bracket,
+  edhrecCandidates?: EdhrecCandidate[],
 ): PowerLevelResult {
   const allCards = [deck.commander, ...Object.values(deck.slots).flat()];
   const cardNames = allCards.map(c => c.name);
@@ -145,9 +188,9 @@ function _assess(
   let bracket = computeBracket(signals, explanation);
 
   // --- Target bracket suggestions ---
-  let targetSuggestions: string[] | undefined;
+  let targetSuggestions: SwapSuggestion[] | undefined;
   if (targetBracket !== undefined && targetBracket !== bracket) {
-    targetSuggestions = buildSuggestions(signals, bracket, targetBracket);
+    targetSuggestions = buildSuggestions(signals, deck, bracket, targetBracket, edhrecCandidates);
   }
 
   return {
@@ -246,39 +289,116 @@ function computeBracket(signals: PowerLevelSignals, explanation: string[]): Brac
 
 function buildSuggestions(
   signals: PowerLevelSignals,
+  deck: DeckList,
   current: Bracket,
   target: Bracket,
-): string[] {
-  const suggestions: string[] = [];
+  candidates?: EdhrecCandidate[],
+): SwapSuggestion[] {
+  const suggestions: SwapSuggestion[] = [];
+  const allDeckCards = [deck.commander, ...Object.values(deck.slots).flat()];
+
+  // Build a lookup: card name (lower) → slot name
+  const cardSlotMap = new Map(allDeckCards.map(c => [c.name.toLowerCase(), c.slot]));
+
+  // Build candidate index: slot → ranked candidates (not in deck, not a GC)
+  const candidatesBySlot = buildCandidateIndex(candidates ?? [], cardSlotMap);
 
   if (target < current) {
-    // User wants to power DOWN
-    if (signals.gameChangers.length > 0) {
-      const toRemove = signals.gameChangers.slice(0, current - target + 1);
-      suggestions.push(`Remove these Game Changers to lower bracket: ${toRemove.join(', ')}`);
+    // ── Power DOWN: remove Game Changers and Tier-A tutors ──────────────────
+    const bracketDiff = current - target;
+    // Prioritize removing Game Changers first (bigger bracket impact)
+    const toRemoveGC = signals.gameChangers.slice(0, bracketDiff + 1);
+    for (const cardName of toRemoveGC) {
+      const slot = cardSlotMap.get(cardName.toLowerCase()) ?? 'synergy';
+      suggestions.push({
+        remove: cardName,
+        removeReason: 'WotC Game Changer — one of the ~40 cards that most warp casual play',
+        removeSlot: slot,
+        alternatives: candidatesBySlot.get(slot)?.slice(0, 3) ?? [],
+      });
     }
-    if (signals.tierATutors.length > 0) {
-      suggestions.push(`Replace Tier-A tutors with lower-impact ramp/draw: ${signals.tierATutors.join(', ')}`);
-    }
-    if (signals.fastManaRatio > 0.5) {
-      suggestions.push('Swap 0-CMC mana rocks (Mana Crypt, etc.) for 2-mana alternatives (Arcane Signet, etc.)');
+
+    // Then Tier-A tutors if still above target after GC removal
+    if (signals.tierATutors.length > 0 && suggestions.length < bracketDiff + 1) {
+      for (const cardName of signals.tierATutors.slice(0, 1)) {
+        const slot = cardSlotMap.get(cardName.toLowerCase()) ?? 'synergy';
+        suggestions.push({
+          remove: cardName,
+          removeReason: 'Tier-A tutor — unconditional low-cost tutor that compresses variance',
+          removeSlot: slot,
+          alternatives: candidatesBySlot.get(slot)?.slice(0, 3) ?? [],
+        });
+      }
     }
   } else {
-    // User wants to power UP
-    if (target >= 3 && signals.gameChangers.length === 0) {
-      suggestions.push('Add at least 1 Game Changer (e.g. Rhystic Study, Cyclonic Rift) to reach Bracket 3');
-    }
-    if (target >= 3 && signals.tierATutors.length === 0) {
-      suggestions.push('Consider adding Demonic Tutor or Vampiric Tutor for consistency');
-    }
-    if (target >= 4 && signals.gameChangers.length < 4) {
-      const needed = 4 - signals.gameChangers.length;
-      suggestions.push(`Add ${needed} more Game Changers to reach Bracket 4 (e.g. Jeweled Lotus, Fierce Guardianship)`);
-    }
-    if (target === 5 && signals.avgCmc > 2.5) {
-      suggestions.push(`Lower avg CMC below 2.2 (currently ${signals.avgCmc}) — optimize mana base and curve`);
+    // ── Power UP: suggest adding Game Changers / tutors from candidate pool ──
+    // For power-up we suggest specific cards TO ADD (no forced remove — user decides what to cut)
+    if (target >= 3) {
+      const gcCandidates = (candidates ?? [])
+        .filter(c => GAME_CHANGERS.has(c.name.toLowerCase()))
+        .sort((a, b) => b.inclusion - a.inclusion)
+        .slice(0, target >= 4 ? 4 : 2);
+
+      for (const candidate of gcCandidates) {
+        suggestions.push({
+          remove: '(flex / lowest-synergy card in same slot)',
+          removeReason: 'Cut to make room for this Game Changer',
+          removeSlot: candidate.label,
+          alternatives: [{
+            name: candidate.name,
+            inclusion: candidate.inclusion,
+            slot: candidate.label,
+          }],
+        });
+      }
+
+      if (target >= 3 && signals.tierATutors.length === 0) {
+        const tutorCandidates = (candidates ?? [])
+          .filter(c => ['demonic tutor', 'vampiric tutor', 'diabolic intent', 'wishclaw talisman']
+            .includes(c.name.toLowerCase()))
+          .sort((a, b) => b.inclusion - a.inclusion)
+          .slice(0, 1);
+
+        for (const candidate of tutorCandidates) {
+          suggestions.push({
+            remove: '(flex / lowest-synergy card in same slot)',
+            removeReason: 'Cut to make room for this tutor',
+            removeSlot: candidate.label,
+            alternatives: [{ name: candidate.name, inclusion: candidate.inclusion, slot: candidate.label }],
+          });
+        }
+      }
     }
   }
 
   return suggestions;
+}
+
+/**
+ * Builds a slot-indexed map of candidate replacements.
+ * Excludes: cards already in the deck, cards on the Game Changers list.
+ */
+function buildCandidateIndex(
+  candidates: EdhrecCandidate[],
+  deckCardNames: Map<string, string>,
+): Map<string, SwapAlternative[]> {
+  const index = new Map<string, SwapAlternative[]>();
+
+  for (const c of candidates) {
+    const lower = c.name.toLowerCase();
+    // Skip cards already in the deck or that are themselves Game Changers
+    if (deckCardNames.has(lower)) continue;
+    if (GAME_CHANGERS.has(lower)) continue;
+
+    const slot = c.label || 'synergy';
+    if (!index.has(slot)) index.set(slot, []);
+    index.get(slot)!.push({ name: c.name, inclusion: c.inclusion, slot });
+  }
+
+  // Sort each slot by inclusion rate descending
+  for (const [slot, alts] of index) {
+    index.set(slot, alts.sort((a, b) => b.inclusion - a.inclusion));
+  }
+
+  return index;
 }
