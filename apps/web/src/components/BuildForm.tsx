@@ -1,11 +1,17 @@
 import React, { useState, useCallback } from 'react';
 import { api } from '../api';
-import type { BuildDeckResult } from '../api';
+import type { BuildDeckResult, BuildMode } from '../api';
 
 interface BuildFormProps {
   onResult: (result: BuildDeckResult) => void;
   onError: (msg: string) => void;
 }
+
+const MODE_LABELS: Record<BuildMode, string> = {
+  'prefer-owned': '🃏 Prefer Owned — fill gaps with top recommendations',
+  'owned-only': '🔒 Owned Only — use strictly what you own',
+  'budget': '💰 Budget — owned first, fill with cheap picks',
+};
 
 export function BuildForm({ onResult, onError }: BuildFormProps) {
   const [collectionText, setCollectionText] = useState('');
@@ -13,6 +19,8 @@ export function BuildForm({ onResult, onError }: BuildFormProps) {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [building, setBuilding] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [mode, setMode] = useState<BuildMode>('prefer-owned');
+  const [budgetMaxPrice, setBudgetMaxPrice] = useState(5);
 
   const handleCommanderSearch = useCallback(async (query: string) => {
     setCommanderName(query);
@@ -36,7 +44,12 @@ export function BuildForm({ onResult, onError }: BuildFormProps) {
     }
     setBuilding(true);
     try {
-      const result = await api.buildDeck(collectionText, commanderName);
+      const result = await api.buildDeck(
+        collectionText,
+        commanderName,
+        mode,
+        mode === 'budget' ? budgetMaxPrice : undefined,
+      );
       setSuggestions([]);
       onResult(result);
     } catch (err) {
@@ -44,7 +57,7 @@ export function BuildForm({ onResult, onError }: BuildFormProps) {
     } finally {
       setBuilding(false);
     }
-  }, [collectionText, commanderName, onResult, onError]);
+  }, [collectionText, commanderName, mode, budgetMaxPrice, onResult, onError]);
 
   return (
     <form className="build-form" onSubmit={handleBuild}>
@@ -83,6 +96,39 @@ export function BuildForm({ onResult, onError }: BuildFormProps) {
           </ul>
         )}
       </div>
+
+      <div className="form-group">
+        <label htmlFor="mode">Build Mode</label>
+        <select
+          id="mode"
+          value={mode}
+          onChange={e => setMode(e.target.value as BuildMode)}
+          className="mode-select"
+        >
+          {(Object.keys(MODE_LABELS) as BuildMode[]).map(m => (
+            <option key={m} value={m}>{MODE_LABELS[m]}</option>
+          ))}
+        </select>
+      </div>
+
+      {mode === 'budget' && (
+        <div className="form-group budget-group">
+          <label htmlFor="budget-price">Max price per unowned card (USD)</label>
+          <div className="budget-input">
+            <span className="currency">$</span>
+            <input
+              id="budget-price"
+              type="number"
+              min={0}
+              max={500}
+              step={0.5}
+              value={budgetMaxPrice}
+              onChange={e => setBudgetMaxPrice(parseFloat(e.target.value) || 0)}
+            />
+          </div>
+          <small>Only recommends unowned cards at or below this price.</small>
+        </div>
+      )}
 
       <button type="submit" disabled={building} className="build-btn">
         {building ? 'Building deck...' : '⚔️ Build Deck'}

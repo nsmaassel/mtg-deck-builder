@@ -255,3 +255,130 @@ describe('buildDeck', () => {
     expect(hasBasics).toBe(true);
   });
 });
+
+describe('buildDeck modes', () => {
+  function makeOwnedAndUnowned() {
+    // 30 owned synergy cards + 20 unowned with varying prices
+    const owned = makeEDHRecCards(30, 'synergy', 70);
+    const unownedCheap: EDHRecCard[] = Array.from({ length: 10 }, (_, i) => ({
+      name: `Cheap Card ${i + 1}`,
+      inclusion: 60 - i,
+      synergy: 0.4,
+      label: 'ramp',
+      cmc: 2,
+    }));
+    const unownedExpensive: EDHRecCard[] = Array.from({ length: 10 }, (_, i) => ({
+      name: `Expensive Card ${i + 1}`,
+      inclusion: 55 - i,
+      synergy: 0.4,
+      label: 'draw',
+      cmc: 3,
+    }));
+    const all = [...owned, ...unownedCheap, ...unownedExpensive];
+    const collection = makeCollection(owned.map(c => c.name));
+
+    const scryfallData = new Map<string, ScryfallCard>();
+    owned.forEach(c => scryfallData.set(c.name.toLowerCase(), {
+      id: c.name, name: c.name, type_line: 'Enchantment',
+      color_identity: [], cmc: 2, legalities: { commander: 'legal' },
+      prices: { usd: '1.00' }, edhrec_rank: null,
+    }));
+    unownedCheap.forEach(c => scryfallData.set(c.name.toLowerCase(), {
+      id: c.name, name: c.name, type_line: 'Artifact',
+      color_identity: [], cmc: 2, legalities: { commander: 'legal' },
+      prices: { usd: '2.00' }, edhrec_rank: null,
+    }));
+    unownedExpensive.forEach(c => scryfallData.set(c.name.toLowerCase(), {
+      id: c.name, name: c.name, type_line: 'Sorcery',
+      color_identity: [], cmc: 3, legalities: { commander: 'legal' },
+      prices: { usd: '20.00' }, edhrec_rank: null,
+    }));
+    return { all, collection, scryfallData };
+  }
+
+  it('owned-only: no unowned non-basic cards in deck', () => {
+    const { all, collection, scryfallData } = makeOwnedAndUnowned();
+    const { deck } = buildDeck({
+      commanderCard: ATRAXA,
+      edhrecCards: all,
+      collection,
+      collectionScryfallData: scryfallData,
+      options: { mode: 'owned-only' },
+    });
+
+    const allDeckCards = Object.values(deck.slots).flat();
+    const hasUnowned = allDeckCards.some(c => !c.ownedInCollection && c.type_line !== 'Basic Land');
+    expect(hasUnowned).toBe(false);
+  });
+
+  it('budget: unowned cards above price ceiling are excluded', () => {
+    const { all, collection, scryfallData } = makeOwnedAndUnowned();
+    const { deck } = buildDeck({
+      commanderCard: ATRAXA,
+      edhrecCards: all,
+      collection,
+      collectionScryfallData: scryfallData,
+      options: { mode: 'budget', budgetMaxPrice: 5 },
+    });
+
+    const allDeckCards = Object.values(deck.slots).flat();
+    const hasExpensive = allDeckCards.some(
+      c => !c.ownedInCollection && (c.usdPrice ?? 0) > 5 && c.type_line !== 'Basic Land',
+    );
+    expect(hasExpensive).toBe(false);
+  });
+
+  it('budget: cheap unowned cards ARE included', () => {
+    const { all, collection, scryfallData } = makeOwnedAndUnowned();
+    const { deck } = buildDeck({
+      commanderCard: ATRAXA,
+      edhrecCards: all,
+      collection,
+      collectionScryfallData: scryfallData,
+      options: { mode: 'budget', budgetMaxPrice: 5 },
+    });
+
+    const allDeckCards = Object.values(deck.slots).flat();
+    const cheapUnownedInDeck = allDeckCards.filter(
+      c => !c.ownedInCollection && (c.usdPrice ?? 0) <= 5 && c.type_line !== 'Basic Land',
+    );
+    expect(cheapUnownedInDeck.length).toBeGreaterThan(0);
+  });
+
+  it('prefer-owned: deck reaches 100 cards and owned cards present', () => {
+    const { all, collection, scryfallData } = makeOwnedAndUnowned();
+    // Add extra owned cards for interaction and win-con slots (fixture only has ramp/draw/synergy)
+    const extraOwned: EDHRecCard[] = [
+      ...Array.from({ length: 12 }, (_, i) => ({
+        name: `Removal ${i + 1}`, inclusion: 70, synergy: 0.3, label: 'removal', cmc: 2,
+      })),
+      ...Array.from({ length: 7 }, (_, i) => ({
+        name: `Win Con ${i + 1}`, inclusion: 65, synergy: 0.4, label: 'win-con', cmc: 5,
+      })),
+      ...Array.from({ length: 5 }, (_, i) => ({
+        name: `Flex Card ${i + 1}`, inclusion: 55, synergy: 0.3, label: 'flex', cmc: 3,
+      })),
+    ];
+    for (const c of extraOwned) {
+      collection.set(c.name.toLowerCase(), { name: c.name, normalizedName: c.name.toLowerCase(), quantity: 1 });
+      scryfallData.set(c.name.toLowerCase(), {
+        id: c.name, name: c.name, type_line: 'Instant',
+        color_identity: [], cmc: 2, legalities: { commander: 'legal' },
+        prices: { usd: '1.00' }, edhrec_rank: null,
+      });
+    }
+
+    const { deck } = buildDeck({
+      commanderCard: ATRAXA,
+      edhrecCards: [...all, ...extraOwned],
+      collection,
+      collectionScryfallData: scryfallData,
+      options: { mode: 'prefer-owned' },
+    });
+
+    expect(deck.totalCards).toBe(100);
+    const allDeckCards = Object.values(deck.slots).flat();
+    const ownedCount = allDeckCards.filter(c => c.ownedInCollection).length;
+    expect(ownedCount).toBeGreaterThan(0);
+  });
+});

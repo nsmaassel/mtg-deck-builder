@@ -35,10 +35,12 @@ export type CollectionParseResult = {
   unrecognizedLines: string[];
 };
 
+export type BuildMode = 'prefer-owned' | 'owned-only' | 'budget';
+
 export type BuildDeckResult = {
   deck: {
-    commander: { name: string; slot: string; cmc: number; type_line: string; usdPrice: number | null };
-    slots: Record<string, Array<{ name: string; slot: string; cmc: number; type_line: string; score: number; usdPrice: number | null }>>;
+    commander: { name: string; slot: string; cmc: number; type_line: string; usdPrice: number | null; ownedInCollection: boolean };
+    slots: Record<string, Array<{ name: string; slot: string; cmc: number; type_line: string; score: number; usdPrice: number | null; ownedInCollection: boolean }>>;
     totalCards: number;
   };
   analysis: {
@@ -73,10 +75,10 @@ export const api = {
       body: JSON.stringify({ collectionText }),
     }),
 
-  buildDeck: (collectionText: string, commanderName: string, budget?: 'any' | 'budget') =>
+  buildDeck: (collectionText: string, commanderName: string, mode: BuildMode = 'prefer-owned', budgetMaxPrice?: number) =>
     request<BuildDeckResult>('/decks/build-from-commander', {
       method: 'POST',
-      body: JSON.stringify({ collectionText, commanderName, options: { budget: budget ?? 'any' } }),
+      body: JSON.stringify({ collectionText, commanderName, options: { mode, budgetMaxPrice } }),
     }),
 
   explainDeck: (deck: BuildDeckResult['deck'], commanderName: string) =>

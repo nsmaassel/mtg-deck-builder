@@ -20,26 +20,45 @@ const BASIC_LANDS = new Set(['plains', 'island', 'swamp', 'mountain', 'forest', 
 
 export function buildDeck(input: BuildDeckInput): BuildDeckResult {
   const { commanderCard, edhrecCards, collection, collectionScryfallData } = input;
+  const mode = input.options?.mode ?? 'prefer-owned';
+  const budgetMaxPrice = input.options?.budgetMaxPrice ?? 5;
 
   const commanderColorIdentity = commanderCard.color_identity;
   const usedNames = new Set<string>([commanderCard.name.toLowerCase()]);
 
-  // Score all EDHRec recommendations; owned cards get a score boost
+  // Score all EDHRec recommendations and apply mode-specific filtering
   const scoredCards = edhrecCards
-    .map(card => ({
-      edhrecCard: card,
-      score: scoreCard(card, collection.has(card.name.toLowerCase())),
-      slot: labelToSlot(card.label),
-    }))
-    .filter(({ edhrecCard }) => {
+    .map(card => {
+      const owned = collection.has(card.name.toLowerCase());
+      return {
+        edhrecCard: card,
+        // In owned-only mode, no boost needed (all cards are owned anyway); skip boost to keep scores clean
+        score: scoreCard(card, owned && mode !== 'owned-only'),
+        slot: labelToSlot(card.label),
+        owned,
+      };
+    })
+    .filter(({ edhrecCard, owned }) => {
       const normalizedName = edhrecCard.name.toLowerCase();
 
-      // Must be color-legal (basic lands are added separately in fillUnderfilled)
+      if (mode === 'owned-only') {
+        // Strict: only cards in the collection (basics added separately)
+        if (!owned && !BASIC_LANDS.has(normalizedName)) return false;
+      } else if (mode === 'budget' && !owned) {
+        // Budget: unowned cards must have a known price at or below the ceiling
+        const sf = collectionScryfallData.get(normalizedName);
+        if (sf) {
+          const price = sf.prices.usd ? parseFloat(sf.prices.usd) : null;
+          if (price === null || price > budgetMaxPrice) return false;
+        }
+        // No Scryfall data → include speculatively (price unknown)
+      }
+
+      // Color-identity check (skip basics; they're added in fillUnderfilled)
       const scryfallData = collectionScryfallData.get(normalizedName);
       if (scryfallData) {
         return isColorLegal(scryfallData.color_identity, commanderColorIdentity);
       }
-      // No Scryfall data available — include it (color check skipped)
       return true;
     })
     .sort((a, b) => b.score - a.score);

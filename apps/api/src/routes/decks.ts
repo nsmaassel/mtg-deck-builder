@@ -10,7 +10,7 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
     Body: {
       collectionText: string;
       commanderName: string;
-      options?: { budget?: 'any' | 'budget' };
+      options?: { mode?: 'prefer-owned' | 'owned-only' | 'budget'; budgetMaxPrice?: number };
     };
   }>('/api/decks/build-from-commander', {
     schema: {
@@ -23,7 +23,8 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
           options: {
             type: 'object',
             properties: {
-              budget: { type: 'string', enum: ['any', 'budget'] },
+              mode: { type: 'string', enum: ['prefer-owned', 'owned-only', 'budget'] },
+              budgetMaxPrice: { type: 'number', minimum: 0 },
             },
           },
         },
@@ -31,6 +32,8 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
     },
     handler: async (request, reply) => {
       const { collectionText, commanderName, options } = request.body;
+      const mode = options?.mode ?? 'prefer-owned';
+      const budgetMaxPrice = options?.budgetMaxPrice ?? 5;
 
       const parseResult = parseArenaCollection(collectionText);
 
@@ -80,19 +83,40 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
         throw err;
       }
 
-      // Resolve Scryfall data for owned cards
+      // Resolve Scryfall data for owned collection cards
       const collectionScryfallData = new Map<string, typeof commanderCard>();
-      const cardNames = Array.from(parseResult.collection.keys());
+      const ownedNames = Array.from(parseResult.collection.keys());
       await Promise.allSettled(
-        cardNames.map(async name => {
+        ownedNames.map(async name => {
           try {
             const card = await getCardByName(name);
             collectionScryfallData.set(name.toLowerCase(), card);
           } catch {
-            // Skip cards not found — parser already handled basic lands
+            // Skip cards not found on Scryfall
           }
         }),
       );
+
+      // For budget mode: also fetch Scryfall data for top unowned recommendations
+      // so the builder can price-filter them before placing
+      if (mode === 'budget') {
+        const ownedSet = new Set(ownedNames.map(n => n.toLowerCase()));
+        const topUnowned = edhrecCards
+          .filter(c => !ownedSet.has(c.name.toLowerCase()))
+          .slice(0, 80); // top 80 by EDHRec order (already sorted by inclusion)
+        await Promise.allSettled(
+          topUnowned.map(async card => {
+            const norm = card.name.toLowerCase();
+            if (collectionScryfallData.has(norm)) return;
+            try {
+              const sf = await getCardByName(card.name);
+              collectionScryfallData.set(norm, sf);
+            } catch {
+              // Not found — builder will include speculatively
+            }
+          }),
+        );
+      }
 
       // Build the deck
       const result = buildDeck({
@@ -100,7 +124,7 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
         edhrecCards,
         collection: parseResult.collection,
         collectionScryfallData,
-        options,
+        options: { mode, budgetMaxPrice },
       });
 
       return reply.send(result);

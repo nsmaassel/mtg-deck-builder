@@ -44,12 +44,25 @@ export interface GapReport {
   premiumUpgrades: MissingCard[];
 }
 
+/**
+ * prefer-owned  — all EDHRec recommendations eligible; owned cards get a score boost
+ * owned-only    — only cards already in the collection are used; nothing is recommended to buy
+ * budget        — owned cards always in; unowned cards filtered to those at or below budgetMaxPrice
+ */
+export type BuildMode = 'prefer-owned' | 'owned-only' | 'budget';
+
+export interface BuildDeckOptions {
+  mode?: BuildMode;
+  /** USD price ceiling per card when mode is 'budget'. Defaults to 5. */
+  budgetMaxPrice?: number;
+}
+
 export interface BuildDeckInput {
   commanderCard: ScryfallCard;
   edhrecCards: EDHRecCard[];
   collection: CollectionMap;
   collectionScryfallData: Map<string, ScryfallCard>;
-  options?: { budget?: 'any' | 'budget' };
+  options?: BuildDeckOptions;
 }
 
 export interface BuildDeckResult {
