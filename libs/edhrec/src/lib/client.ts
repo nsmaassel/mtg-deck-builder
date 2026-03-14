@@ -1,19 +1,34 @@
-import type { EDHRecCommanderData, EDHRecThemeData } from './schemas';
+import type { EDHRecCard, EDHRecCommanderData, EDHRecThemeData } from './schemas';
 import {
-  EDHRecCommanderDataSchema,
-  EDHRecThemeDataSchema,
   EDHRecError,
   EDHRecNotFoundError,
 } from './schemas';
 
-const BASE_URL = 'https://edhrec.com/api';
-const RATE_LIMIT_MS = 200;
+const BASE_URL = 'https://json.edhrec.com/pages';
+const RATE_LIMIT_MS = 300;
 
 let lastCallAt = 0;
 
 // In-memory cache: slug → data (lives for the server session)
 const commanderCache = new Map<string, EDHRecCommanderData>();
 const themeCache = new Map<string, EDHRecThemeData>();
+
+/** Map EDHRec cardlist tag to our internal slot label */
+const TAG_TO_LABEL: Record<string, string> = {
+  highsynergycards: 'synergy',
+  topcards: 'synergy',
+  gamechangers: 'synergy',
+  creatures: 'synergy',
+  instants: 'interaction',
+  sorceries: 'synergy',
+  utilityartifacts: 'ramp',
+  enchantments: 'synergy',
+  planeswalkers: 'synergy',
+  utilitylands: 'lands',
+  manaartifacts: 'ramp',
+  lands: 'lands',
+  newcards: 'synergy',
+};
 
 export function toSlug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -34,8 +49,41 @@ async function rateLimitedFetch(url: string): Promise<unknown> {
   return res.json();
 }
 
+/** Parse EDHRec cardlists into our EDHRecCard format */
+function parseCardlists(
+  cardlists: Array<{ tag: string; header: string; cardviews: Array<Record<string, unknown>> }>,
+  potentialDecks: number,
+): EDHRecCard[] {
+  const seen = new Set<string>();
+  const cards: EDHRecCard[] = [];
+
+  for (const list of cardlists) {
+    const label = TAG_TO_LABEL[list.tag] ?? 'synergy';
+    for (const cv of list.cardviews) {
+      const name = String(cv['name'] ?? '');
+      if (!name || seen.has(name.toLowerCase())) continue;
+      seen.add(name.toLowerCase());
+
+      const rawInclusion = Number(cv['inclusion'] ?? cv['num_decks'] ?? 0);
+      const inclusionPct = potentialDecks > 0
+        ? Math.round((rawInclusion / potentialDecks) * 100)
+        : 0;
+
+      cards.push({
+        name,
+        inclusion: inclusionPct,       // normalized to 0–100%
+        synergy: Number(cv['synergy'] ?? 0),
+        label,
+        cmc: Number(cv['cmc'] ?? 0),
+      });
+    }
+  }
+
+  return cards;
+}
+
 /**
- * Fetch card recommendations for a commander.
+ * Fetch card recommendations for a commander from EDHRec's JSON API.
  * Results are cached in memory by slug for the lifetime of the process.
  */
 export async function getCommanderData(commanderName: string): Promise<EDHRecCommanderData> {
@@ -44,21 +92,28 @@ export async function getCommanderData(commanderName: string): Promise<EDHRecCom
   const cached = commanderCache.get(slug);
   if (cached) return cached;
 
-  const raw = await rateLimitedFetch(`${BASE_URL}/commanders/${slug}`);
+  const raw = await rateLimitedFetch(`${BASE_URL}/commanders/${slug}.json`) as Record<string, unknown> | null;
   if (raw === null) throw new EDHRecNotFoundError(slug);
 
-  // EDHRec wraps their response; handle both direct and nested formats
-  const payload = (raw as Record<string, unknown>).cardlist
-    ? raw
-    : { commander: commanderName, slug, cardlist: ((raw as Record<string, unknown>).cards ?? []) };
+  const container = (raw['container'] as Record<string, unknown> | undefined);
+  const jsonDict = (container?.['json_dict'] as Record<string, unknown> | undefined);
+  const cardlists = (jsonDict?.['cardlists'] as Array<{ tag: string; header: string; cardviews: Array<Record<string, unknown>> }> | undefined) ?? [];
 
-  const parsed = EDHRecCommanderDataSchema.safeParse(payload);
-  if (!parsed.success) {
-    throw new EDHRecError(`Invalid EDHRec data for "${commanderName}"`, undefined);
+  // Get potential_decks from the first cardlist that has cardviews with it
+  let potentialDecks = 0;
+  for (const list of cardlists) {
+    const first = list.cardviews[0];
+    if (first?.['potential_decks']) {
+      potentialDecks = Number(first['potential_decks']);
+      break;
+    }
   }
 
-  commanderCache.set(slug, parsed.data);
-  return parsed.data;
+  const cards = parseCardlists(cardlists, potentialDecks);
+
+  const data: EDHRecCommanderData = { commander: commanderName, slug, cardlist: cards };
+  commanderCache.set(slug, data);
+  return data;
 }
 
 /**
@@ -70,20 +125,27 @@ export async function getThemeData(theme: string): Promise<EDHRecThemeData> {
   const cached = themeCache.get(slug);
   if (cached) return cached;
 
-  const raw = await rateLimitedFetch(`${BASE_URL}/themes/${slug}`);
+  const raw = await rateLimitedFetch(`${BASE_URL}/themes/${slug}.json`) as Record<string, unknown> | null;
   if (raw === null) throw new EDHRecNotFoundError(slug);
 
-  const payload = (raw as Record<string, unknown>).cardlist
-    ? raw
-    : { theme, slug, cardlist: ((raw as Record<string, unknown>).cards ?? []) };
+  const container = (raw['container'] as Record<string, unknown> | undefined);
+  const jsonDict = (container?.['json_dict'] as Record<string, unknown> | undefined);
+  const cardlists = (jsonDict?.['cardlists'] as Array<{ tag: string; header: string; cardviews: Array<Record<string, unknown>> }> | undefined) ?? [];
 
-  const parsed = EDHRecThemeDataSchema.safeParse(payload);
-  if (!parsed.success) {
-    throw new EDHRecError(`Invalid EDHRec theme data for "${theme}"`, undefined);
+  let potentialDecks = 0;
+  for (const list of cardlists) {
+    const first = list.cardviews[0];
+    if (first?.['potential_decks']) {
+      potentialDecks = Number(first['potential_decks']);
+      break;
+    }
   }
 
-  themeCache.set(slug, parsed.data);
-  return parsed.data;
+  const cards = parseCardlists(cardlists, potentialDecks);
+
+  const data: EDHRecThemeData = { theme, slug, cardlist: cards };
+  themeCache.set(slug, data);
+  return data;
 }
 
 /** Clear caches (useful for testing) */

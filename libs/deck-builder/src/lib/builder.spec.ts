@@ -191,7 +191,8 @@ describe('buildDeck', () => {
     expect(hasBlueCard).toBe(false);
   });
 
-  it('gap report lists cards NOT in collection sorted by inclusion', () => {
+  it('gap report lists unowned cards that are IN the deck, sorted by inclusion', () => {
+    // Staple A and B are unowned but highly-recommended — they should get placed in the deck
     const ownedCards = makeEDHRecCards(50, 'synergy', 50);
     const unownedCards: EDHRecCard[] = [
       { name: 'Staple A', inclusion: 95, synergy: 0.8, label: 'ramp', cmc: 1 },
@@ -203,13 +204,20 @@ describe('buildDeck', () => {
       allEDHRec.map(c => ({ name: c.name, colorIdentity: [] }))
     );
 
-    const { gaps } = buildDeck({
+    const { deck, gaps } = buildDeck({
       commanderCard: ATRAXA,
       edhrecCards: allEDHRec,
       collection,
       collectionScryfallData,
     });
 
+    // Unowned staples should be in the deck (score-boosted owned cards fill first, but ramp/draw slots have room)
+    const allDeckCards = [...Object.values(deck.slots).flat()];
+    const deckNames = allDeckCards.map(c => c.name);
+    expect(deckNames).toContain('Staple A');
+    expect(deckNames).toContain('Staple B');
+
+    // Gap report = unowned cards IN the deck
     const gapNames = gaps.missingStaples.map(c => c.name);
     expect(gapNames).toContain('Staple A');
     expect(gapNames).toContain('Staple B');

@@ -33,14 +33,17 @@ export function labelToSlot(label: string): SlotName {
 /**
  * Score a card for deck inclusion.
  * Formula from spec: score = (inclusion_rate × 0.5) + (synergy_score × 0.3) + (1 - cmc/10) × 0.2
+ * Owned cards receive a +0.15 priority boost so they fill slots before unowned cards.
  * Clamped to [0, 1].
  */
-export function scoreCard(card: EDHRecCard): number {
+export function scoreCard(card: EDHRecCard, owned = false): number {
   const inclusionNorm = Math.min(card.inclusion, 100) / 100;
-  const synergyNorm = (card.synergy + 1) / 2; // synergy is -1 to 1; normalize to 0–1
+  // EDHRec synergy is already 0–1 (proportion of decks above baseline)
+  const synergyNorm = Math.min(Math.max(card.synergy, 0), 1);
   const cmcFactor = Math.max(0, 1 - card.cmc / 10);
+  const ownedBoost = owned ? 0.15 : 0;
 
-  return inclusionNorm * 0.5 + synergyNorm * 0.3 + cmcFactor * 0.2;
+  return Math.min(1, inclusionNorm * 0.5 + synergyNorm * 0.3 + cmcFactor * 0.2 + ownedBoost);
 }
 
 /** Check if a card's color identity is within the commander's color identity. */

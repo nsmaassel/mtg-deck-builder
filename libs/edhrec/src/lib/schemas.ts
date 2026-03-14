@@ -2,10 +2,10 @@ import { z } from 'zod';
 
 export const EDHRecCardSchema = z.object({
   name: z.string(),
-  inclusion: z.number(),   // 0–100 percent
-  synergy: z.number(),     // -1 to 1
-  label: z.string(),       // "ramp", "draw", "removal", "staple", etc.
-  cmc: z.number(),
+  inclusion: z.number(),   // raw deck count (normalize with potential_decks)
+  synergy: z.number(),     // 0 to 1 (EDHRec already normalized)
+  label: z.string(),       // "ramp", "draw", "removal", "highsynergycards", etc.
+  cmc: z.number().default(0),
 }).passthrough();
 
 export type EDHRecCard = z.infer<typeof EDHRecCardSchema>;

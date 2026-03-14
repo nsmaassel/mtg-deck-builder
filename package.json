@@ -6,6 +6,7 @@
   "scripts": {
     "dev:api": "nx serve api",
     "dev:web": "nx serve web",
+    "serve:api": "tsx --tsconfig tsconfig.json apps/api/src/main.ts",
     "test": "nx run-many --target=test --all",
     "test:affected": "nx affected --target=test",
     "build": "nx run-many --target=build --all",
@@ -42,6 +43,7 @@
     "fastify": "^5.8.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "tsx": "^4.21.0",
     "undici": "^7.24.1",
     "zod": "^4.3.6"
   }

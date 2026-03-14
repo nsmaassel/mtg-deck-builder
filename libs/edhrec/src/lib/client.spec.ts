@@ -2,26 +2,32 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getCommanderData, getThemeData, toSlug, clearCache } from './client';
 import { EDHRecNotFoundError, EDHRecError } from './schemas';
 
-const COMMANDER_FIXTURE = {
-  commander: "Atraxa, Praetors' Voice",
-  slug: 'atraxa-praetors-voice',
-  cardlist: [
-    { name: 'Sol Ring', inclusion: 92, synergy: 0.1, label: 'ramp', cmc: 1 },
-    { name: 'Proliferate', inclusion: 75, synergy: 0.8, label: 'synergy', cmc: 2 },
-    { name: 'Command Tower', inclusion: 98, synergy: 0.05, label: 'land', cmc: 0 },
-  ],
-};
+function makeEDHRecResponse(cardviews: Array<Record<string, unknown>>) {
+  return {
+    container: {
+      json_dict: {
+        cardlists: [
+          {
+            tag: 'highsynergycards',
+            header: 'High Synergy Cards',
+            cardviews,
+          },
+        ],
+      },
+    },
+  };
+}
 
-const THEME_FIXTURE = {
-  theme: 'tokens',
-  slug: 'tokens',
-  cardlist: [
-    { name: 'Doubling Season', inclusion: 85, synergy: 0.9, label: 'synergy', cmc: 5 },
-  ],
-  commanders: [
-    { name: 'Rhys the Redeemed', slug: 'rhys-the-redeemed', colorIdentity: ['W', 'G'], edhrecRank: 42 },
-  ],
-};
+const SAMPLE_CARDVIEWS = [
+  { name: 'Sol Ring', inclusion: 36000, num_decks: 36000, potential_decks: 39000, synergy: 0.1, cmc: 1 },
+  { name: 'Evolution Sage', inclusion: 23000, num_decks: 23000, potential_decks: 39000, synergy: 0.24, cmc: 3 },
+  { name: 'Command Tower', inclusion: 38000, num_decks: 38000, potential_decks: 39000, synergy: 0.05, cmc: 0 },
+];
+
+const COMMANDER_FIXTURE = makeEDHRecResponse(SAMPLE_CARDVIEWS);
+const THEME_FIXTURE = makeEDHRecResponse([
+  { name: 'Doubling Season', inclusion: 33000, num_decks: 33000, potential_decks: 40000, synergy: 0.9, cmc: 5 },
+]);
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -37,7 +43,7 @@ describe('toSlug', () => {
 });
 
 describe('getCommanderData', () => {
-  it('returns parsed EDHRec commander data', async () => {
+  it('returns parsed EDHRec commander data with normalized inclusion %', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -48,7 +54,9 @@ describe('getCommanderData', () => {
     expect(data.slug).toBe('atraxa-praetors-voice');
     expect(data.cardlist).toHaveLength(3);
     expect(data.cardlist[0]!.name).toBe('Sol Ring');
-    expect(data.cardlist[0]!.inclusion).toBe(92);
+    // 36000/39000 * 100 ≈ 92%
+    expect(data.cardlist[0]!.inclusion).toBeGreaterThan(90);
+    expect(data.cardlist[0]!.label).toBe('synergy'); // highsynergycards → synergy
   });
 
   it('returns cached result on second call (no extra fetch)', async () => {
@@ -69,7 +77,7 @@ describe('getCommanderData', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: false,
       status: 404,
-      json: async () => ({}),
+      json: async () => null,
     }));
 
     await expect(getCommanderData('Unknown Commander')).rejects.toThrow(EDHRecNotFoundError);
@@ -88,7 +96,7 @@ describe('getCommanderData', () => {
 });
 
 describe('getThemeData', () => {
-  it('returns parsed EDHRec theme data with commanders', async () => {
+  it('returns parsed EDHRec theme data', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -98,7 +106,9 @@ describe('getThemeData', () => {
     const data = await getThemeData('tokens');
     expect(data.slug).toBe('tokens');
     expect(data.cardlist[0]!.name).toBe('Doubling Season');
-    expect(data.commanders![0]!.name).toBe('Rhys the Redeemed');
+    // 33000/40000 * 100 ≈ 82-83%
+    expect(data.cardlist[0]!.inclusion).toBeGreaterThanOrEqual(82);
+    expect(data.cardlist[0]!.inclusion).toBeLessThanOrEqual(83);
   });
 
   it('caches theme results', async () => {

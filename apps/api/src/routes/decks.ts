@@ -72,7 +72,7 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
       let edhrecCards;
       try {
         const edhrecData = await getCommanderData(commanderName);
-        edhrecCards = edhrecData.cards;
+        edhrecCards = edhrecData.cardlist;
       } catch (err) {
         if (err instanceof EDHRecNotFoundError) {
           return reply.status(404).send({ error: 'Commander not found on EDHRec', commanderName });

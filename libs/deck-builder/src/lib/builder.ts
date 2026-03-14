@@ -24,26 +24,22 @@ export function buildDeck(input: BuildDeckInput): BuildDeckResult {
   const commanderColorIdentity = commanderCard.color_identity;
   const usedNames = new Set<string>([commanderCard.name.toLowerCase()]);
 
-  // Score and filter EDHRec recommendations to owned + color-legal cards
+  // Score all EDHRec recommendations; owned cards get a score boost
   const scoredCards = edhrecCards
     .map(card => ({
       edhrecCard: card,
-      score: scoreCard(card),
+      score: scoreCard(card, collection.has(card.name.toLowerCase())),
       slot: labelToSlot(card.label),
     }))
     .filter(({ edhrecCard }) => {
       const normalizedName = edhrecCard.name.toLowerCase();
 
-      // Must be in collection or be a basic land
-      const inCollection = collection.has(normalizedName) || BASIC_LANDS.has(normalizedName);
-      if (!inCollection) return false;
-
-      // Must be color-legal
+      // Must be color-legal (basic lands are added separately in fillUnderfilled)
       const scryfallData = collectionScryfallData.get(normalizedName);
       if (scryfallData) {
         return isColorLegal(scryfallData.color_identity, commanderColorIdentity);
       }
-      // If we don't have Scryfall data, include it (API layer validated the collection)
+      // No Scryfall data available — include it (color check skipped)
       return true;
     })
     .sort((a, b) => b.score - a.score);
@@ -69,7 +65,8 @@ export function buildDeck(input: BuildDeckInput): BuildDeckResult {
       edhrec_synergy: edhrecCard.synergy,
       score,
       slot,
-      cmc: edhrecCard.cmc,
+      // Prefer Scryfall CMC (EDHRec cardviews don't include it)
+      cmc: scryfallData?.cmc ?? edhrecCard.cmc,
       type_line: scryfallData?.type_line ?? '',
       usdPrice: scryfallData?.prices.usd ? parseFloat(scryfallData.prices.usd) : null,
     };
@@ -134,7 +131,7 @@ function fillUnderfilled(
         edhrec_synergy: edhrecCard.synergy,
         score,
         slot: slotName,
-        cmc: edhrecCard.cmc,
+        cmc: scryfallData?.cmc ?? edhrecCard.cmc,
         type_line: scryfallData?.type_line ?? '',
         usdPrice: scryfallData?.prices.usd ? parseFloat(scryfallData.prices.usd) : null,
       };
@@ -218,12 +215,12 @@ function buildGapReport(
   collectionScryfallData: Map<string, ScryfallCard>,
   commanderColorIdentity: string[],
 ): GapReport {
+  // missingStaples = highly-recommended cards IN the deck that the player doesn't own (acquisition list)
   const missing: MissingCard[] = edhrecCards
     .filter(card => {
       const norm = card.name.toLowerCase();
-      if (usedNames.has(norm)) return false;
-      if (collection.has(norm)) return false; // owned but not in deck (duplicate prevention)
-      // Color-check if we have Scryfall data
+      if (!usedNames.has(norm)) return false; // only cards that made it into the deck
+      if (collection.has(norm)) return false; // player already owns it
       const sf = collectionScryfallData.get(norm);
       if (sf && !isColorLegal(sf.color_identity, commanderColorIdentity)) return false;
       return true;
