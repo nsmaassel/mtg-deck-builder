@@ -1,0 +1,249 @@
+import type { ScryfallCard } from '@mtg/scryfall';
+import type { EDHRecCard } from '@mtg/edhrec';
+import type { CollectionMap } from '@mtg/collection';
+import type {
+  BuildDeckInput,
+  BuildDeckResult,
+  DeckCard,
+  DeckList,
+  DeckAnalysis,
+  GapReport,
+  MissingCard,
+  SlotName,
+} from './types';
+import { SLOT_TARGETS, TOTAL_DECK_SIZE } from './types';
+import { scoreCard, labelToSlot, isColorLegal, basicLandForColor } from './scoring';
+
+const BASIC_LANDS = new Set(['plains', 'island', 'swamp', 'mountain', 'forest', 'wastes',
+  'snow-covered plains', 'snow-covered island', 'snow-covered swamp',
+  'snow-covered mountain', 'snow-covered forest']);
+
+export function buildDeck(input: BuildDeckInput): BuildDeckResult {
+  const { commanderCard, edhrecCards, collection, collectionScryfallData } = input;
+
+  const commanderColorIdentity = commanderCard.color_identity;
+  const usedNames = new Set<string>([commanderCard.name.toLowerCase()]);
+
+  // Score and filter EDHRec recommendations to owned + color-legal cards
+  const scoredCards = edhrecCards
+    .map(card => ({
+      edhrecCard: card,
+      score: scoreCard(card),
+      slot: labelToSlot(card.label),
+    }))
+    .filter(({ edhrecCard }) => {
+      const normalizedName = edhrecCard.name.toLowerCase();
+
+      // Must be in collection or be a basic land
+      const inCollection = collection.has(normalizedName) || BASIC_LANDS.has(normalizedName);
+      if (!inCollection) return false;
+
+      // Must be color-legal
+      const scryfallData = collectionScryfallData.get(normalizedName);
+      if (scryfallData) {
+        return isColorLegal(scryfallData.color_identity, commanderColorIdentity);
+      }
+      // If we don't have Scryfall data, include it (API layer validated the collection)
+      return true;
+    })
+    .sort((a, b) => b.score - a.score);
+
+  // Fill slots in priority order
+  const slots: Record<SlotName, DeckCard[]> = {
+    ramp: [], draw: [], interaction: [], winConditions: [], synergy: [], lands: [], flex: [],
+  };
+
+  for (const { edhrecCard, score, slot } of scoredCards) {
+    const normalizedName = edhrecCard.name.toLowerCase();
+    if (usedNames.has(normalizedName)) continue;
+
+    const target = SLOT_TARGETS[slot];
+    if (slots[slot].length >= target) continue;
+
+    const scryfallData = collectionScryfallData.get(normalizedName);
+    const deckCard: DeckCard = {
+      name: edhrecCard.name,
+      quantity: 1,
+      ownedInCollection: collection.has(normalizedName),
+      edhrec_inclusion: edhrecCard.inclusion,
+      edhrec_synergy: edhrecCard.synergy,
+      score,
+      slot,
+      cmc: edhrecCard.cmc,
+      type_line: scryfallData?.type_line ?? '',
+      usdPrice: scryfallData?.prices.usd ? parseFloat(scryfallData.prices.usd) : null,
+    };
+
+    slots[slot].push(deckCard);
+    usedNames.add(normalizedName);
+  }
+
+  // Fill any underfilled slots from 'synergy' overflow, then basics
+  fillUnderfilled(slots, scoredCards, usedNames, collectionScryfallData, commanderColorIdentity, collection);
+
+  const commanderDeckCard: DeckCard = {
+    name: commanderCard.name,
+    quantity: 1,
+    ownedInCollection: true,
+    edhrec_inclusion: 0,
+    edhrec_synergy: 0,
+    score: 1,
+    slot: 'synergy',
+    cmc: commanderCard.cmc,
+    type_line: commanderCard.type_line,
+    usdPrice: commanderCard.prices.usd ? parseFloat(commanderCard.prices.usd) : null,
+  };
+
+  const totalCards = 1 + Object.values(slots).reduce((sum, s) => sum + s.length, 0);
+
+  const deck: DeckList = { commander: commanderDeckCard, slots, totalCards };
+  const analysis = analyzeDeck(deck, commanderCard.name, edhrecCards);
+  const gaps = buildGapReport(edhrecCards, usedNames, collection, collectionScryfallData, commanderColorIdentity);
+
+  return { deck, analysis, gaps };
+}
+
+function fillUnderfilled(
+  slots: Record<SlotName, DeckCard[]>,
+  scoredCards: Array<{ edhrecCard: EDHRecCard; score: number; slot: SlotName }>,
+  usedNames: Set<string>,
+  collectionScryfallData: Map<string, ScryfallCard>,
+  commanderColorIdentity: string[],
+  collection: CollectionMap,
+): void {
+  const slotOrder: SlotName[] = ['ramp', 'draw', 'interaction', 'winConditions', 'synergy', 'lands', 'flex'];
+
+  // Try to fill from remaining scored cards (any slot)
+  for (const slotName of slotOrder) {
+    const target = SLOT_TARGETS[slotName];
+    if (slots[slotName].length >= target) continue;
+
+    for (const { edhrecCard, score } of scoredCards) {
+      if (slots[slotName].length >= target) break;
+      const normalizedName = edhrecCard.name.toLowerCase();
+      if (usedNames.has(normalizedName)) continue;
+
+      const scryfallData = collectionScryfallData.get(normalizedName);
+      if (scryfallData && !isColorLegal(scryfallData.color_identity, commanderColorIdentity)) continue;
+
+      const deckCard: DeckCard = {
+        name: edhrecCard.name,
+        quantity: 1,
+        ownedInCollection: collection.has(normalizedName),
+        edhrec_inclusion: edhrecCard.inclusion,
+        edhrec_synergy: edhrecCard.synergy,
+        score,
+        slot: slotName,
+        cmc: edhrecCard.cmc,
+        type_line: scryfallData?.type_line ?? '',
+        usdPrice: scryfallData?.prices.usd ? parseFloat(scryfallData.prices.usd) : null,
+      };
+
+      slots[slotName].push(deckCard);
+      usedNames.add(normalizedName);
+    }
+  }
+
+  // Fill lands with basics if still underfilled
+  // Basics are exempt from the singleton rule — multiple copies are legal in Commander
+  const landsNeeded = SLOT_TARGETS.lands - slots.lands.length;
+  if (landsNeeded > 0) {
+    const basicsToAdd = commanderColorIdentity.length > 0
+      ? commanderColorIdentity
+      : ['W', 'U', 'B', 'R', 'G'];
+
+    let added = 0;
+    let colorIndex = 0;
+    while (added < landsNeeded) {
+      const color = basicsToAdd[colorIndex % basicsToAdd.length]!;
+      const basicName = basicLandForColor(color);
+
+      slots.lands.push({
+        name: basicName,
+        quantity: 1,
+        ownedInCollection: true,
+        edhrec_inclusion: 0,
+        edhrec_synergy: 0,
+        score: 0,
+        slot: 'lands',
+        cmc: 0,
+        type_line: 'Basic Land',
+        usdPrice: 0,
+      });
+      added++;
+      colorIndex++;
+    }
+  }
+}
+
+function analyzeDeck(deck: DeckList, commanderName: string, edhrecTop50: EDHRecCard[]): DeckAnalysis {
+  const allCards = [deck.commander, ...Object.values(deck.slots).flat()];
+
+  const manaCurve: Record<number, number> = {};
+  const colorDistribution: Record<string, number> = {};
+  let totalCmc = 0;
+  let nonLandCount = 0;
+
+  for (const card of allCards) {
+    if (card.slot !== 'lands') {
+      manaCurve[card.cmc] = (manaCurve[card.cmc] ?? 0) + 1;
+      totalCmc += card.cmc;
+      nonLandCount++;
+    }
+    for (const char of card.type_line) {
+      if (['W', 'U', 'B', 'R', 'G'].includes(char)) {
+        colorDistribution[char] = (colorDistribution[char] ?? 0) + 1;
+      }
+    }
+  }
+
+  const deckNames = new Set(allCards.map(c => c.name.toLowerCase()));
+  const top50 = edhrecTop50.slice(0, 50);
+  const owned = top50.filter(c => deckNames.has(c.name.toLowerCase())).length;
+  const staplesCoveragePercent = top50.length > 0 ? Math.round((owned / top50.length) * 100) : 0;
+
+  return {
+    commanderName,
+    manaCurve,
+    colorDistribution,
+    averageCmc: nonLandCount > 0 ? Math.round((totalCmc / nonLandCount) * 100) / 100 : 0,
+    staplesCoveragePercent,
+  };
+}
+
+function buildGapReport(
+  edhrecCards: EDHRecCard[],
+  usedNames: Set<string>,
+  collection: CollectionMap,
+  collectionScryfallData: Map<string, ScryfallCard>,
+  commanderColorIdentity: string[],
+): GapReport {
+  const missing: MissingCard[] = edhrecCards
+    .filter(card => {
+      const norm = card.name.toLowerCase();
+      if (usedNames.has(norm)) return false;
+      if (collection.has(norm)) return false; // owned but not in deck (duplicate prevention)
+      // Color-check if we have Scryfall data
+      const sf = collectionScryfallData.get(norm);
+      if (sf && !isColorLegal(sf.color_identity, commanderColorIdentity)) return false;
+      return true;
+    })
+    .sort((a, b) => b.inclusion - a.inclusion)
+    .slice(0, 10)
+    .map(card => {
+      const sf = collectionScryfallData.get(card.name.toLowerCase());
+      const price = sf?.prices.usd ? parseFloat(sf.prices.usd) : null;
+      return {
+        name: card.name,
+        edhrec_inclusion: card.inclusion,
+        usdPrice: price,
+        wouldFillSlot: labelToSlot(card.label),
+      };
+    });
+
+  return {
+    missingStaples: missing,
+    budgetUpgrades: missing.filter(c => c.usdPrice !== null && c.usdPrice < 5),
+    premiumUpgrades: missing.filter(c => c.usdPrice !== null && c.usdPrice >= 5),
+  };
+}

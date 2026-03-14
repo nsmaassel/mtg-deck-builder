@@ -1,5 +1,12 @@
 import { defineConfig } from 'vitest/config';
+import { resolve } from 'path';
+
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@mtg/deck-builder': resolve(__dirname, '../../libs/deck-builder/src/index.ts'),
+    },
+  },
   test: {
     globals: true,
     environment: 'node',

@@ -1,0 +1,37 @@
+{
+  "name": "api",
+  "$schema": "../../node_modules/nx/schemas/project.json",
+  "sourceRoot": "apps/api/src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "@nx/esbuild:esbuild",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/apps/api",
+        "main": "apps/api/src/main.ts",
+        "tsConfig": "apps/api/tsconfig.app.json",
+        "assets": [],
+        "platform": "node",
+        "bundle": true,
+        "format": ["cjs"]
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx tsx watch apps/api/src/main.ts",
+        "cwd": "."
+      }
+    },
+    "test": {
+      "executor": "@nx/vite:test",
+      "outputs": ["{workspaceRoot}/coverage/apps/api"],
+      "options": {
+        "passWithNoTests": true,
+        "reportsDirectory": "../../coverage/apps/api"
+      }
+    }
+  },
+  "tags": ["type:app", "scope:api"]
+}
