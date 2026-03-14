@@ -198,13 +198,20 @@ function analyzeDeck(deck: DeckList, commanderName: string, edhrecTop50: EDHRecC
   const manaCurve: Record<number, number> = {};
   const colorDistribution: Record<string, number> = {};
   let totalCmc = 0;
-  let nonLandCount = 0;
+  let knownCmcCount = 0; // only cards with Scryfall-sourced CMC (excludes EDHRec-only 0-defaults)
 
   for (const card of allCards) {
     if (card.slot !== 'lands') {
-      manaCurve[card.cmc] = (manaCurve[card.cmc] ?? 0) + 1;
-      totalCmc += card.cmc;
-      nonLandCount++;
+      // R-001: exclude CMC=0 non-land cards from the average — they are almost
+      // certainly unowned EDHRec recommendations whose CMC defaulted to 0 because
+      // EDHRec's cardview JSON doesn't include the cmc field. Including them would
+      // pull the average to near-zero regardless of the actual deck curve.
+      const hasCmc = card.cmc > 0;
+      if (hasCmc) {
+        manaCurve[card.cmc] = (manaCurve[card.cmc] ?? 0) + 1;
+        totalCmc += card.cmc;
+        knownCmcCount++;
+      }
     }
     for (const char of card.type_line) {
       if (['W', 'U', 'B', 'R', 'G'].includes(char)) {
@@ -222,7 +229,7 @@ function analyzeDeck(deck: DeckList, commanderName: string, edhrecTop50: EDHRecC
     commanderName,
     manaCurve,
     colorDistribution,
-    averageCmc: nonLandCount > 0 ? Math.round((totalCmc / nonLandCount) * 100) / 100 : 0,
+    averageCmc: knownCmcCount > 0 ? Math.round((totalCmc / knownCmcCount) * 100) / 100 : 0,
     staplesCoveragePercent,
   };
 }

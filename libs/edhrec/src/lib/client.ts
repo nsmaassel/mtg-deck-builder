@@ -17,7 +17,7 @@ const themeCache = new Map<string, EDHRecThemeData>();
 const TAG_TO_LABEL: Record<string, string> = {
   highsynergycards: 'synergy',
   topcards: 'synergy',
-  gamechangers: 'synergy',
+  gamechangers: 'winConditions', // R-007: high-impact cards belong in win-con slot
   creatures: 'synergy',
   instants: 'interaction',
   sorceries: 'synergy',
