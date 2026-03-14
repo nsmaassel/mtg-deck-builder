@@ -76,7 +76,7 @@ export type BuildDeckResult = {
       remove: string;
       removeReason: string;
       removeSlot: string;
-      alternatives: Array<{ name: string; inclusion: number; slot: string }>;
+      alternatives: Array<{ name: string; inclusion: number; synergy?: number; slot: string }>;
     }>;
   };
 };

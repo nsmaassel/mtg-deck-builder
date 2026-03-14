@@ -12,6 +12,8 @@ export interface EdhrecCandidate {
   name: string;
   /** Normalized inclusion rate 0–100 */
   inclusion: number;
+  /** Synergy score 0–1 (how much this card over-indexes for this commander vs. avg) */
+  synergy?: number;
   /** EDHRec section label (e.g. 'ramp', 'draw', 'interaction', 'synergy') */
   label: string;
 }
@@ -45,6 +47,8 @@ export interface SwapAlternative {
   name: string;
   /** EDHRec inclusion rate 0–100 — higher = more popular for this commander */
   inclusion: number;
+  /** EDHRec synergy score 0–1 — how much this card over-indexes for this commander */
+  synergy?: number;
   slot: string;
 }
 
@@ -334,9 +338,11 @@ function buildSuggestions(
     // ── Power UP: suggest adding Game Changers / tutors from candidate pool ──
     // For power-up we suggest specific cards TO ADD (no forced remove — user decides what to cut)
     if (target >= 3) {
+      const blended = (c: EdhrecCandidate) => c.inclusion * 0.5 + (c.synergy ?? 0) * 100 * 0.5;
+
       const gcCandidates = (candidates ?? [])
         .filter(c => GAME_CHANGERS.has(c.name.toLowerCase()))
-        .sort((a, b) => b.inclusion - a.inclusion)
+        .sort((a, b) => blended(b) - blended(a))
         .slice(0, target >= 4 ? 4 : 2);
 
       for (const candidate of gcCandidates) {
@@ -347,6 +353,7 @@ function buildSuggestions(
           alternatives: [{
             name: candidate.name,
             inclusion: candidate.inclusion,
+            synergy: candidate.synergy,
             slot: candidate.label,
           }],
         });
@@ -356,7 +363,7 @@ function buildSuggestions(
         const tutorCandidates = (candidates ?? [])
           .filter(c => ['demonic tutor', 'vampiric tutor', 'diabolic intent', 'wishclaw talisman']
             .includes(c.name.toLowerCase()))
-          .sort((a, b) => b.inclusion - a.inclusion)
+          .sort((a, b) => blended(b) - blended(a))
           .slice(0, 1);
 
         for (const candidate of tutorCandidates) {
@@ -364,7 +371,7 @@ function buildSuggestions(
             remove: '(flex / lowest-synergy card in same slot)',
             removeReason: 'Cut to make room for this tutor',
             removeSlot: candidate.label,
-            alternatives: [{ name: candidate.name, inclusion: candidate.inclusion, slot: candidate.label }],
+            alternatives: [{ name: candidate.name, inclusion: candidate.inclusion, synergy: candidate.synergy, slot: candidate.label }],
           });
         }
       }
@@ -377,6 +384,7 @@ function buildSuggestions(
 /**
  * Builds a slot-indexed map of candidate replacements.
  * Excludes: cards already in the deck, cards on the Game Changers list.
+ * Ranks by blended score: 50% inclusion (popularity for this commander) + 50% synergy (commander fit).
  */
 function buildCandidateIndex(
   candidates: EdhrecCandidate[],
@@ -386,18 +394,20 @@ function buildCandidateIndex(
 
   for (const c of candidates) {
     const lower = c.name.toLowerCase();
-    // Skip cards already in the deck or that are themselves Game Changers
     if (deckCardNames.has(lower)) continue;
     if (GAME_CHANGERS.has(lower)) continue;
 
     const slot = c.label || 'synergy';
     if (!index.has(slot)) index.set(slot, []);
-    index.get(slot)!.push({ name: c.name, inclusion: c.inclusion, slot });
+    index.get(slot)!.push({ name: c.name, inclusion: c.inclusion, synergy: c.synergy, slot });
   }
 
-  // Sort each slot by inclusion rate descending
+  // Rank by blended score: inclusion (0-100) weighted 50%, synergy (0-1, scaled ×100) weighted 50%
+  const blendedScore = (a: SwapAlternative) =>
+    a.inclusion * 0.5 + (a.synergy ?? 0) * 100 * 0.5;
+
   for (const [slot, alts] of index) {
-    index.set(slot, alts.sort((a, b) => b.inclusion - a.inclusion));
+    index.set(slot, alts.sort((a, b) => blendedScore(b) - blendedScore(a)));
   }
 
   return index;

@@ -141,7 +141,7 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
       );
       const edhrecCandidates = edhrecCards
         .filter(c => !deckNames.has(c.name.toLowerCase()))
-        .map(c => ({ name: c.name, inclusion: c.inclusion, label: c.label }));
+        .map(c => ({ name: c.name, inclusion: c.inclusion, synergy: c.synergy, label: c.label }));
 
       // Enhance power level with Commander Spellbook combo detection (async, best-effort)
       const powerLevel = await assessPowerLevelWithCombos(result.deck, result.analysis, targetBracket, edhrecCandidates);

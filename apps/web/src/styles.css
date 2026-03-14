@@ -128,6 +128,7 @@ textarea { resize: vertical; }
   padding: 0.15rem 0.5rem; font-size: 0.78rem; color: #aaccaa; cursor: default;
 }
 .swap-alt-chip em { color: #669966; font-style: normal; margin-left: 0.3rem; font-size: 0.72rem; }
+.swap-alt-synergy { color: #88aaff; font-size: 0.7rem; margin-left: 0.25rem; }
 
 /* Owned/unowned card distinction */
 .card-unowned .card-name { color: #bbb; }

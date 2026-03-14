@@ -107,8 +107,12 @@ export function DeckView({ result, onExplain, explaining, explanation }: DeckVie
                   <div className="swap-alternatives">
                     <span className="swap-alt-label">↪ Replace with:</span>
                     {swap.alternatives.map(alt => (
-                      <span key={alt.name} className="swap-alt-chip" title={`${alt.inclusion}% inclusion`}>
-                        {alt.name} <em>{alt.inclusion}%</em>
+                      <span key={alt.name} className="swap-alt-chip" title={`${alt.inclusion}% inclusion${alt.synergy != null ? ` · ${Math.round(alt.synergy * 100)}% synergy` : ''}`}>
+                        {alt.name}
+                        <em>{alt.inclusion}%</em>
+                        {alt.synergy != null && alt.synergy > 0.1 && (
+                          <span className="swap-alt-synergy">⚡{Math.round(alt.synergy * 100)}%</span>
+                        )}
                       </span>
                     ))}
                   </div>
