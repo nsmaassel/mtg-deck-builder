@@ -62,6 +62,20 @@ Scenario: Build targeting a higher bracket shows add suggestions
 
 ---
 
+## Scenario 4: No Actionable Swaps (Staple-Only Bracket)
+
+```gherkin
+Scenario: Targeting lower bracket with staple-driven deck shows explanatory hint
+  Given my deck reaches Bracket 3 only via high staple coverage (no Game Changers, no tutors)
+  And I select "Target Bracket 2"
+  When the deck builds successfully
+  Then the suggestions area should show an explanatory message
+  # e.g. "no specific swaps needed — deck reaches bracket via staples coverage"
+  And the message should NOT be silently empty
+```
+
+---
+
 ## Signal to Bracket Mapping (for test expectations)
 
 | Condition | Expected Bracket | Test Commander |
@@ -78,8 +92,9 @@ Scenario: Build targeting a higher bracket shows add suggestions
 
 | Criterion | How Tested |
 |-----------|-----------|
-| Suggestions panel appears iff targetBracket !== actualBracket | E2E bracket-targeting.spec.ts |
-| Each suggestion names a specific card (not generic text) | `.swap-remove strong` not empty |
+| Suggestions panel appears when targetBracket !== actualBracket | E2E bracket-targeting.spec.ts |
+| Shows swap cards when Game Changers/tutors exist | `.swap-remove strong` not empty |
+| Shows explanatory hint when no swaps possible (staple-only bracket) | `.no-suggestions-hint` visible |
 | Alternatives include inclusion % | `.swap-alt-chip em` shows number |
 | High-synergy alternatives show ⚡ badge | `.swap-alt-synergy` visible when synergy > 0.1 |
 | Alternatives are commander-specific | Sourced from EDHRec for that commander — color-legal by construction |

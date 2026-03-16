@@ -63,6 +63,7 @@ function makeResult(overrides: Partial<BuildDeckResult> = {}): BuildDeckResult {
     },
     powerLevel: {
       bracket: 3,
+      targetBracket: 2,
       score: 6,
       label: 'Enhanced',
       signals: {
@@ -130,16 +131,18 @@ describe('DeckView', () => {
     expect(swaps.length).toBeGreaterThanOrEqual(1);
   });
 
-  // 6. No target suggestions panel when empty/undefined
-  it('does NOT show target suggestions panel when targetSuggestions is empty', () => {
+  // 6. No target suggestions panel when no target bracket is set
+  it('does NOT show target suggestions panel when targetBracket is undefined', () => {
     const result = makeResult();
+    result.powerLevel.targetBracket = undefined;
     result.powerLevel.targetSuggestions = [];
     render(<DeckView result={result} />);
     expect(document.querySelector('.target-suggestions')).toBeNull();
   });
 
-  it('does NOT show target suggestions panel when targetSuggestions is undefined', () => {
+  it('does NOT show target suggestions panel when targetBracket equals actual bracket', () => {
     const result = makeResult();
+    result.powerLevel.targetBracket = result.powerLevel.bracket;
     result.powerLevel.targetSuggestions = undefined;
     render(<DeckView result={result} />);
     expect(document.querySelector('.target-suggestions')).toBeNull();

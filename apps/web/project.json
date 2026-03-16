@@ -18,11 +18,12 @@
       }
     },
     "test": {
-      "executor": "@nx/vite:test",
+      "executor": "@nx/vitest:test",
       "outputs": ["{workspaceRoot}/coverage/apps/web"],
       "options": {
         "passWithNoTests": true,
-        "reportsDirectory": "../../coverage/apps/web"
+        "reportsDirectory": "../../coverage/apps/web",
+        "configFile": "apps/web/vite.config.ts"
       }
     }
   },

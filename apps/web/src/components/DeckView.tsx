@@ -94,31 +94,41 @@ export function DeckView({ result, onExplain, explaining, explanation }: DeckVie
           </ul>
         </details>
 
-        {powerLevel.targetSuggestions && powerLevel.targetSuggestions.length > 0 && (
+        {powerLevel.targetBracket !== undefined && powerLevel.targetBracket !== powerLevel.bracket && (
           <div className="target-suggestions">
-            <strong>💡 Suggestions to reach Bracket {powerLevel.signals.gameChangers.length > 0 ? powerLevel.bracket - 1 : powerLevel.bracket + 1}:</strong>
-            {powerLevel.targetSuggestions.map((swap, i) => (
-              <div key={i} className="swap-suggestion">
-                <div className="swap-remove">
-                  ✂️ <strong>{swap.remove}</strong>
-                  <span className="swap-reason"> — {swap.removeReason}</span>
-                </div>
-                {swap.alternatives.length > 0 && (
-                  <div className="swap-alternatives">
-                    <span className="swap-alt-label">↪ Replace with:</span>
-                    {swap.alternatives.map(alt => (
-                      <span key={alt.name} className="swap-alt-chip" title={`${alt.inclusion}% inclusion${alt.synergy != null ? ` · ${Math.round(alt.synergy * 100)}% synergy` : ''}`}>
-                        {alt.name}
-                        <em>{alt.inclusion}%</em>
-                        {alt.synergy != null && alt.synergy > 0.1 && (
-                          <span className="swap-alt-synergy">⚡{Math.round(alt.synergy * 100)}%</span>
-                        )}
-                      </span>
-                    ))}
+            {powerLevel.targetSuggestions && powerLevel.targetSuggestions.length > 0 ? (
+              <>
+                <strong>💡 Suggestions to reach Bracket {powerLevel.targetBracket}:</strong>
+                {powerLevel.targetSuggestions.map((swap, i) => (
+                  <div key={i} className="swap-suggestion">
+                    <div className="swap-remove">
+                      ✂️ <strong>{swap.remove}</strong>
+                      <span className="swap-reason"> — {swap.removeReason}</span>
+                    </div>
+                    {swap.alternatives.length > 0 && (
+                      <div className="swap-alternatives">
+                        <span className="swap-alt-label">↪ Replace with:</span>
+                        {swap.alternatives.map(alt => (
+                          <span key={alt.name} className="swap-alt-chip" title={`${alt.inclusion}% inclusion${alt.synergy != null ? ` · ${Math.round(alt.synergy * 100)}% synergy` : ''}`}>
+                            {alt.name}
+                            <em>{alt.inclusion}%</em>
+                            {alt.synergy != null && alt.synergy > 0.1 && (
+                              <span className="swap-alt-synergy">⚡{Math.round(alt.synergy * 100)}%</span>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            ))}
+                ))}
+              </>
+            ) : (
+              <p className="no-suggestions-hint">
+                💡 Bracket {powerLevel.targetBracket} targeted, but no specific swaps are needed —
+                this deck reaches Bracket {powerLevel.bracket} through staples coverage rather than
+                Game Changers or tutors. Consider replacing high-impact staples manually.
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -153,6 +163,9 @@ export function DeckView({ result, onExplain, explaining, explanation }: DeckVie
               <li key={card.name}>
                 <span className="card-name">{card.name}</span>
                 <span className="card-meta">{card.edhrec_inclusion}% inclusion · {card.wouldFillSlot}</span>
+                {card.usdPrice != null && (
+                  <span className="card-price">${card.usdPrice.toFixed(2)}</span>
+                )}
               </li>
             ))}
           </ul>

@@ -9,13 +9,23 @@ import {
 const BASE_URL = 'https://api.scryfall.com';
 const RATE_LIMIT_MS = 100;
 
-let lastCallAt = 0;
+// Tracks when the next request is allowed. Each caller atomically reserves
+// a time slot, preventing burst-fire 429s when Promise.allSettled fires many
+// concurrent lookups (JavaScript is single-threaded so this increment is safe).
+let nextAvailableAt = 0;
 
 async function rateLimitedFetch(url: string): Promise<unknown> {
   const now = Date.now();
-  const wait = RATE_LIMIT_MS - (now - lastCallAt);
+  let waitUntil: number;
+  if (nextAvailableAt <= now) {
+    waitUntil = now;
+    nextAvailableAt = now + RATE_LIMIT_MS;
+  } else {
+    waitUntil = nextAvailableAt;
+    nextAvailableAt += RATE_LIMIT_MS;
+  }
+  const wait = waitUntil - Date.now();
   if (wait > 0) await new Promise(r => setTimeout(r, wait));
-  lastCallAt = Date.now();
 
   const res = await fetch(url, {
     headers: { 'User-Agent': 'mtg-deck-builder/1.0 (contact: nsmaassel@github.com)' },

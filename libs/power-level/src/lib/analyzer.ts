@@ -82,6 +82,11 @@ export interface PowerLevelResult {
    */
   explanation: string[];
   /**
+   * The bracket the user requested to target (may differ from actual bracket).
+   * Present only when a target was provided.
+   */
+  targetBracket?: Bracket;
+  /**
    * Specific swap suggestions for reaching `targetBracket`.
    * Each entry names a card to remove + ranked EDHRec alternatives.
    * Only present when targetBracket differs from actual bracket.
@@ -203,6 +208,7 @@ function _assess(
     label: BRACKET_LABELS[bracket],
     signals,
     explanation,
+    targetBracket,
     targetSuggestions,
   };
 }

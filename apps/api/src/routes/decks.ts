@@ -106,25 +106,25 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
       );
 
       // For budget mode: also fetch Scryfall data for top unowned recommendations
-      // so the builder can price-filter them before placing
-      if (mode === 'budget') {
-        const ownedSet = new Set(ownedNames.map(n => n.toLowerCase()));
-        const topUnowned = edhrecCards
-          .filter(c => !ownedSet.has(c.name.toLowerCase()))
-          .slice(0, 80); // top 80 by EDHRec order (already sorted by inclusion)
-        await Promise.allSettled(
-          topUnowned.map(async card => {
-            const norm = card.name.toLowerCase();
-            if (collectionScryfallData.has(norm)) return;
-            try {
-              const sf = await getCardByName(card.name);
-              collectionScryfallData.set(norm, sf);
-            } catch {
-              // Not found — builder will include speculatively
-            }
-          }),
-        );
-      }
+      // so the builder can price-filter them before placing.
+      // For all modes: fetch top 30 unowned cards to populate gap analysis prices.
+      const ownedSet = new Set(ownedNames.map(n => n.toLowerCase()));
+      const unownedFetchLimit = mode === 'budget' ? 80 : 30;
+      const topUnowned = edhrecCards
+        .filter(c => !ownedSet.has(c.name.toLowerCase()))
+        .slice(0, unownedFetchLimit);
+      await Promise.allSettled(
+        topUnowned.map(async card => {
+          const norm = card.name.toLowerCase();
+          if (collectionScryfallData.has(norm)) return;
+          try {
+            const sf = await getCardByName(card.name);
+            collectionScryfallData.set(norm, sf);
+          } catch {
+            // Not found — builder will include speculatively
+          }
+        }),
+      );
 
       // Build the deck
       const result = buildDeck({

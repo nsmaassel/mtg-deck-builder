@@ -20,6 +20,7 @@ Feature: Gap analysis panel
       | Card name        | "Rhystic Study"    |
       | EDHRec inclusion | "72% inclusion"    |
       | Would fill slot  | "draw"             |
+      | Price (if known) | "$4.50"            |
 
   Scenario: No gap section when collection is comprehensive
     Given I have a collection of 200+ cards covering all slots
@@ -55,4 +56,5 @@ interface GapCard {
 | Gap section visible when missingStaples > 0 | `.gaps-section` exists |
 | Each gap card shows name and inclusion | Text content check |
 | Slot shown for each gap card | `wouldFillSlot` text visible |
+| Price shown when available (`usdPrice != null`) | `.card-price` visible in gaps section |
 | Top 10 shown (not all) | UI slices to 10: `missingStaples.slice(0, 10)` |
