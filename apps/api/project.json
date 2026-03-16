@@ -25,7 +25,7 @@
       }
     },
     "test": {
-      "executor": "@nx/vite:test",
+      "executor": "@nx/vitest:test",
       "outputs": ["{workspaceRoot}/coverage/apps/api"],
       "options": {
         "passWithNoTests": true,
@@ -35,3 +35,4 @@
   },
   "tags": ["type:app", "scope:api"]
 }
+

@@ -6,7 +6,7 @@
   "tags": ["type:lib", "scope:collection"],
   "targets": {
     "test": {
-      "executor": "@nx/vite:test",
+      "executor": "@nx/vitest:test",
       "options": { "config": "libs/collection/vite.config.ts" }
     },
     "typecheck": {
@@ -15,3 +15,4 @@
     }
   }
 }
+

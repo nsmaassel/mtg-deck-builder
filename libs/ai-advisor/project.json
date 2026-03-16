@@ -6,7 +6,7 @@
   "tags": ["type:lib", "scope:ai-advisor"],
   "targets": {
     "test": {
-      "executor": "@nx/vite:test",
+      "executor": "@nx/vitest:test",
       "options": { "config": "libs/ai-advisor/vite.config.ts" }
     },
     "typecheck": {
@@ -15,3 +15,4 @@
     }
   }
 }
+

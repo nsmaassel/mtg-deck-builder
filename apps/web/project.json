@@ -21,9 +21,9 @@
       "executor": "@nx/vitest:test",
       "outputs": ["{workspaceRoot}/coverage/apps/web"],
       "options": {
+        "config": "apps/web/vite.config.ts",
         "passWithNoTests": true,
-        "reportsDirectory": "../../coverage/apps/web",
-        "configFile": "apps/web/vite.config.ts"
+        "reportsDirectory": "../../coverage/apps/web"
       }
     }
   },
