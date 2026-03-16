@@ -28,7 +28,7 @@ async function rateLimitedFetch(url: string): Promise<unknown> {
   if (wait > 0) await new Promise(r => setTimeout(r, wait));
 
   const res = await fetch(url, {
-    headers: { 'User-Agent': 'mtg-deck-builder/1.0 (contact: nsmaassel@github.com)' },
+    headers: { 'User-Agent': 'mtg-deck-builder/1.0 (https://github.com/nsmaassel/mtg-deck-builder)' },
   });
 
   if (res.status === 404) return null;
