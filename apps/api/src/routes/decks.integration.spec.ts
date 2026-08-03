@@ -215,7 +215,45 @@ describe('POST /api/decks/build-from-commander', () => {
     expect(body.powerLevel.targetSuggestions[0]?.remove).toBe('Rhystic Study');
   });
 
-  it('returns 400 when collection has no non-basic-land cards', async () => {
+  it('responds 200 with a 100-card deck when collectionText is omitted (new player path)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/decks/build-from-commander',
+      payload: { commanderName: COMMANDER_NAME },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ deck: { totalCards: number }; analysis: unknown; gaps: unknown; powerLevel: unknown }>();
+    expect(body.deck).toBeDefined();
+    expect(body.deck.totalCards).toBe(100);
+    expect(body.analysis).toBeDefined();
+    expect(body.gaps).toBeDefined();
+    expect(body.powerLevel).toBeDefined();
+  });
+
+  it('responds 200 with a 100-card deck when collectionText is empty string (new player path)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/decks/build-from-commander',
+      payload: { collectionText: '', commanderName: COMMANDER_NAME },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ deck: { totalCards: number } }>();
+    expect(body.deck.totalCards).toBe(100);
+  });
+
+  it('responds 400 when collection text is completely unparseable', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/decks/build-from-commander',
+      payload: { collectionText: 'this is not a valid collection at all!!!', commanderName: COMMANDER_NAME },
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('responds 400 when collection has no non-basic-land cards', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/decks/build-from-commander',
@@ -225,16 +263,6 @@ describe('POST /api/decks/build-from-commander', () => {
     expect(res.statusCode).toBe(400);
     const body = res.json<{ error: string }>();
     expect(body.error).toMatch(/Invalid collection/i);
-  });
-
-  it('returns 400 when collection text is completely unparseable', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/decks/build-from-commander',
-      payload: { collectionText: 'this is not a valid collection at all!!!', commanderName: COMMANDER_NAME },
-    });
-
-    expect(res.statusCode).toBe(400);
   });
 
   it('returns 404 when commander is not found on Scryfall', async () => {
@@ -297,15 +325,5 @@ describe('POST /api/decks/build-from-commander', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json<{ deck: { totalCards: number } }>();
     expect(body.deck.totalCards).toBe(100);
-  });
-
-  it('responds 400 for missing required fields (no collectionText)', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/decks/build-from-commander',
-      payload: { commanderName: COMMANDER_NAME }, // missing collectionText
-    });
-
-    expect(res.statusCode).toBe(400);
   });
 });

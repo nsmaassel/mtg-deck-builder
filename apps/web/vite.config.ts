@@ -2,7 +2,10 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 
+// Vite resolves relative paths against `root`. Setting it to the app source
+// dir makes the build cwd-independent (works from the Nx workspace root too).
 export default defineConfig({
+  root: __dirname,
   plugins: [react()],
   server: {
     port: 4200,
@@ -14,7 +17,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: '../../dist/apps/web',
+    outDir: resolve(__dirname, '../../dist/apps/web'),
     reportCompressedSize: true,
   },
   resolve: {

@@ -30,6 +30,7 @@ export function BuildForm({ onResult, onError }: BuildFormProps) {
   const [mode, setMode] = useState<BuildMode>('prefer-owned');
   const [budgetMaxPrice, setBudgetMaxPrice] = useState(5);
   const [targetBracket, setTargetBracket] = useState<Bracket | undefined>(undefined);
+  const [skipCollection, setSkipCollection] = useState(false);
 
   const handleCommanderSearch = useCallback(async (query: string) => {
     setCommanderName(query);
@@ -47,14 +48,19 @@ export function BuildForm({ onResult, onError }: BuildFormProps) {
 
   const handleBuild = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!collectionText.trim() || !commanderName.trim()) {
-      onError('Please paste your collection and enter a commander name.');
+    // When skipCollection is true, collection is not required
+    if (!skipCollection && !collectionText.trim()) {
+      onError('Please paste your collection or select "I\'m new to Commander / Skip collection".');
+      return;
+    }
+    if (!commanderName.trim()) {
+      onError('Please enter a commander name.');
       return;
     }
     setBuilding(true);
     try {
       const result = await api.buildDeck(
-        collectionText,
+        skipCollection ? '' : collectionText,
         commanderName,
         mode,
         mode === 'budget' ? budgetMaxPrice : undefined,
@@ -67,20 +73,34 @@ export function BuildForm({ onResult, onError }: BuildFormProps) {
     } finally {
       setBuilding(false);
     }
-  }, [collectionText, commanderName, mode, budgetMaxPrice, targetBracket, onResult, onError]);
+  }, [collectionText, commanderName, mode, budgetMaxPrice, targetBracket, skipCollection, onResult, onError]);
 
   return (
     <form className="build-form" onSubmit={handleBuild}>
       <div className="form-group">
-        <label htmlFor="collection">MTG Arena Collection Export</label>
-        <textarea
-          id="collection"
-          placeholder="Paste your Arena collection export here..."
-          value={collectionText}
-          onChange={e => setCollectionText(e.target.value)}
-          rows={8}
-        />
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={skipCollection}
+            onChange={e => setSkipCollection(e.target.checked)}
+          />
+          <span>I'm new to Commander / Skip collection</span>
+        </label>
+        <small className="form-hint">Build a deck purely from EDHRec recommendations — no MTG Arena export needed.</small>
       </div>
+
+      {!skipCollection && (
+        <div className="form-group">
+          <label htmlFor="collection">MTG Arena Collection Export</label>
+          <textarea
+            id="collection"
+            placeholder="Paste your Arena collection export here..."
+            value={collectionText}
+            onChange={e => setCollectionText(e.target.value)}
+            rows={8}
+          />
+        </div>
+      )}
 
       <div className="form-group commander-group">
         <label htmlFor="commander">Commander Name</label>

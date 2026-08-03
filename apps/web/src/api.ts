@@ -100,7 +100,7 @@ export const api = {
       body: JSON.stringify({ collectionText }),
     }),
 
-  buildDeck: (collectionText: string, commanderName: string, mode: BuildMode = 'prefer-owned', budgetMaxPrice?: number, targetBracket?: Bracket) =>
+  buildDeck: (collectionText: string | undefined, commanderName: string, mode: BuildMode = 'prefer-owned', budgetMaxPrice?: number, targetBracket?: Bracket) =>
     request<BuildDeckResult>('/decks/build-from-commander', {
       method: 'POST',
       body: JSON.stringify({ collectionText, commanderName, options: { mode, budgetMaxPrice, targetBracket } }),

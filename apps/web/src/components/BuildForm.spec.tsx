@@ -37,26 +37,61 @@ describe('BuildForm', () => {
   });
 
   // 1. Renders all expected elements
-  it('renders collection textarea, commander input, mode select, bracket select and submit button', () => {
+  it('renders skip-collection checkbox, commander input, mode select, bracket select and submit button', () => {
     renderForm();
-    expect(screen.getByRole('textbox', { name: /collection/i })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /i'm new to commander/i })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: /commander/i })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: /build mode/i })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: /target power level/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /build deck/i })).toBeInTheDocument();
   });
 
-  // 2. Validation error when both fields empty
-  it('calls onError when both collection and commander are empty on submit', async () => {
+  // 2. Collection textarea is hidden when skip-collection is checked
+  it('hides collection textarea when skip-collection is checked', () => {
+    renderForm();
+    expect(screen.getByRole('textbox', { name: /collection/i })).toBeInTheDocument();
+
+    const checkbox = screen.getByRole('checkbox', { name: /i'm new to commander/i });
+    fireEvent.click(checkbox);
+
+    expect(screen.queryByRole('textbox', { name: /collection/i })).not.toBeInTheDocument();
+  });
+
+  // 3. Collection textarea shown when skip-collection is unchecked
+  it('shows collection textarea when skip-collection is unchecked', () => {
+    renderForm();
+    const checkbox = screen.getByRole('checkbox', { name: /i'm new to commander/i });
+    fireEvent.click(checkbox);
+    expect(screen.queryByRole('textbox', { name: /collection/i })).not.toBeInTheDocument();
+
+    fireEvent.click(checkbox);
+    expect(screen.getByRole('textbox', { name: /collection/i })).toBeInTheDocument();
+  });
+
+  // 4. Validation error when skip-collection unchecked and both fields empty
+  it('calls onError when collection and commander are empty on submit (no skip)', async () => {
     const onError = vi.fn();
     renderForm(vi.fn(), onError);
     const submitBtn = screen.getByRole('button', { name: /build deck/i });
     await userEvent.click(submitBtn);
-    expect(onError).toHaveBeenCalledWith(expect.stringMatching(/collection|commander/i));
+    expect(onError).toHaveBeenCalledWith(expect.stringMatching(/collection|skip/i));
     expect(mockBuildDeck).not.toHaveBeenCalled();
   });
 
-  // 3. Budget input shown when mode = 'budget'
+  // 5. Validation error when skip-collection checked but commander empty
+  it('calls onError when commander is empty but skip-collection is checked', async () => {
+    const onError = vi.fn();
+    renderForm(vi.fn(), onError);
+    const checkbox = screen.getByRole('checkbox', { name: /i'm new to commander/i });
+    await userEvent.click(checkbox);
+
+    const submitBtn = screen.getByRole('button', { name: /build deck/i });
+    await userEvent.click(submitBtn);
+    expect(onError).toHaveBeenCalledWith(expect.stringMatching(/commander/i));
+    expect(mockBuildDeck).not.toHaveBeenCalled();
+  });
+
+  // 6. Budget input shown when mode = 'budget'
   it('reveals budget input when mode is changed to budget', async () => {
     renderForm();
     expect(screen.queryByLabelText(/max price/i)).not.toBeInTheDocument();
@@ -67,7 +102,7 @@ describe('BuildForm', () => {
     expect(screen.getByLabelText(/max price/i)).toBeInTheDocument();
   });
 
-  // 4. Budget input hidden when mode changes away from 'budget'
+  // 7. Budget input hidden when mode changes away from 'budget'
   it('hides budget input when mode changes away from budget', async () => {
     renderForm();
     const modeSelect = screen.getByRole('combobox', { name: /build mode/i });
@@ -79,8 +114,8 @@ describe('BuildForm', () => {
     expect(screen.queryByLabelText(/max price/i)).not.toBeInTheDocument();
   });
 
-  // 5. Submit calls api.buildDeck with correct args
-  it('calls api.buildDeck with collectionText, commanderName and default mode on submit', async () => {
+  // 8. Submit calls api.buildDeck with collectionText when not skipping
+  it('calls api.buildDeck with collectionText when not skipping collection', async () => {
     mockBuildDeck.mockResolvedValue({
       deck: { commander: { name: 'Krenko, Mob Boss' }, slots: {}, totalCards: 100 },
       analysis: { averageCmc: 2.5, staplesCoveragePercent: 40, colorDistribution: {}, commanderName: 'Krenko', manaCurve: {} },
@@ -110,7 +145,38 @@ describe('BuildForm', () => {
     expect(onResult).toHaveBeenCalled();
   });
 
-  // 6. Loading state
+  // 9. Submit calls api.buildDeck with empty string when skipping collection
+  it('calls api.buildDeck with empty string when skipping collection', async () => {
+    mockBuildDeck.mockResolvedValue({
+      deck: { commander: { name: 'Krenko, Mob Boss' }, slots: {}, totalCards: 100 },
+      analysis: { averageCmc: 2.5, staplesCoveragePercent: 0, colorDistribution: {}, commanderName: 'Krenko', manaCurve: {} },
+      gaps: { missingStaples: [], budgetUpgrades: [], premiumUpgrades: [] },
+      powerLevel: { bracket: 2, score: 4, label: 'Core', signals: { gameChangers: [], tierATutors: [], tierBTutors: [], avgCmc: 2.5, interactionCount: 8, staplesCoverage: 0, fastManaRatio: 0.05, twoCardComboCount: 0 }, explanation: [], targetSuggestions: [] },
+    });
+
+    const onResult = vi.fn();
+    renderForm(onResult);
+
+    const commanderInput = screen.getByRole('textbox', { name: /commander/i });
+    const checkbox = screen.getByRole('checkbox', { name: /i'm new to commander/i });
+
+    await userEvent.click(checkbox);
+    await userEvent.type(commanderInput, 'Krenko, Mob Boss');
+    await userEvent.click(screen.getByRole('button', { name: /build deck/i }));
+
+    await waitFor(() => {
+      expect(mockBuildDeck).toHaveBeenCalledWith(
+        '',
+        'Krenko, Mob Boss',
+        'prefer-owned',
+        undefined,
+        undefined,
+      );
+    });
+    expect(onResult).toHaveBeenCalled();
+  });
+
+  // 10. Loading state
   it('shows "Building deck..." on submit button while building', async () => {
     let resolvePromise!: (v: unknown) => void;
     mockBuildDeck.mockReturnValue(new Promise(res => { resolvePromise = res; }));

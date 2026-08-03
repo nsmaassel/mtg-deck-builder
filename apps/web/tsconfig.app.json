@@ -3,7 +3,15 @@
   "compilerOptions": {
     "outDir": "../../dist/out-tsc",
     "jsx": "react-jsx",
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true
   },
   "exclude": ["**/*.spec.tsx", "**/*.spec.ts", "**/*.test.tsx", "**/*.test.ts"],
   "include": ["src/**/*.ts", "src/**/*.tsx"]

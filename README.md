@@ -16,6 +16,7 @@ Build optimized Commander decks from your MTG Arena collection. Paste your colle
 | 🤖 **AI explanations** | ✅ Shipped | Claude explains strategy, key synergies, and top upgrade targets |
 | 🔒 **Owned-only mode** | ✅ Shipped | Build strictly from your collection — no unowned recommendations |
 | 💰 **Budget mode** | ✅ Shipped | Fill gaps only with cards at or below a price cap |
+| 🆕 **New player on-ramp** | ✅ Shipped | Build a full Commander deck from EDHRec recommendations — no MTG Arena export required |
 
 ---
 
@@ -135,6 +136,7 @@ This project uses a **spec-first, BDD workflow**: write the journey spec, then t
 | J-003 | Owned-only mode | `@regression` | [003-owned-only](./specs/journeys/003-owned-only.feature.md) |
 | J-005 | Gap analysis display | `@regression` | [005-gap-analysis](./specs/journeys/005-gap-analysis.feature.md) |
 | J-008 | Error states + validation | `@smoke @regression` | [008-error-states](./specs/journeys/008-error-states.feature.md) |
+| J-009 | New player onboarding — build without a collection | `@smoke @regression @onboarding` | [009-new-player-onboarding](./specs/journeys/009-new-player-onboarding.feature.md) |
 
 ### Running E2E Tests
 
@@ -198,7 +200,7 @@ scripts/
 ```ts
 // POST /api/decks/build-from-commander
 {
-  collectionText: string,     // MTG Arena export
+  collectionText?: string,     // Optional: MTG Arena export. Omit or empty for new-player on-ramp (build from EDHRec only)
   commanderName: string,
   options?: {
     mode?: 'prefer-owned' | 'owned-only' | 'budget',
@@ -232,3 +234,35 @@ scripts/
 // 400 — bad collection format
 // 404 — commander not found in Scryfall
 ```
+
+---
+
+## Deployment
+
+### Render (Free Tier)
+
+This project includes a `Dockerfile` and `render.yaml` for one-click deployment to Render's free tier.
+
+1. **Push to GitHub** (or connect your repo to Render)
+2. **Create a new Web Service** on Render, select "Docker" as runtime
+3. **Configure**:
+   - Build Command: (handled by Dockerfile)
+   - Start Command: (handled by Dockerfile `CMD`)
+   - Port: 3000
+4. **Add Environment Variables** in Render dashboard:
+   - `ANTHROPIC_API_KEY` — optional, for AI deck explanations
+   - `LOG_LEVEL=info`
+   - `CORS_ORIGIN=*` (or your specific domain)
+5. **Deploy** — Render will build the Docker image and start the service
+
+The Dockerfile uses a multi-stage build:
+- **Builder stage**: Installs all dependencies, runs `pnpm build` to compile TypeScript and build the React SPA
+- **Runner stage**: Copies only `dist/` and `node_modules/`, runs the Fastify server which serves both the API (`/api/*`) and the SPA (all other routes)
+
+**Local Docker test:**
+```bash
+docker build -t mtg-deck-builder .
+docker run -p 3000:3000 -e ANTHROPIC_API_KEY=your_key mtg-deck-builder
+```
+
+Then visit `http://localhost:3000` — you'll see the full app served from a single container.

@@ -10,7 +10,7 @@ import { explainDeck } from '@mtg/ai-advisor';
 export async function deckRoutes(app: FastifyInstance): Promise<void> {
   app.post<{
     Body: {
-      collectionText: string;
+      collectionText?: string;
       commanderName: string;
       options?: {
         mode?: 'prefer-owned' | 'owned-only' | 'budget';
@@ -22,7 +22,7 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
     schema: {
       body: {
         type: 'object',
-        required: ['collectionText', 'commanderName'],
+        required: ['commanderName'],
         properties: {
           collectionText: { type: 'string' },
           commanderName: { type: 'string' },
@@ -43,21 +43,26 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
       const budgetMaxPrice = options?.budgetMaxPrice ?? 5;
       const targetBracket = options?.targetBracket;
 
-      const parseResult = parseArenaCollection(collectionText);
+      // Parse collection if provided; otherwise use empty collection (new player path)
+      const parseResult = collectionText?.trim()
+        ? parseArenaCollection(collectionText)
+        : parseArenaCollection('');
 
-      // Count non-basic-land cards as a proxy for "valid non-empty input"
-      const nonBasicCount = Array.from(parseResult.collection.values())
-        .filter(c => !['plains','island','swamp','mountain','forest','wastes',
-          'snow-covered plains','snow-covered island','snow-covered swamp',
-          'snow-covered mountain','snow-covered forest'].includes(c.normalizedName))
-        .length;
+      // If user provided collection text, validate it parses to something meaningful
+      if (collectionText?.trim()) {
+        const nonBasicCount = Array.from(parseResult.collection.values())
+          .filter(c => !['plains','island','swamp','mountain','forest','wastes',
+            'snow-covered plains','snow-covered island','snow-covered swamp',
+            'snow-covered mountain','snow-covered forest'].includes(c.normalizedName))
+          .length;
 
-      if (nonBasicCount === 0) {
-        return reply.status(400).send({
-          error: 'Invalid collection format',
-          message: 'Could not parse collection. Use MTG Arena export format.',
-          unrecognizedLines: parseResult.unrecognizedLines,
-        });
+        if (nonBasicCount === 0) {
+          return reply.status(400).send({
+            error: 'Invalid collection format',
+            message: 'Could not parse collection. Use MTG Arena export format.',
+            unrecognizedLines: parseResult.unrecognizedLines,
+          });
+        }
       }
 
       // Validate commander exists in Scryfall
