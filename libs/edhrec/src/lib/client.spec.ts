@@ -91,7 +91,42 @@ describe('getCommanderData', () => {
       ok: false,
       status: 500,
       statusText: 'Internal Server Error',
+      headers: { get: () => '0' },
       json: async () => ({}),
+    }));
+
+    await expect(getCommanderData('Sol Ring')).rejects.toThrow(EDHRecError);
+  });
+
+  it('retries transient 429 responses and succeeds after backoff', async () => {
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: { get: () => '0' },
+        json: async () => null,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => COMMANDER_FIXTURE,
+      });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const data = await getCommanderData("Atraxa, Praetors' Voice");
+    expect(data.slug).toBe('atraxa-praetors-voice');
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('throws EDHRecError when a 429 persists beyond max retries', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: { get: () => '0' },
+      json: async () => null,
     }));
 
     await expect(getCommanderData('Sol Ring')).rejects.toThrow(EDHRecError);

@@ -9,7 +9,6 @@ Build optimized Commander decks from your MTG Arena collection. Paste your colle
 | Feature | Status | Description |
 |---------|--------|-------------|
 | 🃏 **Build from commander** | ✅ Shipped | Pick any legendary creature, get the best 99 from your collection + EDHRec top picks |
-| 🎯 **Build from theme** | ✅ Shipped | Choose an archetype (tokens, dragons, stax…) — discover commanders in your collection |
 | ⚡ **Power level assessment** | ✅ Shipped | Official Commander Brackets 1–5: Game Changers, tutors, combo detection via Commander Spellbook |
 | 🔄 **Bracket targeting** | ✅ Shipped | Target a bracket — get named swap suggestions with EDHRec-ranked alternatives |
 | 📊 **Gap analysis** | ✅ Shipped | Missing staples with EDHRec inclusion %, Scryfall price, and slot info |
@@ -17,6 +16,7 @@ Build optimized Commander decks from your MTG Arena collection. Paste your colle
 | 🔒 **Owned-only mode** | ✅ Shipped | Build strictly from your collection — no unowned recommendations |
 | 💰 **Budget mode** | ✅ Shipped | Fill gaps only with cards at or below a price cap |
 | 🆕 **New player on-ramp** | ✅ Shipped | Build a full Commander deck from EDHRec recommendations — no MTG Arena export required |
+| 🛡️ **External API resilience** | ✅ Shipped | Rate-limit throttling with exponential backoff + `Retry-After` handling on Scryfall/EDHRec |
 
 ---
 
@@ -138,6 +138,8 @@ This project uses a **spec-first, BDD workflow**: write the journey spec, then t
 | J-008 | Error states + validation | `@smoke @regression` | [008-error-states](./specs/journeys/008-error-states.feature.md) |
 | J-009 | New player onboarding — build without a collection | `@smoke @regression @onboarding` | [009-new-player-onboarding](./specs/journeys/009-new-player-onboarding.feature.md) |
 
+E2E specs live in `apps/web-e2e/src/journeys/`: `happy-path`, `bracket-targeting`, `owned-only`, `error-states`, `gap-analysis`, `new-player-onboarding`.
+
 ### Running E2E Tests
 
 ```bash
@@ -192,7 +194,7 @@ scripts/
 | `GET` | `/api/commanders/search?q=` | Search Scryfall for legendary creatures |
 | `GET` | `/api/themes` | List supported archetypes |
 | `POST` | `/api/decks/build-from-commander` | **Core:** Build 100-card Commander deck |
-| `POST` | `/api/decks/build-from-theme` | Theme-based build + commander suggestions |
+| `POST` | `/api/decks/build-from-theme` | Theme-based commander discovery (API only — no UI yet) |
 | `POST` | `/api/ai/explain-deck` | AI strategy explanation via Claude |
 
 #### Build from Commander — Request/Response Shape
@@ -232,7 +234,9 @@ scripts/
 }
 
 // 400 — bad collection format
+// 400 — owned-only mode with no usable collection
 // 404 — commander not found in Scryfall
+// 422 — commander not legal in Commander format
 ```
 
 ---

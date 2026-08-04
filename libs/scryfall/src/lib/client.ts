@@ -8,6 +8,8 @@ import {
 
 const BASE_URL = 'https://api.scryfall.com';
 const RATE_LIMIT_MS = 100;
+const MAX_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 500;
 
 // Tracks when the next request is allowed. Each caller atomically reserves
 // a time slot, preventing burst-fire 429s when Promise.allSettled fires many
@@ -27,15 +29,33 @@ async function rateLimitedFetch(url: string): Promise<unknown> {
   const wait = waitUntil - Date.now();
   if (wait > 0) await new Promise(r => setTimeout(r, wait));
 
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'mtg-deck-builder/1.0 (https://github.com/nsmaassel/mtg-deck-builder)' },
-  });
+  const headers = { 'User-Agent': 'mtg-deck-builder/1.0 (https://github.com/nsmaassel/mtg-deck-builder)' };
 
-  if (res.status === 404) return null;
-  if (!res.ok) {
-    throw new ScryfallError(`Scryfall API error: ${res.statusText}`, res.status);
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, { headers });
+
+    if (res.status === 404) return null;
+
+    // Transient failures (rate limit, upstream hiccups) are retried with
+    // exponential backoff, honoring the server's Retry-After when provided.
+    if (res.status === 429 || (res.status >= 500 && res.status < 600)) {
+      if (attempt >= MAX_RETRIES) {
+        throw new ScryfallError(`Scryfall API error: ${res.statusText}`, res.status);
+      }
+      const retryAfter = Number(res.headers?.get?.('retry-after'));
+      const hasRetryAfter = res.headers?.get?.('retry-after') != null;
+      const delayMs = hasRetryAfter
+        ? retryAfter * 1000
+        : RETRY_BASE_DELAY_MS * 2 ** attempt;
+      await new Promise(r => setTimeout(r, delayMs));
+      continue;
+    }
+
+    if (!res.ok) {
+      throw new ScryfallError(`Scryfall API error: ${res.statusText}`, res.status);
+    }
+    return res.json();
   }
-  return res.json();
 }
 
 /**

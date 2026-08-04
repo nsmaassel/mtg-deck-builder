@@ -18,11 +18,20 @@ Feature: Owned-only deck build mode
     And basic lands (Plains, Island, Swamp, Mountain, Forest) are always allowed
     # The deck may be under 100 cards if collection is too small — that is acceptable
 
-  Scenario: Unowned indicator not shown in owned-only mode
+Scenario: Unowned indicator not shown in owned-only mode
     Given I build in owned-only mode with a 80-card collection
     When the deck is displayed
-    Then cards should NOT show the unowned dot (○) indicator
+    Then cards should NOT show the unowned dot (	) indicator
     # All cards in the result are owned by definition
+
+  Scenario: Owned-only mode requires a collection
+    Given I select "?? Only My Cards" build mode
+    And I have NOT pasted a collection
+    When I attempt to build a deck
+    Then the request should be rejected with a clear error
+    And no broken partial deck should be produced
+    # The UI hides this mode for new players who skip their collection; the API
+    # also guards against it, returning 400 instead of a malformed under-100 deck
 
   Scenario: Prefer-owned mode fills gaps with recommendations
     Given I have a 15-card collection

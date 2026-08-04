@@ -46,6 +46,37 @@ describe('BuildForm', () => {
     expect(screen.getByRole('button', { name: /build deck/i })).toBeInTheDocument();
   });
 
+  // 1b. Renders the onboarding guide
+  it('renders the onboarding "How it works" guide', () => {
+    renderForm();
+    expect(screen.getByRole('heading', { name: /how it works/i })).toBeInTheDocument();
+    expect(screen.getByText(/choose your commander/i)).toBeInTheDocument();
+    expect(screen.getByText(/full 100-card deck/i)).toBeInTheDocument();
+  });
+
+  // 1c. Owned-only mode is available by default
+  it('shows the owned-only mode option by default', () => {
+    renderForm();
+    const modeSelect = screen.getByRole('combobox', { name: /build mode/i }) as HTMLSelectElement;
+    const options = Array.from(modeSelect.options).map(o => o.value);
+    expect(options).toContain('owned-only');
+  });
+
+  // 1d. Owned-only mode is hidden when skip-collection is checked, and mode resets
+  it('hides owned-only mode when skip-collection is checked and resets a previously selected owned-only mode', () => {
+    renderForm();
+    const modeSelect = screen.getByRole('combobox', { name: /build mode/i });
+    fireEvent.change(modeSelect, { target: { value: 'owned-only' } });
+    expect((modeSelect as HTMLSelectElement).value).toBe('owned-only');
+
+    const checkbox = screen.getByRole('checkbox', { name: /i'm new to commander/i });
+    fireEvent.click(checkbox);
+
+    const options = Array.from((modeSelect as HTMLSelectElement).options).map(o => o.value);
+    expect(options).not.toContain('owned-only');
+    expect((modeSelect as HTMLSelectElement).value).toBe('prefer-owned');
+  });
+
   // 2. Collection textarea is hidden when skip-collection is checked
   it('hides collection textarea when skip-collection is checked', () => {
     renderForm();

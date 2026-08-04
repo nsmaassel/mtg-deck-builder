@@ -54,6 +54,41 @@ describe('getCardByName', () => {
       ok: false,
       status: 503,
       statusText: 'Service Unavailable',
+      headers: { get: () => '0' },
+      json: async () => ({}),
+    }));
+
+    await expect(getCardByName('Sol Ring')).rejects.toThrow(ScryfallError);
+  });
+
+  it('retries transient 429 responses and succeeds after backoff', async () => {
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: { get: () => '0' },
+        json: async () => ({}),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => ATRAXA_FIXTURE,
+      });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const card = await getCardByName("Atraxa, Praetors' Voice");
+    expect(card.name).toBe("Atraxa, Praetors' Voice");
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('throws ScryfallError when a 429 persists beyond max retries', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: { get: () => '0' },
       json: async () => ({}),
     }));
 

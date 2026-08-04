@@ -29,6 +29,14 @@ export class DeckBuilderPage {
     await this.collectionInput.fill(collectionText);
   }
 
+  async skipCollection() {
+    await this.page.check('input[type=checkbox]');
+  }
+
+  async collectionHidden(): Promise<boolean> {
+    return (await this.collectionInput.count()) === 0 || !(await this.collectionInput.isVisible());
+  }
+
   async enterCommander(name: string) {
     await this.commanderInput.fill(name);
   }

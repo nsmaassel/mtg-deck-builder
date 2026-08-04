@@ -43,26 +43,34 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
       const budgetMaxPrice = options?.budgetMaxPrice ?? 5;
       const targetBracket = options?.targetBracket;
 
-      // Parse collection if provided; otherwise use empty collection (new player path)
+      // Parse collection from the provider; otherwise use empty collection (new player path)
       const parseResult = collectionText?.trim()
         ? parseArenaCollection(collectionText)
         : parseArenaCollection('');
 
-      // If user provided collection text, validate it parses to something meaningful
-      if (collectionText?.trim()) {
-        const nonBasicCount = Array.from(parseResult.collection.values())
-          .filter(c => !['plains','island','swamp','mountain','forest','wastes',
-            'snow-covered plains','snow-covered island','snow-covered swamp',
-            'snow-covered mountain','snow-covered forest'].includes(c.normalizedName))
-          .length;
+      const nonBasicCount = Array.from(parseResult.collection.values())
+        .filter(c => !['plains','island','swamp','mountain','forest','wastes',
+          'snow-covered plains','snow-covered island','snow-covered swamp',
+          'snow-covered mountain','snow-covered forest'].includes(c.normalizedName))
+        .length;
 
-        if (nonBasicCount === 0) {
-          return reply.status(400).send({
-            error: 'Invalid collection format',
-            message: 'Could not parse collection. Use MTG Arena export format.',
-            unrecognizedLines: parseResult.unrecognizedLines,
-          });
-        }
+      // If user provided collection text, validate it parses to something meaningful
+      if (collectionText?.trim() && nonBasicCount === 0) {
+        return reply.status(400).send({
+          error: 'Invalid collection format',
+          message: 'Could not parse collection. Use MTG Arena export format.',
+          unrecognizedLines: parseResult.unrecognizedLines,
+        });
+      }
+
+      // Owned-only mode fundamentally requires a collection to draw from.
+      // Without any non-basic owned cards there is nothing to build — reject
+      // with a clear message rather than silently returning a broken deck.
+      if (mode === 'owned-only' && nonBasicCount === 0) {
+        return reply.status(400).send({
+          error: 'Owned Only mode requires a collection',
+          message: 'To build strictly from your own cards, paste your MTG Arena collection export. Or select "I\'m new to Commander" with a different mode.',
+        });
       }
 
       // Validate commander exists in Scryfall

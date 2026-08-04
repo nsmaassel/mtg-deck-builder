@@ -155,3 +155,28 @@ textarea { resize: vertical; }
 .checkbox-label span {
   font-size: 0.95rem;
 }
+
+/* Onboarding guide */
+.onboarding-guide {
+  background: #1f2140;
+  border: 1px solid #3a2f5e;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+.onboarding-guide h2 {
+  margin: 0 0 0.6rem;
+  font-size: 1rem;
+  color: #c9a227;
+}
+.guide-steps {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+.guide-steps li {
+  margin-bottom: 0.4rem;
+  line-height: 1.5;
+  color: #dcd6f5;
+  font-size: 0.9rem;
+}
+.guide-steps em { color: #e5b830; font-style: normal; }

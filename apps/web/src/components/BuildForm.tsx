@@ -8,9 +8,9 @@ interface BuildFormProps {
 }
 
 const MODE_LABELS: Record<BuildMode, string> = {
-  'prefer-owned': '🃏 Prefer Owned — fill gaps with top recommendations',
-  'owned-only': '🔒 Owned Only — use strictly what you own',
-  'budget': '💰 Budget — owned first, fill with cheap picks',
+  'prefer-owned': '🃏 Balanced — top recommendations, use your cards when possible',
+  'owned-only': '🔒 Only My Cards — use strictly what you own (needs a collection)',
+  'budget': '💰 Budget — fill gaps with cheap picks under a price cap',
 };
 
 const BRACKET_OPTIONS: Array<{ value: Bracket; label: string }> = [
@@ -75,14 +75,35 @@ export function BuildForm({ onResult, onError }: BuildFormProps) {
     }
   }, [collectionText, commanderName, mode, budgetMaxPrice, targetBracket, skipCollection, onResult, onError]);
 
+  // "I'm new / Skip collection" cannot be combined with owned-only mode, which
+  // requires a collection to draw from. Switching it on forces a usable mode.
+  const handleSkipChange = useCallback((checked: boolean) => {
+    setSkipCollection(checked);
+    if (checked && mode === 'owned-only') {
+      setMode('prefer-owned');
+    }
+  }, [mode]);
+
+  const availableModes = (Object.keys(MODE_LABELS) as BuildMode[])
+    .filter(m => !skipCollection || m !== 'owned-only');
+
   return (
     <form className="build-form" onSubmit={handleBuild}>
+      <section className="onboarding-guide" aria-label="How it works">
+        <h2>How it works</h2>
+        <ol className="guide-steps">
+          <li><strong>Choose your commander</strong> — any legendary creature. Not sure? Search and pick from suggestions.</li>
+          <li><strong>Tell us what you own</strong> — paste your MTG Arena collection export. <em>Or</em> check <em>"I'm new to Commander"</em> and we'll build from the best community recommendations, no collection needed.</li>
+          <li><strong>Get a full 100-card deck</strong> — with a power level score (Bracket 1–5), missing-staple shopping list, and optional AI walkthrough.</li>
+        </ol>
+      </section>
+
       <div className="form-group">
         <label className="checkbox-label">
           <input
             type="checkbox"
             checked={skipCollection}
-            onChange={e => setSkipCollection(e.target.checked)}
+            onChange={e => handleSkipChange(e.target.checked)}
           />
           <span>I'm new to Commander / Skip collection</span>
         </label>
@@ -135,10 +156,13 @@ export function BuildForm({ onResult, onError }: BuildFormProps) {
           onChange={e => setMode(e.target.value as BuildMode)}
           className="mode-select"
         >
-          {(Object.keys(MODE_LABELS) as BuildMode[]).map(m => (
+          {availableModes.map(m => (
             <option key={m} value={m}>{MODE_LABELS[m]}</option>
           ))}
         </select>
+        {skipCollection && (
+          <small className="form-hint">"Only My Cards" is hidden when you skip your collection — there'd be nothing to build from.</small>
+        )}
       </div>
 
       {mode === 'budget' && (

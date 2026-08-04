@@ -66,3 +66,20 @@ A new or returning MTG player wants to get into Commander but doesn't have an MT
 **When** I click "Build Deck"
 **Then** I should see an error about invalid collection format
 **And** No deck should be built
+
+---
+
+## Scenario: Owned-only mode is not offered to new players
+
+**Given** I am on the deck builder page
+**And** I select "I'm new to Commander / Skip collection"
+**Then** The "Only My Cards" build mode should be hidden
+**And** If I had selected it previously, the mode should reset to a usable default
+
+---
+
+## Scenario: Onboarding guide is visible
+
+**Given** I am on the deck builder page
+**Then** I should see a "How it works" guide explaining the three steps
+**And** The guide should mention that a collection is optional for new players

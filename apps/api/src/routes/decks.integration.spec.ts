@@ -326,4 +326,20 @@ describe('POST /api/decks/build-from-commander', () => {
     const body = res.json<{ deck: { totalCards: number } }>();
     expect(body.deck.totalCards).toBe(100);
   });
+
+  it('responds 400 when owned-only mode is used without a collection', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/decks/build-from-commander',
+      payload: {
+        collectionText: '',
+        commanderName: COMMANDER_NAME,
+        options: { mode: 'owned-only' },
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = res.json<{ error: string }>();
+    expect(body.error).toMatch(/owned only/i);
+  });
 });
