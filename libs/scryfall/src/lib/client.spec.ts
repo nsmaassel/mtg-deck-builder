@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getCardByName, searchCards } from './client';
+import { getCardByName, searchCards, clearCardCache } from './client';
 import { ScryfallNotFoundError, ScryfallError } from './schemas';
 
 const ATRAXA_FIXTURE = {
@@ -23,6 +23,7 @@ const SEARCH_FIXTURE = {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  clearCardCache();
 });
 
 describe('getCardByName', () => {
@@ -104,6 +105,21 @@ describe('getCardByName', () => {
     }));
     const card = await getCardByName("Atraxa, Praetors' Voice");
     expect(card.name).toBe("Atraxa, Praetors' Voice");
+  });
+
+  it('caches lookups by name so repeated calls hit the network only once', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ATRAXA_FIXTURE,
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    await getCardByName("Atraxa, Praetors' Voice");
+    await getCardByName("Atraxa, Praetors' Voice");
+    await getCardByName("ATRAXA, PRAETORS' VOICE"); // case-insensitive hit
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
 

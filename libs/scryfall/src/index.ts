@@ -1,4 +1,4 @@
-export { getCardByName, searchCards, searchCommanders } from './lib/client';
+export { getCardByName, searchCards, searchCommanders, clearCardCache } from './lib/client';
 export {
   ScryfallCardSchema,
   ScryfallSearchResultSchema,

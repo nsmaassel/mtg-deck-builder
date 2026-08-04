@@ -11,6 +11,11 @@ const RATE_LIMIT_MS = 100;
 const MAX_RETRIES = 3;
 const RETRY_BASE_DELAY_MS = 500;
 
+// In-memory card cache keyed by lowercased name, lives for the server session.
+// Commander staples (Sol Ring, Arcane Signet, Command Tower, ...) repeat across
+// nearly every build, so caching eliminates most redundant Scryfall lookups.
+const cardCache = new Map<string, ScryfallCard>();
+
 // Tracks when the next request is allowed. Each caller atomically reserves
 // a time slot, preventing burst-fire 429s when Promise.allSettled fires many
 // concurrent lookups (JavaScript is single-threaded so this increment is safe).
@@ -63,6 +68,10 @@ async function rateLimitedFetch(url: string): Promise<unknown> {
  * Throws ScryfallNotFoundError if not found.
  */
 export async function getCardByName(name: string): Promise<ScryfallCard> {
+  const cacheKey = name.trim().toLowerCase();
+  const cached = cardCache.get(cacheKey);
+  if (cached) return cached;
+
   const url = `${BASE_URL}/cards/named?fuzzy=${encodeURIComponent(name)}`;
   const raw = await rateLimitedFetch(url);
   if (raw === null) throw new ScryfallNotFoundError(name);
@@ -70,7 +79,13 @@ export async function getCardByName(name: string): Promise<ScryfallCard> {
   if (!parsed.success) {
     throw new ScryfallError(`Invalid card data for "${name}"`, undefined, parsed.error);
   }
+  cardCache.set(cacheKey, parsed.data);
   return parsed.data;
+}
+
+/** Clear the in-memory card cache (useful for tests). */
+export function clearCardCache(): void {
+  cardCache.clear();
 }
 
 /**

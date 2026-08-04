@@ -58,9 +58,11 @@ async function rateLimitedFetch(url: string): Promise<unknown> {
 
     if (res.status === 404) return null;
 
-    // Transient failures (rate limit, upstream hiccups) are retried with
-    // exponential backoff, honoring the server's Retry-After when provided.
-    if (res.status === 429 || (res.status >= 500 && res.status < 600)) {
+    // Transient failures (rate limit, anti-bot blocks, upstream hiccups) are
+    // retried with exponential backoff, honoring Retry-After when provided.
+    // EDHRec intermittently returns 403 for requests that succeed on retry, so
+    // 403 is treated as transient alongside 429 and server errors.
+    if (res.status === 429 || res.status === 403 || (res.status >= 500 && res.status < 600)) {
       if (attempt >= MAX_RETRIES) {
         throw new EDHRecError(`EDHRec API error: ${res.statusText}`, res.status);
       }

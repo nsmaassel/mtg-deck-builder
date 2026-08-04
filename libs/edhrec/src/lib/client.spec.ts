@@ -131,6 +131,28 @@ describe('getCommanderData', () => {
 
     await expect(getCommanderData('Sol Ring')).rejects.toThrow(EDHRecError);
   });
+
+  it('retries transient 403 responses (anti-bot block) and succeeds after backoff', async () => {
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        headers: { get: () => '0' },
+        json: async () => null,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => COMMANDER_FIXTURE,
+      });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const data = await getCommanderData("Atraxa, Praetors' Voice");
+    expect(data.slug).toBe('atraxa-praetors-voice');
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('getThemeData', () => {
