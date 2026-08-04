@@ -96,13 +96,18 @@ function parseCardlists(
       seen.add(name.toLowerCase());
 
       const rawInclusion = Number(cv['inclusion'] ?? cv['num_decks'] ?? 0);
-      const inclusionPct = potentialDecks > 0
-        ? Math.round((rawInclusion / potentialDecks) * 100)
+      // EDHRec reports each card's own potential deck pool on its cardview, which
+      // is the correct denominator for that card (list-level pools differ by
+      // category, e.g. utility lands vs mana rocks). Fall back to the page-level
+      // pool when a cardview lacks it.
+      const cardPool = Number(cv['potential_decks'] ?? potentialDecks);
+      const inclusionPct = cardPool > 0
+        ? Math.round((rawInclusion / cardPool) * 100)
         : 0;
 
       cards.push({
         name,
-        inclusion: inclusionPct,       // normalized to 0–100%
+        inclusion: inclusionPct,       // normalized to 0-100%
         synergy: Number(cv['synergy'] ?? 0),
         label,
         cmc: Number(cv['cmc'] ?? 0),
@@ -110,7 +115,7 @@ function parseCardlists(
     }
   }
 
-  return cards;
+return cards;
 }
 
 /**

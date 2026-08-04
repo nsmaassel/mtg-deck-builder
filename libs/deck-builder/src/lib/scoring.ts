@@ -35,10 +35,15 @@ export function labelToSlot(label: string): SlotName {
  * Formula from spec: score = (inclusion_rate × 0.5) + (synergy_score × 0.3) + (1 - cmc/10) × 0.2
  * Owned cards receive a +0.15 priority boost so they fill slots before unowned cards.
  * Clamped to [0, 1].
+ *
+ * Inclusion rate carries the most weight (0.5), which is essential for universal
+ * staples (Sol Ring, Command Tower, Arcane Signet): EDHRec synergy for them is
+ * ~0 because synergy measures over-representation vs baseline, and a card present
+ * in ~every deck has no leftover synergy. Correct, per-card inclusion values let
+ * those staples score high enough to claim their ramp/lands slots.
  */
 export function scoreCard(card: EDHRecCard, owned = false): number {
-  const inclusionNorm = Math.min(card.inclusion, 100) / 100;
-  // EDHRec synergy is already 0–1 (proportion of decks above baseline)
+  const inclusionNorm = Math.min(Math.max(card.inclusion, 0), 100) / 100;
   const synergyNorm = Math.min(Math.max(card.synergy, 0), 1);
   const cmcFactor = Math.max(0, 1 - card.cmc / 10);
   const ownedBoost = owned ? 0.15 : 0;

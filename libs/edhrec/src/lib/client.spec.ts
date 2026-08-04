@@ -153,6 +153,45 @@ describe('getCommanderData', () => {
     expect(data.slug).toBe('atraxa-praetors-voice');
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
+
+  it('normalizes each card against its own potential_decks pool, not the page-level pool', async () => {
+    // Two cards share the same num_decks but have very different pools. If the
+    // client used a single list-level pool (the old bug), both would get the
+    // same inclusion %. With per-card pools, the narrower-pool card must rank
+    // far higher — this is what lets universal staples score correctly.
+    const fixture = {
+      container: {
+        json_dict: {
+          cardlists: [
+            {
+              tag: 'topcards',
+              header: 'Top Cards',
+              cardviews: [
+                { name: 'Sol Ring', inclusion: 36000, num_decks: 36000, potential_decks: 39000, synergy: 0.01, cmc: 1 },
+                { name: 'Niche Pet', inclusion: 36000, num_decks: 36000, potential_decks: 120000, synergy: 0.5, cmc: 4 },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => fixture,
+    }));
+
+    const data = await getCommanderData("Atraxa, Praetors' Voice");
+    const solRing = data.cardlist.find(c => c.name === 'Sol Ring')!;
+    const niche = data.cardlist.find(c => c.name === 'Niche Pet')!;
+
+    // 36000/39000 ≈ 92%, 36000/120000 = 30%
+    expect(solRing.inclusion).toBeGreaterThan(90);
+    expect(niche.inclusion).toBe(30);
+    // The pool fix must not collapse them to the same value (old bug did).
+    expect(solRing.inclusion).toBeGreaterThan(niche.inclusion);
+  });
 });
 
 describe('getThemeData', () => {
