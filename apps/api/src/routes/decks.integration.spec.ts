@@ -14,6 +14,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@mtg/scryfall', () => ({
   getCardByName: mocks.getCardByName,
+  ScryfallError: class ScryfallError extends Error {
+    constructor(msg?: string, public readonly status?: number) { super(msg ?? 'Scryfall error'); this.name = 'ScryfallError'; }
+  },
   ScryfallNotFoundError: class ScryfallNotFoundError extends Error {
     constructor(msg?: string) { super(msg ?? 'Not found'); this.name = 'ScryfallNotFoundError'; }
   },
@@ -21,6 +24,9 @@ vi.mock('@mtg/scryfall', () => ({
 
 vi.mock('@mtg/edhrec', () => ({
   getCommanderData: mocks.getCommanderData,
+  EDHRecError: class EDHRecError extends Error {
+    constructor(msg?: string, public readonly status?: number) { super(msg ?? 'EDHRec error'); this.name = 'EDHRecError'; }
+  },
   EDHRecNotFoundError: class EDHRecNotFoundError extends Error {
     constructor(msg?: string) { super(msg ?? 'Not found'); this.name = 'EDHRecNotFoundError'; }
   },
@@ -309,6 +315,50 @@ describe('POST /api/decks/build-from-commander', () => {
     expect(res.statusCode).toBe(422);
     const body = res.json<{ error: string }>();
     expect(body.error).toMatch(/not legal/i);
+  });
+
+  it('returns a friendly 502 when EDHRec is rate-limited (429) after retries', async () => {
+    const { EDHRecError } = await import('@mtg/edhrec');
+    mocks.getCommanderData.mockRejectedValueOnce(new EDHRecError('EDHRec API error: Too Many Requests', 429));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/decks/build-from-commander',
+      payload: { collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME },
+    });
+
+    expect(res.statusCode).toBe(502);
+    const body = res.json<{ error: string; message: string }>();
+    expect(body.error).toMatch(/temporarily unavailable/i);
+    expect(body.message).toBeTruthy();
+  });
+
+  it('returns a friendly 502 when EDHRec returns 403 (anti-bot block) after retries', async () => {
+    const { EDHRecError } = await import('@mtg/edhrec');
+    mocks.getCommanderData.mockRejectedValueOnce(new EDHRecError('EDHRec API error: Forbidden', 403));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/decks/build-from-commander',
+      payload: { collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME },
+    });
+
+    expect(res.statusCode).toBe(502);
+  });
+
+  it('returns a friendly 502 when Scryfall is down (5xx) during commander lookup', async () => {
+    const { ScryfallError } = await import('@mtg/scryfall');
+    mocks.getCardByName.mockRejectedValueOnce(new ScryfallError('Scryfall API error: Service Unavailable', 503));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/decks/build-from-commander',
+      payload: { collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME },
+    });
+
+    expect(res.statusCode).toBe(502);
+    const body = res.json<{ error: string }>();
+    expect(body.error).toMatch(/temporarily unavailable/i);
   });
 
   it('succeeds with budget mode and budgetMaxPrice', async () => {

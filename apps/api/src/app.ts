@@ -5,6 +5,8 @@ import { deckRoutes } from './routes/decks';
 import { themeRoutes } from './routes/themes';
 import { resolve } from 'path';
 import { existsSync, readFileSync, statSync } from 'fs';
+import { ScryfallError } from '@mtg/scryfall';
+import { EDHRecError } from '@mtg/edhrec';
 
 // In production, the Fastify server also serves the built web SPA. The Docker
 // runner lays out output as <cwd>/dist/... (WORKDIR is the repo root), so the
@@ -88,6 +90,20 @@ export function buildApp() {
   app.register(commanderRoutes);
   app.register(deckRoutes);
   app.register(themeRoutes);
+
+  // External data-source failures (Scryfall/EDHRec) are already retried inside
+  // their clients; if one still fails, surface a friendly 502 instead of a raw
+  // internal-error page. Commander-not-found cases are handled in the routes.
+  app.setErrorHandler((err, _request, reply) => {
+    if (err instanceof ScryfallError || err instanceof EDHRecError) {
+      const isTransient = err.status === 429 || err.status === 403 || (err.status !== undefined && err.status >= 500 && err.status < 600);
+      return reply.status(isTransient ? 502 : 500).send({
+        error: isTransient ? 'Deck data service temporarily unavailable' : 'Deck data service error',
+        message: 'We couldn\u2019t reach the deck-building data service. Please try again in a minute.',
+      });
+    }
+    return reply.send(err);
+  });
 
   // Catch-all: serve the SPA (static files + index.html fallback), or 404 for /api
   app.setNotFoundHandler(async (request, reply) => {
