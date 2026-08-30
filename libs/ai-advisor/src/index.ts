@@ -1,2 +1,8 @@
 export { explainDeck, AiAdvisorError } from './lib/advisor';
-export type { ExplainDeckInput, ExplainDeckResult, AiAdvisorOptions } from './lib/types';
+export { ExplainDeckResultSchema } from './lib/types';
+export type {
+  ExplainDeckInput,
+  ExplainDeckResult,
+  AiAdvisorOptions,
+  AiAdvisorProvider,
+} from './lib/types';

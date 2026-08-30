@@ -45,11 +45,14 @@ const VALID_API_RESPONSE = {
 describe('explainDeck', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn());
+    delete process.env['ANTHROPIC_API_KEY'];
+    delete process.env['GEMINI_API_KEY'];
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
     delete process.env['ANTHROPIC_API_KEY'];
+    delete process.env['GEMINI_API_KEY'];
   });
 
   it('returns fallback result when no API key provided', async () => {

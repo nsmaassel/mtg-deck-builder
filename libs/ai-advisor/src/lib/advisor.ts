@@ -1,8 +1,37 @@
 import type { DeckCard } from '@mtg/deck-builder';
-import type { ExplainDeckInput, ExplainDeckResult, AiAdvisorOptions } from './types';
+import { ExplainDeckResultSchema } from './types';
+import type {
+  ExplainDeckInput,
+  ExplainDeckResult,
+  AiAdvisorOptions,
+  AiAdvisorProvider,
+} from './types';
 
-const DEFAULT_BASE_URL = 'https://api.anthropic.com';
-const MODEL = 'claude-haiku-4-5';
+const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
+const DEFAULT_GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com';
+const ANTHROPIC_MODEL = 'claude-haiku-4-5';
+const GEMINI_MODEL = 'gemini-3.7-flash';
+
+/** Gemini REST Schema — uppercase types required by generateContent responseSchema. */
+const EXPLAIN_DECK_RESPONSE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    explanation: { type: 'STRING' },
+    keyCards: { type: 'ARRAY', items: { type: 'STRING' } },
+    suggestedUpgrades: { type: 'ARRAY', items: { type: 'STRING' } },
+  },
+  required: ['explanation', 'keyCards', 'suggestedUpgrades'],
+} as const;
+
+interface AnthropicMessageResponse {
+  content: Array<{ type: string; text: string }>;
+}
+
+interface GeminiGenerateContentResponse {
+  candidates?: Array<{
+    content?: { parts?: Array<{ text?: string }> };
+  }>;
+}
 
 function buildPrompt(input: ExplainDeckInput): string {
   const { deck, commanderName, missingStaples = [] } = input;
@@ -14,7 +43,8 @@ function buildPrompt(input: ExplainDeckInput): string {
     })
     .join('\n');
 
-  const upgradeHints = missingStaples.slice(0, 5)
+  const upgradeHints = missingStaples
+    .slice(0, 5)
     .map(c => `- ${c.name} (fills ${c.wouldFillSlot})`)
     .join('\n');
 
@@ -42,13 +72,32 @@ Requirements:
 - Be specific — name actual cards, not generic categories`;
 }
 
-/** Call the Anthropic Messages API synchronously. Returns parsed JSON or throws. */
+function resolveProvider(options: AiAdvisorOptions): AiAdvisorProvider {
+  if (options.provider) return options.provider;
+  if (process.env['GEMINI_API_KEY'] || process.env['GOOGLE_API_KEY']) return 'gemini';
+  return 'anthropic';
+}
+
+function resolveApiKey(provider: AiAdvisorProvider, options: AiAdvisorOptions): string {
+  if (options.apiKey) return options.apiKey;
+  if (provider === 'gemini') {
+    return process.env['GEMINI_API_KEY'] ?? process.env['GOOGLE_API_KEY'] ?? '';
+  }
+  return process.env['ANTHROPIC_API_KEY'] ?? '';
+}
+
+function resolveBaseUrl(provider: AiAdvisorProvider, options: AiAdvisorOptions): string {
+  if (options.baseUrl) return options.baseUrl;
+  return provider === 'gemini' ? DEFAULT_GEMINI_BASE_URL : DEFAULT_ANTHROPIC_BASE_URL;
+}
+
+/** Call the Anthropic Messages API. Returns parsed JSON or throws. */
 async function callAnthropic(
   prompt: string,
   apiKey: string,
   baseUrl: string,
-): Promise<{ content: Array<{ type: string; text: string }> }> {
-  const response = await fetch(`${baseUrl}/v1/messages`, {
+): Promise<AnthropicMessageResponse> {
+  const response = await fetch(`${baseUrl.replace(/\/+$/, '')}/v1/messages`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -56,7 +105,7 @@ async function callAnthropic(
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: MODEL,
+      model: ANTHROPIC_MODEL,
       max_tokens: 1024,
       messages: [{ role: 'user', content: prompt }],
     }),
@@ -67,13 +116,89 @@ async function callAnthropic(
     throw new AiAdvisorError(`Anthropic API error ${response.status}: ${body}`);
   }
 
-  return response.json() as Promise<{ content: Array<{ type: string; text: string }> }>;
+  return response.json() as Promise<AnthropicMessageResponse>;
+}
+
+/** Call Gemini 3.7 Flash generateContent with native JSON schema. */
+async function callGemini(
+  prompt: string,
+  apiKey: string,
+  baseUrl: string,
+): Promise<GeminiGenerateContentResponse> {
+  const response = await fetch(
+    `${baseUrl.replace(/\/+$/, '')}/v1beta/models/${GEMINI_MODEL}:generateContent`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          maxOutputTokens: 1024,
+          responseMimeType: 'application/json',
+          responseSchema: EXPLAIN_DECK_RESPONSE_SCHEMA,
+        },
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new AiAdvisorError(`Gemini API error ${response.status}: ${body}`);
+  }
+
+  return response.json() as Promise<GeminiGenerateContentResponse>;
+}
+
+function extractAnthropicText(raw: AnthropicMessageResponse): string {
+  const textBlock = raw.content.find(b => b.type === 'text');
+  if (!textBlock?.text) {
+    throw new AiAdvisorError('Anthropic response contained no text content');
+  }
+  return textBlock.text;
+}
+
+function extractGeminiText(raw: GeminiGenerateContentResponse): string {
+  const parts = raw.candidates?.[0]?.content?.parts ?? [];
+  const text = parts.map(p => p.text).find(t => typeof t === 'string' && t.length > 0);
+  if (!text) {
+    throw new AiAdvisorError('Gemini response contained no text content');
+  }
+  return text;
+}
+
+function stripJsonFences(text: string): string {
+  return text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim();
+}
+
+function parseExplainDeckResult(jsonText: string): ExplainDeckResult {
+  const stripped = stripJsonFences(jsonText);
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stripped);
+  } catch {
+    throw new AiAdvisorError(`Failed to parse AI response as JSON: ${stripped.slice(0, 200)}`);
+  }
+
+  const result = ExplainDeckResultSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new AiAdvisorError('AI response shape invalid — missing explanation/keyCards/suggestedUpgrades');
+  }
+
+  return result.data;
 }
 
 /** Graceful fallback when AI is unavailable */
-function buildFallbackResult(commanderName: string): ExplainDeckResult {
+function buildFallbackResult(
+  commanderName: string,
+  provider: AiAdvisorProvider,
+): ExplainDeckResult {
+  const keyName = provider === 'gemini' ? 'GEMINI_API_KEY' : 'ANTHROPIC_API_KEY';
   return {
-    explanation: `This deck is built around ${commanderName} as the commander. The deck follows a synergy-focused strategy typical for this commander archetype, with supporting ramp, card draw, interaction, and win conditions selected from your collection. For detailed strategic analysis, ensure your ANTHROPIC_API_KEY is configured.`,
+    explanation: `This deck is built around ${commanderName} as the commander. The deck follows a synergy-focused strategy typical for this commander archetype, with supporting ramp, card draw, interaction, and win conditions selected from your collection. For detailed strategic analysis, ensure your ${keyName} is configured.`,
     keyCards: [],
     suggestedUpgrades: [],
   };
@@ -87,53 +212,28 @@ export class AiAdvisorError extends Error {
 }
 
 /**
- * Explain a built deck using Claude claude-haiku-4.5.
+ * Explain a built deck using Gemini 3.7 Flash or Claude Haiku.
+ * Defaults to Gemini when `GEMINI_API_KEY` / `GOOGLE_API_KEY` is set; otherwise Anthropic.
  * Returns a fallback result (no throw) if the API key is missing.
- * Throws AiAdvisorError for API/parse failures when key is present.
+ * Throws AiAdvisorError for API/parse failures when a key is present.
  */
 export async function explainDeck(
   input: ExplainDeckInput,
   options: AiAdvisorOptions = {},
 ): Promise<ExplainDeckResult> {
-  const apiKey = options.apiKey ?? process.env['ANTHROPIC_API_KEY'] ?? '';
-  const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
+  const provider = resolveProvider(options);
+  const apiKey = resolveApiKey(provider, options);
+  const baseUrl = resolveBaseUrl(provider, options);
 
   if (!apiKey) {
-    return buildFallbackResult(input.commanderName);
+    return buildFallbackResult(input.commanderName, provider);
   }
 
   const prompt = buildPrompt(input);
-  const raw = await callAnthropic(prompt, apiKey, baseUrl);
+  const text =
+    provider === 'gemini'
+      ? extractGeminiText(await callGemini(prompt, apiKey, baseUrl))
+      : extractAnthropicText(await callAnthropic(prompt, apiKey, baseUrl));
 
-  const textBlock = raw.content.find(b => b.type === 'text');
-  if (!textBlock?.text) {
-    throw new AiAdvisorError('Anthropic response contained no text content');
-  }
-
-  // Strip markdown code fences if present
-  const jsonText = textBlock.text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim();
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch {
-    throw new AiAdvisorError(`Failed to parse AI response as JSON: ${jsonText.slice(0, 200)}`);
-  }
-
-  if (
-    typeof parsed !== 'object' ||
-    parsed === null ||
-    typeof (parsed as Record<string, unknown>)['explanation'] !== 'string' ||
-    !Array.isArray((parsed as Record<string, unknown>)['keyCards']) ||
-    !Array.isArray((parsed as Record<string, unknown>)['suggestedUpgrades'])
-  ) {
-    throw new AiAdvisorError('AI response shape invalid — missing explanation/keyCards/suggestedUpgrades');
-  }
-
-  const result = parsed as Record<string, unknown>;
-  return {
-    explanation: result['explanation'] as string,
-    keyCards: (result['keyCards'] as unknown[]).map(String),
-    suggestedUpgrades: (result['suggestedUpgrades'] as unknown[]).map(String),
-  };
+  return parseExplainDeckResult(text);
 }
