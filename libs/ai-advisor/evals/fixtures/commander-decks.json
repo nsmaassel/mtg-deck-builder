@@ -1,0 +1,440 @@
+{
+  "atraxa": {
+    "commanderName": "Atraxa, Praetors' Voice",
+    "slots": {
+      "commander": [
+        {
+          "name": "Atraxa, Praetors' Voice",
+          "manaCost": "{G}{W}{U}{B}",
+          "type": "Legendary Creature"
+        }
+      ],
+      "ramp": [
+        {
+          "name": "Sol Ring"
+        },
+        {
+          "name": "Arcane Signet"
+        },
+        {
+          "name": "Astral Cornucopia"
+        },
+        {
+          "name": "Fellwar Stone"
+        }
+      ],
+      "draw": [
+        {
+          "name": "Rhystic Study"
+        },
+        {
+          "name": "Tezzeret's Gambit"
+        },
+        {
+          "name": "Fathom Mage"
+        }
+      ],
+      "synergy": [
+        {
+          "name": "Deepglow Skate"
+        },
+        {
+          "name": "Evolution Sage"
+        },
+        {
+          "name": "Flux Channeler"
+        },
+        {
+          "name": "Inexorable Tide"
+        }
+      ],
+      "removal": [
+        {
+          "name": "Swords to Plowshares"
+        },
+        {
+          "name": "Assassin's Trophy"
+        },
+        {
+          "name": "Cyclonic Rift"
+        }
+      ],
+      "land": [
+        {
+          "name": "Command Tower"
+        },
+        {
+          "name": "Overgrown Tomb"
+        },
+        {
+          "name": "Watery Grave"
+        },
+        {
+          "name": "Hallowed Fountain"
+        }
+      ]
+    },
+    "missingStaples": [
+      {
+        "name": "Doubling Season",
+        "wouldFillSlot": "synergy"
+      },
+      {
+        "name": "Vorinclex, Monstrous Raider",
+        "wouldFillSlot": "synergy"
+      },
+      {
+        "name": "Smothering Tithe",
+        "wouldFillSlot": "ramp"
+      }
+    ]
+  },
+  "edgar": {
+    "commanderName": "Edgar Markov",
+    "slots": {
+      "commander": [
+        {
+          "name": "Edgar Markov",
+          "manaCost": "{3}{R}{W}{B}",
+          "type": "Legendary Creature"
+        }
+      ],
+      "ramp": [
+        {
+          "name": "Sol Ring"
+        },
+        {
+          "name": "Rakdos Signet"
+        },
+        {
+          "name": "Orzhov Signet"
+        },
+        {
+          "name": "Boros Signet"
+        }
+      ],
+      "draw": [
+        {
+          "name": "Pact of the Serpent"
+        },
+        {
+          "name": "Phyrexian Arena"
+        },
+        {
+          "name": "Skullclamp"
+        }
+      ],
+      "synergy": [
+        {
+          "name": "Captivating Vampire"
+        },
+        {
+          "name": "Vampire Nighthawk"
+        },
+        {
+          "name": "Cordially Invited"
+        },
+        {
+          "name": "Anowon, the Ruin Sage"
+        }
+      ],
+      "removal": [
+        {
+          "name": "Path to Exile"
+        },
+        {
+          "name": "Dismember"
+        },
+        {
+          "name": "Toxic Deluge"
+        }
+      ],
+      "land": [
+        {
+          "name": "Command Tower"
+        },
+        {
+          "name": "Blood Crypt"
+        },
+        {
+          "name": "Godless Shrine"
+        },
+        {
+          "name": "Sacred Foundry"
+        }
+      ]
+    },
+    "missingStaples": [
+      {
+        "name": "Bloodline Keeper",
+        "wouldFillSlot": "synergy"
+      },
+      {
+        "name": "Necropotence",
+        "wouldFillSlot": "draw"
+      },
+      {
+        "name": "Teferi's Protection",
+        "wouldFillSlot": "protection"
+      }
+    ]
+  },
+  "urza": {
+    "commanderName": "Urza, Lord High Artificer",
+    "slots": {
+      "commander": [
+        {
+          "name": "Urza, Lord High Artificer",
+          "manaCost": "{2}{U}{U}",
+          "type": "Legendary Creature"
+        }
+      ],
+      "ramp": [
+        {
+          "name": "Sol Ring"
+        },
+        {
+          "name": "Mind Stone"
+        },
+        {
+          "name": "Thought Vessel"
+        },
+        {
+          "name": "Sapphire Medallion"
+        }
+      ],
+      "draw": [
+        {
+          "name": "Mystic Remora"
+        },
+        {
+          "name": "Sai, Master Thopterist"
+        },
+        {
+          "name": "Thoughtcast"
+        }
+      ],
+      "synergy": [
+        {
+          "name": "Etherium Sculptor"
+        },
+        {
+          "name": "Shimmer Dragon"
+        },
+        {
+          "name": "Mirrodin Besieged"
+        }
+      ],
+      "removal": [
+        {
+          "name": "Counterspell"
+        },
+        {
+          "name": "Pongify"
+        },
+        {
+          "name": "Swan Song"
+        }
+      ],
+      "land": [
+        {
+          "name": "Academy Ruins"
+        },
+        {
+          "name": "Seat of the Synod"
+        },
+        {
+          "name": "Island"
+        }
+      ]
+    },
+    "missingStaples": [
+      {
+        "name": "Unwinding Clock",
+        "wouldFillSlot": "synergy"
+      },
+      {
+        "name": "Mana Vault",
+        "wouldFillSlot": "ramp"
+      },
+      {
+        "name": "Force of Will",
+        "wouldFillSlot": "interaction"
+      }
+    ]
+  },
+  "lathril": {
+    "commanderName": "Lathril, Blade of the Elves",
+    "slots": {
+      "commander": [
+        {
+          "name": "Lathril, Blade of the Elves",
+          "manaCost": "{2}{B}{G}",
+          "type": "Legendary Creature"
+        }
+      ],
+      "ramp": [
+        {
+          "name": "Elvish Mystic"
+        },
+        {
+          "name": "Llanowar Elves"
+        },
+        {
+          "name": "Fyndhorn Elves"
+        },
+        {
+          "name": "Priest of Titania"
+        }
+      ],
+      "draw": [
+        {
+          "name": "Beast Whisperer"
+        },
+        {
+          "name": "Shamanic Revelation"
+        },
+        {
+          "name": "Pact of the Serpent"
+        }
+      ],
+      "synergy": [
+        {
+          "name": "Elvish Archdruid"
+        },
+        {
+          "name": "Imperious Perfect"
+        },
+        {
+          "name": "Timberwatch Elf"
+        },
+        {
+          "name": "Abomination of Llanowar"
+        }
+      ],
+      "removal": [
+        {
+          "name": "Abrupt Decay"
+        },
+        {
+          "name": "Putrefy"
+        },
+        {
+          "name": "Casualties of War"
+        }
+      ],
+      "land": [
+        {
+          "name": "Command Tower"
+        },
+        {
+          "name": "Woodland Cemetery"
+        },
+        {
+          "name": "Llanowar Wastes"
+        }
+      ]
+    },
+    "missingStaples": [
+      {
+        "name": "Craterhoof Behemoth",
+        "wouldFillSlot": "finisher"
+      },
+      {
+        "name": "Heroic Intervention",
+        "wouldFillSlot": "protection"
+      },
+      {
+        "name": "Allosaurus Shepherd",
+        "wouldFillSlot": "synergy"
+      }
+    ]
+  },
+  "nekusar": {
+    "commanderName": "Nekusar, the Mindrazer",
+    "slots": {
+      "commander": [
+        {
+          "name": "Nekusar, the Mindrazer",
+          "manaCost": "{2}{U}{B}{R}",
+          "type": "Legendary Creature"
+        }
+      ],
+      "ramp": [
+        {
+          "name": "Sol Ring"
+        },
+        {
+          "name": "Arcane Signet"
+        },
+        {
+          "name": "Dimir Signet"
+        },
+        {
+          "name": "Izzet Signet"
+        }
+      ],
+      "draw": [
+        {
+          "name": "Windfall"
+        },
+        {
+          "name": "Wheel and Deal"
+        },
+        {
+          "name": "Peer into the Abyss"
+        }
+      ],
+      "synergy": [
+        {
+          "name": "Fate Unraveler"
+        },
+        {
+          "name": "Underworld Dreams"
+        },
+        {
+          "name": "Megrim"
+        },
+        {
+          "name": "Spiteful Visions"
+        }
+      ],
+      "removal": [
+        {
+          "name": "Feed the Swarm"
+        },
+        {
+          "name": "Blasphemous Act"
+        },
+        {
+          "name": "Chaos Warp"
+        }
+      ],
+      "land": [
+        {
+          "name": "Command Tower"
+        },
+        {
+          "name": "Watery Grave"
+        },
+        {
+          "name": "Steam Vents"
+        }
+      ]
+    },
+    "missingStaples": [
+      {
+        "name": "Wheel of Fortune",
+        "wouldFillSlot": "draw"
+      },
+      {
+        "name": "Sheoldred, the Apocalypse",
+        "wouldFillSlot": "synergy"
+      },
+      {
+        "name": "Waste Not",
+        "wouldFillSlot": "synergy"
+      }
+    ]
+  }
+}

@@ -1,0 +1,82 @@
+# AI Advisor Quality Evaluation Harness
+# Evaluates Commander strategy explanations, card synergy identification, and upgrade recommendations
+# Run: npx promptfoo eval -c libs/ai-advisor/evals/promptfooconfig.yaml
+
+description: "MTG Deck Builder AI Advisor Quality & Strategy Evaluation"
+
+prompts:
+  - file://system-prompt.txt
+
+providers:
+  - id: google:gemini-3.7-flash
+    label: "gemini-3.7-flash (Default Workhorse)"
+    config:
+      temperature: 0.2
+      responseMimeType: "application/json"
+
+  - id: anthropic:messages:claude-3-5-haiku-latest
+    label: "claude-haiku (Anthropic Workhorse)"
+    config:
+      temperature: 0.2
+      max_tokens: 1024
+
+tests:
+  - description: "TC-01: Atraxa Proliferate + +1/+1 Counters"
+    vars:
+      commanderName: "Atraxa, Praetors' Voice"
+      slotSummary: "COMMANDER: Atraxa, Praetors' Voice\nRAMP: Sol Ring, Arcane Signet, Astral Cornucopia, Fellwar Stone\nDRAW: Rhystic Study, Tezzeret's Gambit, Fathom Mage\nSYNERGY: Deepglow Skate, Evolution Sage, Flux Channeler, Inexorable Tide\nREMOVAL: Swords to Plowshares, Assassin's Trophy, Cyclonic Rift\nLAND: Command Tower, Overgrown Tomb, Watery Grave, Hallowed Fountain"
+      upgradeHints: "- Doubling Season (fills synergy)\n- Vorinclex, Monstrous Raider (fills synergy)\n- Smothering Tithe (fills ramp)"
+    assert:
+      - type: is-json
+      - type: javascript
+        value: "const res = JSON.parse(output); return res.keyCards && res.keyCards.length >= 3 && res.suggestedUpgrades && res.suggestedUpgrades.length >= 2;"
+      - type: icontains
+        value: "proliferate"
+
+  - description: "TC-02: Edgar Markov Vampire Aggro / Tokens"
+    vars:
+      commanderName: "Edgar Markov"
+      slotSummary: "COMMANDER: Edgar Markov\nRAMP: Sol Ring, Rakdos Signet, Orzhov Signet, Boros Signet\nDRAW: Pact of the Serpent, Phyrexian Arena, Skullclamp\nSYNERGY: Captivating Vampire, Vampire Nighthawk, Cordially Invited, Anowon, the Ruin Sage\nREMOVAL: Path to Exile, Dismember, Toxic Deluge\nLAND: Command Tower, Blood Crypt, Godless Shrine, Sacred Foundry"
+      upgradeHints: "- Bloodline Keeper (fills synergy)\n- Necropotence (fills draw)\n- Teferi's Protection (fills protection)"
+    assert:
+      - type: is-json
+      - type: javascript
+        value: "const res = JSON.parse(output); return res.keyCards && res.keyCards.length >= 3 && typeof res.explanation === 'string';"
+      - type: icontains
+        value: "vampire"
+
+  - description: "TC-03: Urza Lord High Artificer Mono-Blue Artifacts"
+    vars:
+      commanderName: "Urza, Lord High Artificer"
+      slotSummary: "COMMANDER: Urza, Lord High Artificer\nRAMP: Sol Ring, Mind Stone, Thought Vessel, Sapphire Medallion\nDRAW: Mystic Remora, Sai, Master Thopterist, Thoughtcast\nSYNERGY: Etherium Sculptor, Shimmer Dragon, Mirrodin Besieged\nREMOVAL: Counterspell, Pongify, Swan Song\nLAND: Academy Ruins, Seat of the Synod, Island"
+      upgradeHints: "- Unwinding Clock (fills synergy)\n- Mana Vault (fills ramp)\n- Force of Will (fills interaction)"
+    assert:
+      - type: is-json
+      - type: javascript
+        value: "const res = JSON.parse(output); return res.keyCards && res.keyCards.length >= 3;"
+      - type: icontains
+        value: "artifact"
+
+  - description: "TC-04: Lathril Blade of the Elves Golgari Elfball"
+    vars:
+      commanderName: "Lathril, Blade of the Elves"
+      slotSummary: "COMMANDER: Lathril, Blade of the Elves\nRAMP: Elvish Mystic, Llanowar Elves, Fyndhorn Elves, Priest of Titania\nDRAW: Beast Whisperer, Shamanic Revelation, Pact of the Serpent\nSYNERGY: Elvish Archdruid, Imperious Perfect, Timberwatch Elf, Abomination of Llanowar\nREMOVAL: Abrupt Decay, Putrefy, Casualties of War\nLAND: Command Tower, Woodland Cemetery, Llanowar Wastes"
+      upgradeHints: "- Craterhoof Behemoth (fills finisher)\n- Heroic Intervention (fills protection)\n- Allosaurus Shepherd (fills synergy)"
+    assert:
+      - type: is-json
+      - type: javascript
+        value: "const res = JSON.parse(output); return res.keyCards && res.suggestedUpgrades;"
+      - type: icontains
+        value: "elf"
+
+  - description: "TC-05: Nekusar the Mindrazer Wheels & Group Slug"
+    vars:
+      commanderName: "Nekusar, the Mindrazer"
+      slotSummary: "COMMANDER: Nekusar, the Mindrazer\nRAMP: Sol Ring, Arcane Signet, Dimir Signet, Izzet Signet\nDRAW: Windfall, Wheel and Deal, Peer into the Abyss\nSYNERGY: Fate Unraveler, Underworld Dreams, Megrim, Spiteful Visions\nREMOVAL: Feed the Swarm, Blasphemous Act, Chaos Warp\nLAND: Command Tower, Watery Grave, Steam Vents"
+      upgradeHints: "- Wheel of Fortune (fills draw)\n- Sheoldred, the Apocalypse (fills synergy)\n- Waste Not (fills synergy)"
+    assert:
+      - type: is-json
+      - type: javascript
+        value: "const res = JSON.parse(output); return res.keyCards && res.suggestedUpgrades;"
+      - type: icontains
+        value: "draw"

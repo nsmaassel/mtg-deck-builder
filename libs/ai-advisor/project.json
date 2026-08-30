@@ -3,16 +3,29 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "libs/ai-advisor/src",
   "projectType": "library",
-  "tags": ["type:lib", "scope:ai-advisor"],
+  "tags": [
+    "type:lib",
+    "scope:ai-advisor"
+  ],
   "targets": {
     "test": {
       "executor": "@nx/vitest:test",
-      "options": { "config": "libs/ai-advisor/vite.config.ts" }
+      "options": {
+        "config": "libs/ai-advisor/vite.config.ts"
+      }
     },
     "typecheck": {
       "executor": "nx:run-commands",
-      "options": { "command": "tsc --noEmit -p libs/ai-advisor/tsconfig.json" }
+      "options": {
+        "command": "tsc --noEmit -p libs/ai-advisor/tsconfig.json"
+      }
+    },
+    "eval": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx promptfoo eval -c libs/ai-advisor/evals/promptfooconfig.yaml",
+        "forwardAllArgs": true
+      }
     }
   }
 }
-

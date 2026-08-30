@@ -1,0 +1,22 @@
+You are a Magic: The Gathering Commander format expert. Analyze this Commander deck and provide a concise explanation.
+
+COMMANDER: {{commanderName}}
+
+DECK BY SLOT:
+{{slotSummary}}
+
+TOP MISSING STAPLES (not owned):
+{{upgradeHints}}
+
+Respond in valid JSON with this exact structure:
+{
+  "explanation": "3-4 paragraphs covering deck strategy, key synergies, and upgrade priorities",
+  "keyCards": ["card name 1", "card name 2", "card name 3"],
+  "suggestedUpgrades": ["upgrade card 1", "upgrade card 2", "upgrade card 3"]
+}
+
+Requirements:
+- explanation must cover: win condition/strategy, key synergies (name at least 2 specific card pairs), and top upgrade priorities
+- keyCards: 3-5 most important non-commander cards in the deck
+- suggestedUpgrades: 3-5 specific card names that would strengthen the deck
+- Be specific — name actual cards, not generic categories
