@@ -1,9 +1,10 @@
 import type { DeckCard } from '@mtg/deck-builder';
+import { ExplainDeckResultSchema } from './types';
 import type {
-  AiAdvisorOptions,
-  AiAdvisorProvider,
   ExplainDeckInput,
   ExplainDeckResult,
+  AiAdvisorOptions,
+  AiAdvisorProvider,
 } from './types';
 
 const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
@@ -11,7 +12,7 @@ const DEFAULT_GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com';
 const ANTHROPIC_MODEL = 'claude-haiku-4-5';
 const GEMINI_MODEL = 'gemini-3.7-flash';
 
-/** Gemini REST Schema — uppercase types required by generateContent. */
+/** Gemini REST Schema — uppercase types required by generateContent responseSchema. */
 const EXPLAIN_DECK_RESPONSE_SCHEMA = {
   type: 'OBJECT',
   properties: {
@@ -42,7 +43,8 @@ function buildPrompt(input: ExplainDeckInput): string {
     })
     .join('\n');
 
-  const upgradeHints = missingStaples.slice(0, 5)
+  const upgradeHints = missingStaples
+    .slice(0, 5)
     .map(c => `- ${c.name} (fills ${c.wouldFillSlot})`)
     .join('\n');
 
@@ -72,13 +74,15 @@ Requirements:
 
 function resolveProvider(options: AiAdvisorOptions): AiAdvisorProvider {
   if (options.provider) return options.provider;
-  if (process.env['GEMINI_API_KEY']) return 'gemini';
+  if (process.env['GEMINI_API_KEY'] || process.env['GOOGLE_API_KEY']) return 'gemini';
   return 'anthropic';
 }
 
 function resolveApiKey(provider: AiAdvisorProvider, options: AiAdvisorOptions): string {
   if (options.apiKey) return options.apiKey;
-  if (provider === 'gemini') return process.env['GEMINI_API_KEY'] ?? '';
+  if (provider === 'gemini') {
+    return process.env['GEMINI_API_KEY'] ?? process.env['GOOGLE_API_KEY'] ?? '';
+  }
   return process.env['ANTHROPIC_API_KEY'] ?? '';
 }
 
@@ -93,7 +97,7 @@ async function callAnthropic(
   apiKey: string,
   baseUrl: string,
 ): Promise<AnthropicMessageResponse> {
-  const response = await fetch(`${baseUrl}/v1/messages`, {
+  const response = await fetch(`${baseUrl.replace(/\/+$/, '')}/v1/messages`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -122,7 +126,7 @@ async function callGemini(
   baseUrl: string,
 ): Promise<GeminiGenerateContentResponse> {
   const response = await fetch(
-    `${baseUrl}/v1beta/models/${GEMINI_MODEL}:generateContent`,
+    `${baseUrl.replace(/\/+$/, '')}/v1beta/models/${GEMINI_MODEL}:generateContent`,
     {
       method: 'POST',
       headers: {
@@ -179,22 +183,12 @@ function parseExplainDeckResult(jsonText: string): ExplainDeckResult {
     throw new AiAdvisorError(`Failed to parse AI response as JSON: ${stripped.slice(0, 200)}`);
   }
 
-  if (
-    typeof parsed !== 'object' ||
-    parsed === null ||
-    typeof (parsed as Record<string, unknown>)['explanation'] !== 'string' ||
-    !Array.isArray((parsed as Record<string, unknown>)['keyCards']) ||
-    !Array.isArray((parsed as Record<string, unknown>)['suggestedUpgrades'])
-  ) {
+  const result = ExplainDeckResultSchema.safeParse(parsed);
+  if (!result.success) {
     throw new AiAdvisorError('AI response shape invalid — missing explanation/keyCards/suggestedUpgrades');
   }
 
-  const result = parsed as Record<string, unknown>;
-  return {
-    explanation: result['explanation'] as string,
-    keyCards: (result['keyCards'] as unknown[]).map(String),
-    suggestedUpgrades: (result['suggestedUpgrades'] as unknown[]).map(String),
-  };
+  return result.data;
 }
 
 /** Graceful fallback when AI is unavailable */
@@ -219,7 +213,7 @@ export class AiAdvisorError extends Error {
 
 /**
  * Explain a built deck using Gemini 3.7 Flash or Claude Haiku.
- * Defaults to Gemini when `GEMINI_API_KEY` is set; otherwise Anthropic.
+ * Defaults to Gemini when `GEMINI_API_KEY` / `GOOGLE_API_KEY` is set; otherwise Anthropic.
  * Returns a fallback result (no throw) if the API key is missing.
  * Throws AiAdvisorError for API/parse failures when a key is present.
  */
@@ -236,9 +230,10 @@ export async function explainDeck(
   }
 
   const prompt = buildPrompt(input);
-  const text = provider === 'gemini'
-    ? extractGeminiText(await callGemini(prompt, apiKey, baseUrl))
-    : extractAnthropicText(await callAnthropic(prompt, apiKey, baseUrl));
+  const text =
+    provider === 'gemini'
+      ? extractGeminiText(await callGemini(prompt, apiKey, baseUrl))
+      : extractAnthropicText(await callAnthropic(prompt, apiKey, baseUrl));
 
   return parseExplainDeckResult(text);
 }
