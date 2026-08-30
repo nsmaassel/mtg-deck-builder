@@ -1,6 +1,6 @@
 import type { DeckCard } from '@mtg/deck-builder';
+import { ExplainDeckResultSchema } from './types';
 import type { ExplainDeckInput, ExplainDeckResult, AiAdvisorOptions, AiProvider } from './types';
-import { ExplainDeckResultSchema } from './schemas';
 
 const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
 const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5';
@@ -64,21 +64,6 @@ async function callGemini(
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
         responseMimeType: 'application/json',
-        responseSchema: {
-          type: 'OBJECT',
-          properties: {
-            explanation: { type: 'STRING' },
-            keyCards: {
-              type: 'ARRAY',
-              items: { type: 'STRING' },
-            },
-            suggestedUpgrades: {
-              type: 'ARRAY',
-              items: { type: 'STRING' },
-            },
-          },
-          required: ['explanation', 'keyCards', 'suggestedUpgrades'],
-        },
         temperature: 0.2,
       },
     }),
@@ -184,7 +169,6 @@ function resolveProviderAndKey(options: AiAdvisorOptions): {
     if (isGeminiBase) {
       return { provider: 'gemini', apiKey: options.apiKey };
     }
-    // Default explicit apiKey to gemini if GEMINI_API_KEY exists, else anthropic if ANTHROPIC_API_KEY exists, else gemini
     const geminiEnv = process.env['GEMINI_API_KEY'] ?? process.env['GOOGLE_API_KEY'];
     const anthropicEnv = process.env['ANTHROPIC_API_KEY'];
     if (!geminiEnv && anthropicEnv) {
