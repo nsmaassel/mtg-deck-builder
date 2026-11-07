@@ -36,6 +36,8 @@ export interface RoleDistribution {
   land: { before: number; after: number };
 }
 
+export const TOTAL_COMMANDER_DECK_SIZE = 100;
+
 export interface DeckUpgradeBlueprint {
   commander: string;
   currentTier: number;

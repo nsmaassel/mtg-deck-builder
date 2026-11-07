@@ -1,5 +1,5 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": { "outDir": "../../dist/libs/ai-advisor", "types": ["vitest/globals"] },
-  "include": ["src/**/*.spec.ts"]
+  "include": ["src/**/*.spec.ts", "src/lib/tests/**/*.ts"]
 }
