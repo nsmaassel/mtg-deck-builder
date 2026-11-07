@@ -12,6 +12,7 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
     Body: {
       collectionText?: string;
       commanderName: string;
+      presetCards?: string[];
       options?: {
         mode?: 'prefer-owned' | 'owned-only' | 'budget';
         budgetMaxPrice?: number;
@@ -26,6 +27,7 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
         properties: {
           collectionText: { type: 'string' },
           commanderName: { type: 'string' },
+          presetCards: { type: 'array', items: { type: 'string' } },
           options: {
             type: 'object',
             properties: {
@@ -38,7 +40,7 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
       },
     },
     handler: async (request, reply) => {
-      const { collectionText, commanderName, options } = request.body;
+      const { collectionText, commanderName, presetCards = [], options } = request.body;
       const mode = options?.mode ?? 'prefer-owned';
       const budgetMaxPrice = options?.budgetMaxPrice ?? 5;
       const targetBracket = options?.targetBracket;
@@ -139,12 +141,28 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
         }),
       );
 
+      // Resolve Scryfall data for user-specified preset cards so the builder can
+      // classify them by type line and enforce color identity ("finish my deck").
+      await Promise.allSettled(
+        presetCards.map(async name => {
+          const norm = name.toLowerCase();
+          if (collectionScryfallData.has(norm)) return;
+          try {
+            const sf = await getCardByName(name);
+            collectionScryfallData.set(norm, sf);
+          } catch {
+            // Not found — builder will drop it as unresolvable
+          }
+        }),
+      );
+
       // Build the deck
       const result = buildDeck({
         commanderCard,
         edhrecCards,
         collection: parseResult.collection,
         collectionScryfallData,
+        presetCards,
         options: { mode, budgetMaxPrice, targetBracket },
       });
 

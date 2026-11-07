@@ -23,6 +23,7 @@ export function buildDeck(input: BuildDeckInput): BuildDeckResult {
   const { commanderCard, edhrecCards, collection, collectionScryfallData } = input;
   const mode = input.options?.mode ?? 'prefer-owned';
   const budgetMaxPrice = input.options?.budgetMaxPrice ?? 5;
+  const presetCards = input.presetCards ?? [];
 
   const commanderColorIdentity = commanderCard.color_identity;
   const usedNames = new Set<string>([commanderCard.name.toLowerCase()]);
@@ -69,7 +70,57 @@ export function buildDeck(input: BuildDeckInput): BuildDeckResult {
     ramp: [], draw: [], interaction: [], winConditions: [], synergy: [], lands: [], flex: [],
   };
 
+  // Force-place user-specified preset cards first ("finish my deck"). Each keeps
+  // its intended slot when the card has an EDHRec label, otherwise we classify by
+  // type line. Presets consume the total deck budget before scoring fills the rest.
+  let placedCount = 0;
+  for (const rawName of presetCards) {
+    const normalizedName = rawName.toLowerCase();
+    if (usedNames.has(normalizedName)) continue;
+
+    const edhrecCard = edhrecCards.find(c => c.name.toLowerCase() === normalizedName);
+    const scryfallData = collectionScryfallData.get(normalizedName);
+
+    // Drop color-illegal presets (they cannot go into a legal Commander deck).
+    if (scryfallData && !isColorLegal(scryfallData.color_identity, commanderColorIdentity)) continue;
+
+    // Prefer the EDHRec slot label; fall back to type-line classification for
+    // niche/pet cards that have no recommendation entry.
+    let slot: SlotName = 'flex';
+    if (edhrecCard) {
+      slot = labelToSlot(edhrecCard.label);
+    } else if (scryfallData) {
+      slot = classifyByTypeLine(scryfallData.type_line);
+    }
+
+    // A land-heavy base may overrun the lands budget; let it overflow into flex
+    // rather than dropping the user's card.
+    if (slots[slot].length >= SLOT_TARGETS[slot] && slot !== 'lands' && slot !== 'flex') {
+      slot = 'flex';
+    }
+
+    slots[slot].push({
+      name: edhrecCard?.name ?? scryfallData?.name ?? rawName,
+      quantity: 1,
+      ownedInCollection: collection.has(normalizedName),
+      edhrec_inclusion: edhrecCard?.inclusion ?? 0,
+      edhrec_synergy: edhrecCard?.synergy ?? 0,
+      score: edhrecCard ? scoreCard(edhrecCard) : 0.5,
+      slot,
+      cmc: scryfallData?.cmc ?? edhrecCard?.cmc ?? 0,
+      type_line: scryfallData?.type_line ?? '',
+      usdPrice: scryfallData?.prices.usd ? parseFloat(scryfallData.prices.usd) : null,
+    });
+    usedNames.add(normalizedName);
+    placedCount++;
+  }
+
+  // Remaining budget for scored fills keeps the deck at exactly 99 (100 with commander).
+  const fillBudget = TOTAL_DECK_SIZE - 1 - placedCount;
+  let filled = 0;
+
   for (const { edhrecCard, score, slot } of scoredCards) {
+    if (filled >= fillBudget) break;
     const normalizedName = edhrecCard.name.toLowerCase();
     if (usedNames.has(normalizedName)) continue;
 
@@ -93,10 +144,11 @@ export function buildDeck(input: BuildDeckInput): BuildDeckResult {
 
     slots[slot].push(deckCard);
     usedNames.add(normalizedName);
+    filled++;
   }
 
   // Fill any underfilled slots from 'synergy' overflow, then basics
-  fillUnderfilled(slots, scoredCards, usedNames, collectionScryfallData, commanderColorIdentity, collection);
+  fillUnderfilled(slots, scoredCards, usedNames, collectionScryfallData, commanderColorIdentity, collection, fillBudget, filled);
 
   const commanderDeckCard: DeckCard = {
     name: commanderCard.name,
@@ -128,8 +180,11 @@ function fillUnderfilled(
   collectionScryfallData: Map<string, ScryfallCard>,
   commanderColorIdentity: string[],
   collection: CollectionMap,
+  fillBudget: number,
+  startFilled: number,
 ): void {
   const slotOrder: SlotName[] = ['ramp', 'draw', 'interaction', 'winConditions', 'synergy', 'lands', 'flex'];
+  let filled = startFilled;
 
   // Try to fill from remaining scored cards (any slot)
   for (const slotName of slotOrder) {
@@ -137,6 +192,7 @@ function fillUnderfilled(
     if (slots[slotName].length >= target) continue;
 
     for (const { edhrecCard, score } of scoredCards) {
+      if (filled >= fillBudget) return;
       if (slots[slotName].length >= target) break;
       const normalizedName = edhrecCard.name.toLowerCase();
       if (usedNames.has(normalizedName)) continue;
@@ -159,39 +215,38 @@ function fillUnderfilled(
 
       slots[slotName].push(deckCard);
       usedNames.add(normalizedName);
+      filled++;
     }
   }
 
-  // Fill lands with basics if still underfilled
+  // Fill lands with basics if still underfilled and budget remains.
   // Basics are exempt from the singleton rule — multiple copies are legal in Commander
-  const landsNeeded = SLOT_TARGETS.lands - slots.lands.length;
-  if (landsNeeded > 0) {
-    const basicsToAdd = commanderColorIdentity.length > 0
-      ? commanderColorIdentity
-      : ['W', 'U', 'B', 'R', 'G'];
-
-    let added = 0;
-    let colorIndex = 0;
-    while (added < landsNeeded) {
-      const color = basicsToAdd[colorIndex % basicsToAdd.length]!;
-      const basicName = basicLandForColor(color);
-
-      slots.lands.push({
-        name: basicName,
-        quantity: 1,
-        ownedInCollection: true,
-        edhrec_inclusion: 0,
-        edhrec_synergy: 0,
-        score: 0,
-        slot: 'lands',
-        cmc: 0,
-        type_line: 'Basic Land',
-        usdPrice: 0,
-      });
-      added++;
-      colorIndex++;
-    }
+  const colors = basicsToAdd(commanderColorIdentity);
+  let colorIndex = 0;
+  while (filled < fillBudget && slots.lands.length < SLOT_TARGETS.lands) {
+    const color = colors[colorIndex % colors.length]!;
+    const basicName = basicLandForColor(color);
+    slots.lands.push({
+      name: basicName,
+      quantity: 1,
+      ownedInCollection: true,
+      edhrec_inclusion: 0,
+      edhrec_synergy: 0,
+      score: 0,
+      slot: 'lands',
+      cmc: 0,
+      type_line: 'Basic Land',
+      usdPrice: 0,
+    });
+    filled++;
+    colorIndex++;
   }
+}
+
+function basicsToAdd(commanderColorIdentity: string[]): string[] {
+  return commanderColorIdentity.length > 0
+    ? commanderColorIdentity
+    : ['W', 'U', 'B', 'R', 'G'];
 }
 
 function analyzeDeck(deck: DeckList, commanderName: string, edhrecTop50: EDHRecCard[]): DeckAnalysis {

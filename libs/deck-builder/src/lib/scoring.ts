@@ -31,6 +31,23 @@ export function labelToSlot(label: string): SlotName {
 }
 
 /**
+ * Assign a deck slot from a Scryfall type line. Used for user-provided preset
+ * cards that have no EDHRec recommendation label (niche picks, pet cards).
+ * Heuristic by card supertype: lands -> lands, instants/sorceries -> interaction,
+ * creatures -> synergy, artifacts -> ramp, everything else -> flex.
+ */
+export function classifyByTypeLine(typeLine: string): SlotName {
+  const t = typeLine.toLowerCase();
+  if (t.includes('land')) return 'lands';
+  if (t.includes('instant') || t.includes('sorcery')) return 'interaction';
+  if (t.includes('artifact')) return 'ramp';
+  if (t.includes('creature')) return 'synergy';
+  if (t.includes('enchantment')) return 'synergy';
+  if (t.includes('planeswalker')) return 'synergy';
+  return 'flex';
+}
+
+/**
  * Score a card for deck inclusion.
  * Formula from spec: score = (inclusion_rate × 0.5) + (synergy_score × 0.3) + (1 - cmc/10) × 0.2
  * Owned cards receive a +0.15 priority boost so they fill slots before unowned cards.

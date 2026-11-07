@@ -69,6 +69,14 @@ export interface BuildDeckInput {
   collection: CollectionMap;
   collectionScryfallData: Map<string, ScryfallCard>;
   options?: BuildDeckOptions;
+  /**
+   * Card names the user explicitly wants in the final deck ("finish my deck").
+   * These are force-included into the most appropriate slot, then the remaining
+   * slots are completed with best-practice scoring from the EDHRec pool. Names
+   * are matched case-insensitively; cards not color-legal for the commander are
+   * dropped. Defaults to [].
+   */
+  presetCards?: string[];
 }
 
 export interface BuildDeckResult {

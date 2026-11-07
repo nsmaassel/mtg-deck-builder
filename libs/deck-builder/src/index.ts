@@ -1,5 +1,5 @@
 export { buildDeck } from './lib/builder';
-export { scoreCard, labelToSlot, isColorLegal, basicLandForColor } from './lib/scoring';
+export { scoreCard, labelToSlot, isColorLegal, basicLandForColor, classifyByTypeLine } from './lib/scoring';
 export type {
   DeckCard,
   DeckList,

@@ -382,3 +382,82 @@ describe('buildDeck modes', () => {
     expect(ownedCount).toBeGreaterThan(0);
   });
 });
+
+describe('buildDeck with presetCards ("finish my deck")', () => {
+  const baseEDHRec = () => [
+    ...makeEDHRecCards(15, 'ramp'),
+    ...makeEDHRecCards(15, 'draw'),
+    ...makeEDHRecCards(15, 'removal'),
+    ...makeEDHRecCards(10, 'win-con'),
+    ...makeEDHRecCards(40, 'synergy'),
+    ...makeEDHRecCards(40, 'land'),
+  ];
+
+  function baseInput(extra: { presetCards?: string[]; edhrecCards?: EDHRecCard[]; scryfall?: Array<{ name: string; colorIdentity: string[]; typeLine?: string }> } = {}) {
+    const edhrecCards = extra.edhrecCards ?? baseEDHRec();
+    const cardNames = edhrecCards.map(c => c.name);
+    const collection = makeCollection(cardNames);
+    const scryfall = extra.scryfall ?? edhrecCards.map(c => ({ name: c.name, colorIdentity: [] as string[] }));
+    const collectionScryfallData = makeCollectionScryfallData(scryfall.map(c => ({ name: c.name, colorIdentity: c.colorIdentity })));
+    // set proper type lines for preset classification
+    for (const s of scryfall) {
+      const sf = collectionScryfallData.get(s.name.toLowerCase())!;
+      sf.type_line = s.typeLine ?? sf.type_line;
+    }
+    return { commanderCard: ATRAXA, edhrecCards, collection, collectionScryfallData, presetCards: extra.presetCards ?? [] };
+  }
+
+  it('keeps all color-legal preset cards in the deck', () => {
+    const presets = ['Card synergy 1', 'Card synergy 2', 'Card synergy 3'];
+    const { deck } = buildDeck(baseInput({ presetCards: presets }));
+    const deckNames = new Set([deck.commander.name.toLowerCase(), ...Object.values(deck.slots).flat().map(c => c.name.toLowerCase())]);
+    for (const p of presets) expect(deckNames.has(p.toLowerCase())).toBe(true);
+  });
+
+  it('drops color-illegal preset cards', () => {
+    const redOnly: EDHRecCard = { name: 'Red Blast', inclusion: 90, synergy: 0.8, label: 'interaction', cmc: 1 };
+    const { deck } = buildDeck(baseInput({
+      presetCards: ['Red Blast'],
+      edhrecCards: [...baseEDHRec(), redOnly],
+      scryfall: [{ name: 'Red Blast', colorIdentity: ['R'] }],
+    }));
+    const deckNames = new Set([deck.commander.name.toLowerCase(), ...Object.values(deck.slots).flat().map(c => c.name.toLowerCase())]);
+    expect(deckNames.has('red blast')).toBe(false);
+  });
+
+  it('still returns exactly 100 cards even when presets overflow slots', () => {
+    // 30 presets all forced into synergy — must not exceed 100 total.
+    const presets = Array.from({ length: 30 }, (_, i) => `Card synergy ${i + 1}`);
+    const { deck } = buildDeck(baseInput({ presetCards: presets }));
+    expect(deck.totalCards).toBe(100);
+    const allNames = [deck.commander.name.toLowerCase(), ...Object.values(deck.slots).flat().map(c => c.name.toLowerCase())];
+    expect(new Set(allNames).size).toBe(allNames.length); // singleton holds
+  });
+
+  it('classifies presets without EDHRec labels into slots by type line', () => {
+    // A creature and a land with no EDHRec recommendation entry.
+    const { deck } = buildDeck(baseInput({
+      presetCards: ['My Pet Creature', 'My Pet Land'],
+      scryfall: [
+        { name: 'My Pet Creature', colorIdentity: [], typeLine: 'Creature — Beast' },
+        { name: 'My Pet Land', colorIdentity: [], typeLine: 'Land' },
+      ],
+    }));
+    const slots = deck.slots;
+    const creature = Object.values(slots).flat().find(c => c.name === 'My Pet Creature');
+    const land = Object.values(slots).flat().find(c => c.name === 'My Pet Land');
+    expect(creature?.slot).toBe('synergy');
+    expect(land?.slot).toBe('lands');
+  });
+
+  it('preset cards count toward the deck budget (fewer auto-filled cards)', () => {
+    const presets = Array.from({ length: 20 }, (_, i) => `Card synergy ${i + 1}`);
+    const withPresets = buildDeck(baseInput({ presetCards: presets }));
+    const withoutPresets = buildDeck(baseInput());
+    const withPresetCount = Object.values(withPresets.deck.slots).reduce((s, a) => s + a.length, 0);
+    const withoutPresetCount = Object.values(withoutPresets.deck.slots).reduce((s, a) => s + a.length, 0);
+    expect(withPresetCount).toBe(99);
+    expect(withoutPresetCount).toBe(99);
+    expect(withPresetCount).toBe(withoutPresetCount); // both legal 99 non-commander cards
+  });
+});
