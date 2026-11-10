@@ -7,7 +7,6 @@
     "moduleResolution": "node",
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
-    "importHelpers": true,
     "target": "ES2022",
     "module": "CommonJS",
     "lib": ["ES2022"],
@@ -24,9 +23,12 @@
       "@mtg/ai-advisor": ["libs/ai-advisor/src/index.ts"],
       "@mtg/power-level": ["libs/power-level/src/index.ts"],
       "@mtg/card-index": ["libs/card-index/src/index.ts"],
+      "@mtg/card-index/node": ["libs/card-index/src/node.ts"],
       "@mtg/deck-advisor": ["libs/deck-advisor/src/index.ts"],
+      "@mtg/deck-advisor/node": ["libs/deck-advisor/src/node.ts"],
+      "@mtg/deck-advisor/testing": ["libs/deck-advisor/src/testing.ts"],
       "@mtg/meta-decks": ["libs/meta-decks/src/index.ts"],
-      "@mtg/combos": ["libs/combos/src/index.ts"]
+      "@mtg/meta-decks/types": ["libs/meta-decks/src/lib/types.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

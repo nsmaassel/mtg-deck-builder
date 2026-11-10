@@ -199,3 +199,12 @@ export function analyzeGap(deck: DeckList, collection: Collection, index: CardIn
 
   return gap;
 }
+
+/** oracleId → copies the list asks for across all boards, owned or not. */
+export function deckCopies(gap: DeckGap): Map<string, number> {
+  const copies = new Map<string, number>();
+  for (const entry of gap.cards) {
+    if (entry.card) copies.set(entry.card.oracleId, (copies.get(entry.card.oracleId) ?? 0) + entry.needed);
+  }
+  return copies;
+}

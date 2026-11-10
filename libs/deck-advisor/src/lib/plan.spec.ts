@@ -4,7 +4,7 @@ import { parseDeckText } from './deck-text';
 import { craftCost, planDeck, rankDecks } from './plan';
 import type { PlanOptions } from './plan';
 import { TextModel } from './similarity';
-import { buildTestIndex, collectionOf } from './testing/fixtures';
+import { buildTestIndex, collectionOf, oracleId } from './testing/fixtures';
 import type { DeckLine, Wildcards } from './types';
 
 const index = buildTestIndex();
@@ -163,7 +163,7 @@ describe('planDeck', () => {
       plan('2 Llanowar Elves\n', owned, undefined, options).steps.map(s => s.substitute?.card.name);
 
     expect(chosen()).toEqual(['Elvish Mystic']);
-    const usage = { archetype: 'Mono-Green', mainShare: (n: string) => (n === 'Fyndhorn Elves' ? 0.7 : 0), sideShare: () => 0 };
+    const usage = { archetype: 'Mono-Green', mainShare: (id: string) => (id === oracleId('Fyndhorn Elves') ? 0.7 : 0), sideShare: () => 0 };
     expect(chosen({ usage })).toEqual(['Fyndhorn Elves']);
   });
 });

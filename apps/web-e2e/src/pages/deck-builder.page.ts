@@ -22,7 +22,7 @@ export class DeckBuilderPage {
   }
 
   async goto() {
-    await this.page.goto('/');
+    await this.page.goto('/#/commander');
   }
 
   async pasteCollection(collectionText: string) {

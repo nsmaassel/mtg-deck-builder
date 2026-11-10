@@ -6,6 +6,7 @@ export {
   castingCosts,
   deckBoards,
   deckColors,
+  deckCopies,
   emptyWildcards,
   frontColors,
   isCastable,
@@ -18,6 +19,28 @@ export { suggestSubstitutes } from './lib/substitutes';
 export type { SubstituteContext, SubstituteOptions } from './lib/substitutes';
 export { planDeck, rankDecks, craftCost } from './lib/plan';
 export type { PlanOptions, RankedDeck } from './lib/plan';
+export { SAMPLE_PROFILES, sampleCollection } from './lib/sample-collection';
+export type { SampleProfile } from './lib/sample-collection';
+export {
+  archetypeUsage,
+  cardView,
+  checkDeck,
+  deckFromTournamentList,
+  describeMeta,
+  gapSummary,
+} from './lib/service';
+export type {
+  AdvisorData,
+  ArchetypeView,
+  CardView,
+  CheckDeckOptions,
+  DeckCardView,
+  DeckCheck,
+  GapSummary,
+  MetaView,
+  PlanStepView,
+  SubstituteView,
+} from './lib/service';
 export type {
   ArchetypeUsage,
   Board,

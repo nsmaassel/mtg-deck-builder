@@ -11,7 +11,10 @@
     "test:affected": "nx affected --target=test",
     "build": "nx run-many --target=build --all",
     "lint": "nx run-many --target=lint --all",
-    "typecheck": "nx run-many --target=typecheck --all"
+    "typecheck": "nx run-many --target=typecheck --all",
+    "data": "pnpm data:cards && pnpm data:meta",
+    "data:cards": "tsx --tsconfig tsconfig.json scripts/data/build-card-index.ts",
+    "data:meta": "tsx --tsconfig tsconfig.json scripts/data/build-meta.ts"
   },
   "keywords": [
     "mtg",

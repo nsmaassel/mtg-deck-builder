@@ -5,11 +5,12 @@ import { resolve } from 'node:path';
  * Vite/Vitest aliases for every `@mtg/*` path in tsconfig.base.json, so a new
  * library only has to be registered in one place.
  */
-export function workspaceAliases(): Record<string, string> {
+export function workspaceAliases(): Array<{ find: string; replacement: string }> {
   const tsconfig = JSON.parse(readFileSync(resolve(__dirname, 'tsconfig.base.json'), 'utf8')) as {
     compilerOptions: { paths: Record<string, string[]> };
   };
-  return Object.fromEntries(
-    Object.entries(tsconfig.compilerOptions.paths).map(([name, [target]]) => [name, resolve(__dirname, target!)]),
-  );
+  return Object.entries(tsconfig.compilerOptions.paths)
+    // Longest first: `@mtg/deck-advisor/testing` must win over `@mtg/deck-advisor`.
+    .sort(([a], [b]) => b.length - a.length)
+    .map(([find, [target]]) => ({ find, replacement: resolve(__dirname, target!) }));
 }

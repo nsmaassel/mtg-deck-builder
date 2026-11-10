@@ -1,10 +1,55 @@
-# MTG Commander Deck Builder
+# MTG Deck Builder
 
-Build optimized Commander decks from your MTG Arena collection. Paste your collection export, pick a commander, and get a full 100-card deck built from cards you own — scored by EDHRec meta data, assessed for power level against the Official Commander Brackets, and explained by AI.
+Two tools for Magic: The Gathering players, in one app:
+
+- **Deck Advisor** — play the top decks with the cards you have. Load your MTG Arena collection, pick a deck from the tournament meta or paste any list, and see how much of it you own, what the rest costs in wildcards, and the closest cards in your collection for everything you are missing.
+- **Commander Builder** — pick a commander and get a full 100-card deck built from cards you own, scored by EDHRec data and assessed against the official Commander Brackets.
 
 ---
 
-## Features
+## Deck Advisor
+
+Deck sites tell an Arena player which cards they are missing and stop there. The advisor answers the next question: what do I play instead?
+
+| Feature | Description |
+|---------|-------------|
+| **Bring your collection** | Paste or upload what your tracker writes: Arena-style card lists, tracker JSON (mtga-tracker-daemon, MTGA Deck Advisor, collection exporters), CSV (Untapped.gg, Moxfield, Archidekt, MTG Arena Tool). A Player.log adds wildcards and your saved decks. No account, no upload of the log itself: the browser sends only the login snapshot. |
+| **Meta decks, ranked by what you own** | Standard and Pioneer archetypes from published tournament lists, with meta share and match win rate. With a collection loaded they are ordered by the wildcards you still need. |
+| **Any decklist** | Paste a list in any Arena format (Standard, Alchemy, Historic, Timeless, Pioneer, Brawl, Standard Brawl) or paper Commander. |
+| **Stand-ins for missing cards** | For each card you lack: cards you own that do the same job, and cheaper crafts, each with its reasons and what it fails to cover. Always legal in the format and castable in the deck's colours. |
+| **A list you can build today** | Wildcards go to the cards that are hardest to replace, everything else is swapped, and the result copies straight into Arena's deck import. |
+
+Every recommendation is computed, not generated: stand-ins are scored on Scryfall Tagger's functional tags, rules text, card type, mana value, colour, and how often the deck's archetype actually plays the card. See [J-010](./specs/journeys/010-deck-check.feature.md) for the scoring table.
+
+### What it does not know
+
+- **Arena ladder results.** No open source of Arena win rates exists. The meta comes from MTGO and melee.gg tournaments; win rates are match records from events that publish standings, and published lists lean towards top finishers.
+- **Historic, Timeless, Alchemy and Brawl metas.** No open tournament data. Paste a list instead.
+- **Your collection, unless you bring it.** Arena has no collection export and its log stopped listing cards in 2021. See [J-011](./specs/journeys/011-collection-import.feature.md).
+
+### Data
+
+The advisor reads generated files from `data/generated/`, built from public sources and never committed:
+
+```bash
+pnpm data:cards   # card index from Scryfall bulk data (~90 MB download, cached; a few seconds to build)
+pnpm data:meta    # Standard and Pioneer meta snapshots (shallow, sparse clones of two community repos)
+pnpm data         # both
+```
+
+| Data | Source | Terms |
+|------|--------|-------|
+| Cards, legality, Arena rarity, functional tags | [Scryfall](https://scryfall.com/docs/api/bulk-data) bulk files `default_cards` and `oracle_tags` | Bulk use is what Scryfall asks for; fetched at most daily. Tags are community-curated: `MTG_DISABLED_TAGS` hides any tag at runtime. |
+| Tournament decklists and standings | [Jiliac/MTGODecklistCache](https://github.com/Jiliac/MTGODecklistCache) | Community cache of lists published on mtgo.com and melee.gg. No licence file; read at build time, not redistributed. |
+| Archetype definitions | [Jiliac/MTGOFormatData](https://github.com/Jiliac/MTGOFormatData) | Community rules; matching logic ported from MTGOArchetypeParser (MIT). No licence file on the data; read at build time, not redistributed. |
+
+Untapped.gg, MTGGoldfish, AetherHub and Moxfield are not used: their terms forbid scraping. Without the card index the advisor routes answer 503 and the Commander Builder keeps working.
+
+---
+
+## Commander Builder
+
+### Features
 
 | Feature | Status | Description |
 |---------|--------|-------------|
@@ -33,7 +78,10 @@ graph TB
     end
 
     subgraph Libraries
-        COL[libs/collection<br/>Arena export parser]
+        COL[libs/collection<br/>Collection import]
+        IDX[libs/card-index<br/>Local card database]
+        ADV[libs/deck-advisor<br/>Gap, stand-ins, plan]
+        META[libs/meta-decks<br/>Meta snapshots]
         SCR[libs/scryfall<br/>Card data + prices]
         EDH[libs/edhrec<br/>Meta rankings + synergy]
         DB[libs/deck-builder<br/>Scoring + slot filler]
@@ -49,7 +97,8 @@ graph TB
     end
 
     WEB -->|HTTP| API
-    API --> COL & DB & AI
+    API --> COL & DB & AI & ADV
+    ADV --> IDX & META
     API --> PL
     DB --> SCR & EDH
     PL --> CSB
@@ -96,9 +145,11 @@ Swap suggestions rank alternatives by blended score (50% inclusion + 50% synergy
 ```bash
 pnpm install
 
+pnpm data                # Build the card index and meta snapshots the Deck Advisor reads
 pnpm serve:api           # Fastify on port 3000
 pnpm serve:web           # Vite dev on port 4200
 pnpm test                # All unit + component tests (Vitest)
+pnpm typecheck           # tsc over every library and app, sources and specs
 
 # Quality eval against 8 test commanders (needs API running)
 npx tsx --tsconfig tsconfig.json scripts/eval-decks.ts
@@ -137,8 +188,11 @@ This project uses a **spec-first, BDD workflow**: write the journey spec, then t
 | J-005 | Gap analysis display | `@regression` | [005-gap-analysis](./specs/journeys/005-gap-analysis.feature.md) |
 | J-008 | Error states + validation | `@smoke @regression` | [008-error-states](./specs/journeys/008-error-states.feature.md) |
 | J-009 | New player onboarding — build without a collection | `@smoke @regression @onboarding` | [009-new-player-onboarding](./specs/journeys/009-new-player-onboarding.feature.md) |
+| J-010 | Check a deck against my collection, with stand-ins | `@smoke @regression` | [010-deck-check](./specs/journeys/010-deck-check.feature.md) |
+| J-011 | Bring my Arena collection | `@smoke @regression` | [011-collection-import](./specs/journeys/011-collection-import.feature.md) |
+| J-012 | Find the meta deck I am closest to | `@regression` | [012-meta-decks](./specs/journeys/012-meta-decks.feature.md) |
 
-E2E specs live in `apps/web-e2e/src/journeys/`: `happy-path`, `bracket-targeting`, `owned-only`, `error-states`, `gap-analysis`, `new-player-onboarding`.
+E2E specs live in `apps/web-e2e/src/journeys/`: `happy-path`, `bracket-targeting`, `owned-only`, `error-states`, `gap-analysis`, `new-player-onboarding`. They cover the Commander Builder, which now lives at `/#/commander`. J-010 to J-012 are covered by unit, API integration and component tests.
 
 ### Running E2E Tests
 
@@ -171,7 +225,10 @@ apps/
   web/          React + Vite SPA (port 4200)
   web-e2e/      Playwright E2E tests
 libs/
-  collection/   MTG Arena export parser — pure TS, no HTTP
+  collection/   Collection import: Arena text, tracker JSON, CSV, Player.log — pure TS, no HTTP
+  card-index/   Local card database built from Scryfall bulk data: legality, Arena rarity, functional tags
+  deck-advisor/ Deck gap, stand-in scoring, build plan, meta ranking
+  meta-decks/   Meta snapshots from tournament decklists: archetype rules, shares, card frequencies
   scryfall/     Scryfall API client — card data, prices, commander search
   edhrec/       EDHRec API client — recommendations, synergy scores, caching
   deck-builder/ Scoring algorithm, slot filler, gap analysis, color identity
@@ -180,6 +237,7 @@ libs/
 specs/
   journeys/     Gherkin user journey specs — source of truth for E2E tests
 scripts/
+  data/         Builders for data/generated: build-card-index.ts, build-meta.ts
   eval-decks.ts Quality harness — 8 test commanders against live API
 ```
 
@@ -196,6 +254,14 @@ scripts/
 | `POST` | `/api/decks/build-from-commander` | **Core:** Build 100-card Commander deck |
 | `POST` | `/api/decks/build-from-theme` | Theme-based commander discovery (API only — no UI yet) |
 | `POST` | `/api/ai/explain-deck` | AI strategy explanation via Claude |
+| `GET` | `/api/advisor/status` | What data the advisor is running on: card count, meta formats, sources |
+| `GET` | `/api/advisor/collection/sample?profile=` | A made-up collection (`newcomer`, `regular`, `veteran`) for trying the advisor |
+| `POST` | `/api/advisor/collection/import` | `{ texts: string[] }` → collection keyed by card, wildcards, saved decks |
+| `POST` | `/api/advisor/deck/check` | `{ deckText, format, collection?, craft? }` → gap, stand-ins, buildable list |
+| `POST` | `/api/advisor/meta` | `{ format, collection? }` → archetypes, ranked by the collection when given |
+| `POST` | `/api/advisor/meta/check` | `{ format, archetypeId, list?, collection?, craft? }` → check of an archetype's list |
+
+The API keeps nothing between requests. The collection lives in the browser and travels with each request as `{ cards: { <oracleId>: copies }, wildcards? }`.
 
 #### Build from Commander — Request/Response Shape
 
@@ -260,8 +326,10 @@ This project includes a `Dockerfile` and `render.yaml` for one-click deployment 
 5. **Deploy** — Render will build the Docker image and start the service
 
 The Dockerfile uses a multi-stage build:
-- **Builder stage**: Installs all dependencies, runs `pnpm build` to compile TypeScript and build the React SPA
-- **Runner stage**: Copies only `dist/` and `node_modules/`, runs the Fastify server which serves both the API (`/api/*`) and the SPA (all other routes)
+- **Builder stage**: Installs all dependencies, runs `pnpm build` to compile TypeScript and build the React SPA, then builds the advisor's data (`pnpm data:cards`, `pnpm data:meta`). The card index is required and fails the build if Scryfall cannot be reached; the meta snapshots are optional.
+- **Runner stage**: Copies only `dist/`, `data/generated/` and `node_modules/`, runs the Fastify server which serves both the API (`/api/*`) and the SPA (all other routes)
+
+The data is a snapshot taken at image build time: rebuild the image to refresh cards and the meta. The process holds about 300 MB with the card index loaded.
 
 **Local Docker test:**
 ```bash

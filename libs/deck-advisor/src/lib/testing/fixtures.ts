@@ -65,6 +65,8 @@ const CARDS: CardSpec[] = [
   { name: 'Watery Grave', type: 'Land — Island Swamp', rarity: 'rare', text: '({T}: Add {U} or {B}.)', tags: ['dual-land', 'conditional-tapland'], identity: ['U', 'B'], produces: ['U', 'B'] },
   { name: 'Secluded Courtyard', type: 'Land', rarity: 'uncommon', text: 'Choose a creature type. {T}: Add one mana of any color. Spend it only on that type.', tags: ['rainbow-land', 'restricted-mana'], produces: ['W', 'U', 'B', 'R', 'G'] },
   { name: 'Cavern of Souls', type: 'Land', rarity: 'mythic', text: 'Choose a creature type. {T}: Add one mana of any color. Spend it only on that type.', tags: ['rainbow-land', 'restricted-mana'], produces: ['W', 'U', 'B', 'R', 'G'] },
+  { name: 'Mutavault', type: 'Land', rarity: 'rare', text: '{T}: Add {C}. {1}: This becomes a 2/2 creature until end of turn.', tags: ['creatureland'], produces: ['C'] },
+  { name: 'Soulstone Sanctuary', type: 'Land', rarity: 'rare', text: '{T}: Add {C}. {4}: This becomes a 3/3 creature.', tags: ['creatureland'], produces: ['C'] },
   { name: 'Island', type: 'Basic Land — Island', identity: ['U'], produces: ['U'] },
   { name: 'Mountain', type: 'Basic Land — Mountain', identity: ['R'], produces: ['R'] },
   { name: 'Swamp', type: 'Basic Land — Swamp', identity: ['B'], produces: ['B'] },

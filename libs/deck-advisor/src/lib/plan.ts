@@ -1,7 +1,7 @@
 import type { CardIndex, Format, IndexedCard } from '@mtg/card-index';
 import { formatArenaDeck } from './deck-text';
 import { FORMAT_RULES } from './formats';
-import { analyzeGap, emptyWildcards, isLand } from './gap';
+import { analyzeGap, deckCopies, emptyWildcards, isLand } from './gap';
 import { suggestSubstitutes } from './substitutes';
 import type { TextModel } from './similarity';
 import type {
@@ -46,9 +46,17 @@ interface Hole {
 function importance(gap: CardGap, usage: ArchetypeUsage | undefined): number {
   const weight = BOARD_WEIGHT[gap.board];
   if (!usage) return weight;
-  const share = gap.board === 'sideboard' ? usage.sideShare(gap.name) : usage.mainShare(gap.name);
+  const id = gap.card?.oracleId ?? '';
+  const share = gap.board === 'sideboard' ? usage.sideShare(id) : usage.mainShare(id);
   // A card every list plays is core; one a fifth of lists play is a flex slot.
   return weight * (0.4 + 0.6 * share);
+}
+
+function craftNote(best: Substitute | undefined): string {
+  if (!best) return 'Worth the wildcard: nothing you own does this job.';
+  if (best.quality === 'close') return `${best.card.name} would be a close stand-in, but the wildcard is there for the real card.`;
+  if (best.quality === 'partial') return `Worth the wildcard: the closest card you own (${best.card.name}) is only a partial match.`;
+  return `Worth the wildcard: nothing you own really replaces it (closest: ${best.card.name}).`;
 }
 
 function addTo(lines: DeckLine[], name: string, count: number): void {
@@ -75,21 +83,13 @@ export function planDeck(
   const usage = options.usage;
 
   // What the player can sleeve up right now; holes are filled below.
-  const inDeck = new Map<string, number>();
   const built: Record<Board, DeckLine[]> = { commander: [], companion: [], main: [], sideboard: [] };
   for (const entry of gap.cards) {
-    if (entry.owned > 0 && entry.card) {
-      addTo(built[entry.board], entry.card.arenaName ?? entry.card.name, entry.owned);
-      inDeck.set(entry.card.oracleId, (inDeck.get(entry.card.oracleId) ?? 0) + entry.owned);
-    }
+    if (entry.owned > 0 && entry.card) addTo(built[entry.board], entry.card.arenaName ?? entry.card.name, entry.owned);
   }
-  // Copies still to come count against the copy limit, or a stand-in could collide with a later craft.
-  const reserved = new Map(inDeck);
-  for (const entry of gap.cards) {
-    if (entry.card && entry.missing > 0) {
-      reserved.set(entry.card.oracleId, (reserved.get(entry.card.oracleId) ?? 0) + entry.missing);
-    }
-  }
+  // Every copy the list asks for counts against the copy limit, owned or not,
+  // or a stand-in could collide with a later craft of the same card.
+  const reserved = deckCopies(gap);
 
   const holes: Hole[] = [];
   const steps: PlanStep[] = [];
@@ -131,9 +131,7 @@ export function planDeck(
       addTo(built[hole.gap.board], hole.card.arenaName ?? hole.card.name, count);
       steps.push({
         action: 'craft', board: hole.gap.board, target: hole.card.name, count, craftRarity: rarity,
-        note: best
-          ? `Worth the wildcard: the closest card you own (${best.card.name}) is only a ${best.quality} match.`
-          : 'Worth the wildcard: nothing you own does this job.',
+        note: craftNote(best),
       });
     }
   }

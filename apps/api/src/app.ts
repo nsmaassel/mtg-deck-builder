@@ -3,6 +3,8 @@ import { collectionRoutes } from './routes/collection';
 import { commanderRoutes } from './routes/commanders';
 import { deckRoutes } from './routes/decks';
 import { themeRoutes } from './routes/themes';
+import { advisorRoutes } from './routes/advisor';
+import type { AdvisorData } from '@mtg/deck-advisor';
 import { resolve } from 'path';
 import { existsSync, readFileSync, statSync } from 'fs';
 import { ScryfallError } from '@mtg/scryfall';
@@ -67,7 +69,12 @@ async function serveStatic(url: string, reply: FastifyReply): Promise<boolean> {
   return false;
 }
 
-export function buildApp() {
+export interface AppOptions {
+  /** Generated card and meta data for the deck advisor. Without it the advisor routes answer 503. */
+  advisor?: AdvisorData | null;
+}
+
+export function buildApp(options: AppOptions = {}) {
   const app = Fastify({
     logger: {
       level: process.env['LOG_LEVEL'] ?? 'info',
@@ -90,6 +97,7 @@ export function buildApp() {
   app.register(commanderRoutes);
   app.register(deckRoutes);
   app.register(themeRoutes);
+  app.register(advisorRoutes, { advisor: options.advisor ?? null });
 
   // External data-source failures (Scryfall/EDHRec) are already retried inside
   // their clients; if one still fails, surface a friendly 502 instead of a raw

@@ -12,6 +12,10 @@ Each `.feature.md` file maps to one or more automated tests.
 | J-003 | [Owned Cards Only](./003-owned-only.feature.md) | `apps/web-e2e/src/journeys/owned-only.spec.ts` | `@regression` |
 | J-005 | [Gap Analysis](./005-gap-analysis.feature.md) | `apps/web-e2e/src/journeys/happy-path.spec.ts` | `@regression` |
 | J-008 | [Error States](./008-error-states.feature.md) | `apps/web-e2e/src/journeys/error-states.spec.ts` | `@smoke @regression` |
+| J-009 | [New Player Onboarding](./009-new-player-onboarding.feature.md) | `apps/web-e2e/src/journeys/new-player-onboarding.spec.ts` | `@smoke @regression @onboarding` |
+| J-010 | [Check a Deck Against My Collection](./010-deck-check.feature.md) | `libs/deck-advisor/src/lib/*.spec.ts`, `apps/api/src/routes/advisor.integration.spec.ts` | `@smoke @regression` |
+| J-011 | [Bring My Arena Collection](./011-collection-import.feature.md) | `libs/collection/src/lib/import/*.spec.ts` | `@smoke @regression` |
+| J-012 | [Find the Meta Deck I Am Closest To](./012-meta-decks.feature.md) | `libs/meta-decks/src/lib/*.spec.ts` | `@regression` |
 
 ## Running Tests
 

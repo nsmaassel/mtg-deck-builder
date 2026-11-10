@@ -18,6 +18,14 @@ COPY . .
 # Build the API and web SPA into dist/
 RUN pnpm nx run-many --target=build --all --parallel=4
 
+# Build the data the deck advisor reads at start-up. The card index is required;
+# the image is useless for the advisor without it, so a failure stops the build.
+# Meta snapshots come from community repositories and are optional: without
+# them the advisor still checks pasted decklists.
+RUN apk add --no-cache git
+RUN pnpm data:cards
+RUN pnpm data:meta || echo "WARNING: meta snapshots not built; the advisor will run without meta decks"
+
 # Production stage
 FROM node:20-alpine AS runner
 
@@ -27,6 +35,7 @@ ENV NODE_ENV=production
 
 # Copy built artifacts and runtime deps
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/data/generated ./data/generated
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=builder /app/pnpm-workspace.yaml ./pnpm-workspace.yaml

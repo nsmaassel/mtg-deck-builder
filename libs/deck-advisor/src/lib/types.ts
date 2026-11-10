@@ -115,13 +115,13 @@ export interface Substitute {
   reasons: string[];
 }
 
-/** How often an archetype's lists play a card, keyed by normalised card name. */
+/** How often an archetype's lists play a card, by oracle id. */
 export interface ArchetypeUsage {
   archetype: string;
   /** Share of lists with the card in the main deck (0–1). */
-  mainShare(cardName: string): number;
+  mainShare(oracleId: string): number;
   /** Share of lists with the card in the sideboard (0–1). */
-  sideShare(cardName: string): number;
+  sideShare(oracleId: string): number;
 }
 
 export type PlanAction = 'craft' | 'substitute' | 'unfilled';

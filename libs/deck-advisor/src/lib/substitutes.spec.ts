@@ -142,6 +142,27 @@ describe('suggestSubstitutes', () => {
     expect(suggest('Shock', { owned: {}, colors: ['R'] }, { sources: ['craft'] })).toEqual([]);
   });
 
+  it('does not offer to craft more copies of a card the list already plays', () => {
+    const setup = { owned: {}, colors: ['R'] };
+    expect(names(suggest('Slickshot Show-Off', setup, { sources: ['craft'] }))).toContain('Crackling Cyclops');
+    expect(names(suggest('Slickshot Show-Off', { ...setup, inDeck: { 'Crackling Cyclops': 2 } }, { sources: ['craft'] })))
+      .not.toContain('Crackling Cyclops');
+  });
+
+  it('still offers spare owned copies of a card the list already plays', () => {
+    const subs = suggest('Slickshot Show-Off', { owned: { 'Crackling Cyclops': 4 }, colors: ['R'], inDeck: { 'Crackling Cyclops': 2 } });
+    expect(subs.find(s => s.card.name === 'Crackling Cyclops')).toMatchObject({ source: 'owned', available: 2 });
+  });
+
+  it('calls a basic land a partial match at best for a utility land, and a like land a close one', () => {
+    const subs = suggest('Mutavault', { owned: { 'Soulstone Sanctuary': 1 }, colors: ['U'] }, { sources: ['owned'] });
+    expect(subs[0]).toMatchObject({ quality: 'close' });
+    expect(subs[0]?.card.name).toBe('Soulstone Sanctuary');
+    const island = subs.find(s => s.card.name === 'Island')!;
+    expect(island.quality).not.toBe('close');
+    expect(island.reasons[0]).toBe('A land in your colours for a utility land');
+  });
+
   it('lists an owned card once, as owned, when both sources are asked for', () => {
     const subs = suggest('Slickshot Show-Off', { owned: { 'Crackling Cyclops': 4 }, colors: ['R'] });
     expect(subs.filter(s => s.card.name === 'Crackling Cyclops').map(s => s.source)).toEqual(['owned']);
@@ -168,7 +189,7 @@ describe('suggestSubstitutes', () => {
   it('uses archetype evidence to break ties between equally similar cards', () => {
     const usage: ArchetypeUsage = {
       archetype: 'Azorius Control',
-      mainShare: name => (name === 'Negate' ? 0.6 : 0),
+      mainShare: id => (id === oracleId('Negate') ? 0.6 : 0),
       sideShare: () => 0,
     };
     // Two counterspells at the same cost standing in for a cantrip: nothing separates them but usage.

@@ -38,5 +38,9 @@ coverage
 # Nx
 .nx
 
+# Generated data and download caches: the image builds its own
+data/generated
+.cache
+
 # Spec files
 specs

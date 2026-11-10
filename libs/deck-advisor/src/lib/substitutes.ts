@@ -38,11 +38,13 @@ export interface SubstituteOptions {
 /** A spell must clear this to be called a close stand-in; below PARTIAL it is a stopgap. */
 const CLOSE = 0.65;
 const PARTIAL = 0.45;
+/** Doing one of the original's primary jobs earns "partial" from this score up. */
+const PARTIAL_ON_ROLE = 0.35;
 
 /** Rules text is only compared for this many of the best candidates by every other signal. */
 const TEXT_SHORTLIST = 60;
 
-const SPELL_WEIGHTS: ScoreBreakdown = { role: 0.45, text: 0.15, type: 0.12, cost: 0.12, color: 0.04, meta: 0.12 };
+const SPELL_WEIGHTS: ScoreBreakdown = { role: 0.42, text: 0.13, type: 0.12, cost: 0.17, color: 0.04, meta: 0.12 };
 // For a land, `color` is how much of the original's mana it makes and `cost` is whether it enters untapped.
 const LAND_WEIGHTS: ScoreBreakdown = { role: 0.3, text: 0.05, type: 0, cost: 0.15, color: 0.4, meta: 0.1 };
 
@@ -92,10 +94,11 @@ function popularity(card: IndexedCard): number {
 
 function metaScore(candidate: IndexedCard, usage: ArchetypeUsage | undefined): { score: number; share: number } {
   if (!usage) return { score: popularity(candidate), share: 0 };
-  const share = usage.mainShare(candidate.name) + 0.5 * usage.sideShare(candidate.name);
+  const main = usage.mainShare(candidate.oracleId);
+  const share = main + 0.5 * usage.sideShare(candidate.oracleId);
   if (share <= 0) return { score: 0.4 * popularity(candidate), share: 0 };
   // Half the archetype's lists playing a card is as strong as this evidence gets.
-  return { score: Math.min(1, share / 0.5), share: usage.mainShare(candidate.name) };
+  return { score: Math.min(1, share / 0.5), share: main };
 }
 
 /** 1 = always enters tapped, 0.5 = sometimes, 0 = untapped. */
@@ -138,9 +141,21 @@ function manaLabel(colors: string[]): string {
   return colors.map(c => COLOR_NAMES[c] ?? 'colourless').join(' and ');
 }
 
-function quality(score: number): MatchQuality {
-  if (score >= CLOSE) return 'close';
-  return score >= PARTIAL ? 'partial' : 'weak';
+function quality(target: IndexedCard, scored: Scored, score: number, ctx: SubstituteContext): MatchQuality {
+  const sharesPrimaryRole = scored.shared.some(tag => PRIMARY_ROLE_PATTERN.test(tag));
+  // A card that does none of the jobs the original was picked for is a stopgap, however alike it looks.
+  if (scored.uncovered.length > 0 && !sharesPrimaryRole) return 'weak';
+
+  let grade: MatchQuality = 'weak';
+  if (score >= CLOSE) grade = 'close';
+  else if (score >= PARTIAL || (sharesPrimaryRole && score >= PARTIAL_ON_ROLE)) grade = 'partial';
+
+  // Nothing is a close match for a utility land except a land that does what it does.
+  if (grade === 'close' && isLand(target) && scored.breakdown.role < 0.5) {
+    const makesColour = target.producedMana.some(c => ctx.colors.includes(c));
+    if (!makesColour) grade = 'partial';
+  }
+  return grade;
 }
 
 interface Candidate {
@@ -194,6 +209,8 @@ function* candidates(target: IndexedCard, ctx: SubstituteContext, sources: Subst
     const targetRank = RARITIES.indexOf(target.arenaRarity);
     for (const card of ctx.index.all()) {
       if (!card.arenaRarity || RARITIES.indexOf(card.arenaRarity) >= targetRank) continue;
+      // Crafting more copies of a card the list already plays is a change of deck, not a stand-in.
+      if (ctx.inDeck.has(card.oracleId)) continue;
       if (spare(card) >= 1 || !isEligible(target, card, ctx)) continue;
       const available = room(card);
       if (available >= 1) yield { card, source: 'craft', available };
@@ -332,13 +349,11 @@ export function suggestSubstitutes(
     .map(scored => {
       scored.breakdown.text = ctx.text.similarity(target, scored.card);
       const score = weigh(scored.breakdown, scored.weights);
-      // A card that does none of the jobs the original was picked for is a stopgap, however alike it looks.
-      const offRole = scored.uncovered.length > 0 && !scored.shared.some(tag => PRIMARY_ROLE_PATTERN.test(tag));
       const substitute: Substitute = {
         card: scored.card,
         source: scored.source,
         score,
-        quality: offRole ? 'weak' : quality(score),
+        quality: quality(target, scored, score, ctx),
         available: scored.available,
         breakdown: scored.breakdown,
         reasons: describe(target, scored, ctx),
