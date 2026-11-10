@@ -1,0 +1,19 @@
+{
+  "name": "meta-decks",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/meta-decks/src",
+  "projectType": "library",
+  "tags": ["type:lib", "scope:meta-decks"],
+  "targets": {
+    "test": {
+      "executor": "@nx/vitest:test",
+      "options": { "config": "libs/meta-decks/vite.config.ts" }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit -p libs/meta-decks/tsconfig.lib.json && tsc --noEmit -p libs/meta-decks/tsconfig.spec.json && tsc --noEmit -p libs/meta-decks/tsconfig.scripts.json"
+      }
+    }
+  }
+}

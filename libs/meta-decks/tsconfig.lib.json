@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "outDir": "../../dist/libs/meta-decks", "types": ["node"] },
+  "include": ["src/**/*.ts"],
+  "exclude": ["**/*.spec.ts"]
+}
