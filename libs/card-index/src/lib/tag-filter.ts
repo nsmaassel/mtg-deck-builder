@@ -38,6 +38,19 @@ export const NOISE_TAG_ROOTS: readonly string[] = [
   'minigame',
 ];
 
+/**
+ * How a card is cast, costed or templated, as opposed to what it does. Two
+ * adventure cards share `castable-from-exile` and nothing else worth knowing.
+ * Same rule as the trivia roots: the tag and everything beneath it.
+ */
+export const STRUCTURAL_TAG_ROOTS: readonly string[] = [
+  'castable-from-nonhand', 'unexile', 'exile-self', 'alternative-cost', 'additional-cost',
+  'cheaper-than-mv', 'more-expensive-than-mv', 'single-target-instant-sorcery', 'multiple-targets',
+  'flavors-of-vanilla', 'indefinite-effect', 'repeatable-crime', 'characteristic-defining-ability',
+  'self-replacement-effect', 'inverted-effects', 'offcolor-ability', 'out-of-color-token',
+  'modal', 'drawback', 'symmetrical', 'faux-targeting', 'opponent-chooses', 'dilemma',
+];
+
 /** These tags only; their children stay (`counterspell` sits under `blue-effect`). */
 export const NOISE_TAGS: readonly string[] = [
   'triggered-ability', 'activated-ability',

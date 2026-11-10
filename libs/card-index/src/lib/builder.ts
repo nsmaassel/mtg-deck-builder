@@ -1,5 +1,5 @@
 import { splitFaces } from './names';
-import { NOISE_TAG_PATTERNS, NOISE_TAG_ROOTS, NOISE_TAGS } from './tag-filter';
+import { NOISE_TAG_PATTERNS, NOISE_TAG_ROOTS, NOISE_TAGS, STRUCTURAL_TAG_ROOTS } from './tag-filter';
 import { FORMATS, RARITIES } from './types';
 import type {
   CardIndexFile,
@@ -116,6 +116,10 @@ export class CardIndexBuilder {
       if (typeof p.arena_id === 'number') draft.arenaIds.add(p.arena_id);
       if (p.printed_name && p.printed_name !== p.name && (p.lang ?? 'en') === 'en') {
         draft.arenaName = p.printed_name;
+      } else if (!draft.arenaName && p.layout !== 'split') {
+        // Arena writes a double-faced, adventure or prepare card by its front face; split cards keep both halves.
+        const faces = splitFaces(p.name);
+        if (faces.length > 1) draft.arenaName = faces[0];
       }
     }
 
@@ -179,8 +183,9 @@ export class CardIndexBuilder {
    */
   private noiseTagIds(): { ids: Set<string>; unknown: string[] } {
     const bySlug = new Map([...this.tags.values()].map(t => [t.slug, t.id]));
-    const unknown = [...NOISE_TAG_ROOTS, ...NOISE_TAGS].filter(slug => !bySlug.has(slug));
-    const noiseRoots = new Set(NOISE_TAG_ROOTS.map(slug => bySlug.get(slug)).filter(Boolean));
+    const roots = [...NOISE_TAG_ROOTS, ...STRUCTURAL_TAG_ROOTS];
+    const unknown = [...roots, ...NOISE_TAGS].filter(slug => !bySlug.has(slug));
+    const noiseRoots = new Set(roots.map(slug => bySlug.get(slug)).filter(Boolean));
     const ids = new Set<string>(NOISE_TAGS.map(slug => bySlug.get(slug)).filter((id): id is string => !!id));
 
     const rootsOf = new Map<string, Set<string>>();

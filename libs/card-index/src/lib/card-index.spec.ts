@@ -167,6 +167,17 @@ describe('CardIndexBuilder', () => {
     expect(card.arenaName).toBe('Fizik, Etherium Mechanic');
   });
 
+  it('uses the front face as the Arena name of a double-faced card, but both halves of a split card', () => {
+    const index = build([
+      printing({ name: 'Bonecrusher Giant // Stomp', layout: 'adventure', games: ['arena'] }),
+      printing({ name: 'Fire // Ice', layout: 'split', games: ['arena'] }),
+      printing({ name: 'Delver of Secrets // Insectile Aberration', layout: 'transform', games: ['paper'] }),
+    ]);
+    expect(index.byName('Bonecrusher Giant')?.arenaName).toBe('Bonecrusher Giant');
+    expect(index.byName('Fire // Ice')?.arenaName).toBeUndefined();
+    expect(index.byName('Delver of Secrets')?.arenaName).toBeUndefined();
+  });
+
   it('never lets a flavour name shadow a real card of that name', () => {
     const index = build([
       printing({ name: 'Zeta', flavor_name: 'Alpha' }),
