@@ -414,6 +414,7 @@ textarea { resize: vertical; }
 .chat-steps { list-style: none; display: grid; gap: 0.1rem; font-size: 0.78rem; color: var(--ink-faint); }
 .chat-steps li::before { content: '↳ '; }
 .chat-thinking { color: var(--ink-soft); font-size: 0.9rem; }
+.chat-notice { color: var(--warn); font-size: 0.8rem; line-height: 1.4; }
 .chat-form { display: flex; gap: 0.6rem; }
 .chat-form input {
   flex: 1; min-width: 0; padding: 0.65rem; border: 1px solid #44527a; border-radius: 6px;

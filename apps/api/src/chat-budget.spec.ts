@@ -41,4 +41,18 @@ describe('ChatBudget', () => {
     budget.spend();
     expect(budget.remainingToday).toBe(9);
   });
+
+  it('gives back the day\'s count for an unanswered message but not the minute\'s', () => {
+    const budget = new ChatBudget({ perDay: 2, perMinute: 2, now: () => DAY });
+    budget.spend();
+    budget.refund();
+    expect(budget.remainingToday).toBe(2);
+    budget.spend();
+    // Two attempts this minute, whatever became of them.
+    expect(budget.spend()).toEqual({ allowed: false, reason: 'minute' });
+    budget.refund();
+    budget.refund();
+    budget.refund();
+    expect(budget.remainingToday).toBe(2);
+  });
 });

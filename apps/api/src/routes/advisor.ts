@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { AdvisorChatError } from '@mtg/advisor-agent';
-import type { AdvisorChat } from '@mtg/advisor-agent';
+// Types only: the agent library pulls in the ADK, which a server without a model never loads.
+import type { AdvisorChat, AdvisorChatError } from '@mtg/advisor-agent';
 import { FORMATS } from '@mtg/card-index';
 import type { Format } from '@mtg/card-index';
 import { importCollection, mergeImports, resolveCollection } from '@mtg/collection';
@@ -102,6 +102,10 @@ function formatOrder(format: string): number {
 /** Snapshot links come from third-party data and end up in an href: web links only. */
 function webLink(uri: string): string {
   return /^https?:\/\//i.test(uri) ? uri : '';
+}
+
+function isChatError(err: unknown): err is AdvisorChatError {
+  return err instanceof Error && err.name === 'AdvisorChatError' && 'kind' in err;
 }
 
 function listSummary(list: TournamentDeck) {
@@ -389,8 +393,13 @@ export async function advisorRoutes(app: FastifyInstance, options: AdvisorRouteO
         const collection = request.body.collection ? toCollection(request.body.collection) : null;
         return reply.send(await chat.send({ sessionId: request.body.sessionId, message, collection }));
       } catch (err) {
-        if (err instanceof AdvisorChatError && err.kind === 'limit') {
-          return reply.status(409).send({ error: 'Conversation too long', message: err.message });
+        // No answer, no charge against the day.
+        chatBudget?.refund();
+        if (isChatError(err) && err.kind !== 'model') {
+          return reply.status(409).send({
+            error: err.kind === 'limit' ? 'Conversation too long' : 'Still answering',
+            message: err.message,
+          });
         }
         // The provider's own error text can name projects and quotas: log it, do not send it.
         request.log.error({ err }, 'advisor chat failed');

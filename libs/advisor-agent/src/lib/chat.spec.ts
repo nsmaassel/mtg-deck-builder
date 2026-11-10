@@ -64,7 +64,7 @@ describe('AdvisorChat', () => {
 
     expect(turn.reply).toBe('Build Izzet Prowess: you own most of it.');
     expect(turn.steps).toEqual([
-      { tool: 'list_meta_decks', summary: 'Ranked the standard meta against your collection' },
+      { tool: 'list_meta_decks', summary: 'Looked up the standard meta against your collection' },
       { tool: 'check_meta_deck', summary: 'Checked izzet-prowess against your collection' },
     ]);
     expect(turn.sessionId).toMatch(/^[0-9a-f-]{36}$/);
@@ -94,19 +94,78 @@ describe('AdvisorChat', () => {
     expect(JSON.stringify(model.requests[2]!.contents)).not.toContain('pineapple');
   });
 
-  it('starts afresh when the session id is unknown or has expired', async () => {
+  it('starts afresh, and says so, when the session id is unknown or has expired', async () => {
     let now = 0;
-    const model = new ScriptedLlm([say('a'), say('b'), say('c')]);
+    const model = new ScriptedLlm([say('a'), say('b'), say('c'), say('d')]);
     const chat = new AdvisorChat({ data, model, sessionTtlMs: 1000, now: () => now });
     const first = await chat.send({ message: 'pineapple', collection: null });
+    expect(first.restarted).toBeUndefined();
 
     const unknown = await chat.send({ sessionId: 'made-up-id', message: 'hi', collection: null });
     expect(unknown.sessionId).not.toBe('made-up-id');
+    expect(unknown.restarted).toBe(true);
 
     now = 5000;
     const later = await chat.send({ sessionId: first.sessionId, message: 'still there?', collection: null });
     expect(later.sessionId).not.toBe(first.sessionId);
+    expect(later.restarted).toBe(true);
     expect(JSON.stringify(model.requests[2]!.contents)).not.toContain('pineapple');
+
+    const continued = await chat.send({ sessionId: later.sessionId, message: 'and now?', collection: null });
+    expect(continued.restarted).toBeUndefined();
+  });
+
+  it('leaves no trace of a turn that failed, and does not count it', async () => {
+    const model = new ScriptedLlm([
+      say('first answer'),
+      callTool('collection_summary'),
+      { errorCode: '503', errorMessage: 'overloaded' },
+      say('second answer'),
+    ]);
+    const chat = new AdvisorChat({ data, model, maxTurnsPerSession: 2 });
+    const first = await chat.send({ message: 'alpha question', collection: null });
+
+    await expect(chat.send({ sessionId: first.sessionId, message: 'bravo question', collection: null }))
+      .rejects.toMatchObject({ kind: 'model' });
+
+    // The retry is the conversation's second turn, not its third, and the model sees
+    // the failed question once (now), not twice, and none of its orphaned tool calls.
+    const retry = await chat.send({ sessionId: first.sessionId, message: 'bravo question', collection: null });
+    expect(retry).toMatchObject({ sessionId: first.sessionId, reply: 'second answer' });
+    const sent = JSON.stringify(model.requests.at(-1)!.contents);
+    expect(sent).toContain('alpha question');
+    expect(sent.split('bravo question')).toHaveLength(2);
+    expect(sent).not.toContain('collection_summary');
+  });
+
+  it('refuses a second message while the first is still being answered, and keeps that conversation alive', async () => {
+    let release: (value: string) => void = () => undefined;
+    const held = new Promise<string>(resolve => { release = resolve; });
+    let now = 0;
+    const slow = new ScriptedLlm([say('warm-up'), say('other'), say('slow answer')]);
+    const original = slow.generateContentAsync.bind(slow);
+    let calls = 0;
+    slow.generateContentAsync = async function* (request) {
+      calls += 1;
+      if (calls === 2) await held;
+      yield* original(request);
+    };
+
+    const chat = new AdvisorChat({ data, model: slow, maxSessions: 1, sessionTtlMs: 10, now: () => now });
+    const first = await chat.send({ message: 'warm-up', collection: null });
+    const pending = chat.send({ sessionId: first.sessionId, message: 'slow one', collection: null });
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    await expect(chat.send({ sessionId: first.sessionId, message: 'impatient', collection: null }))
+      .rejects.toMatchObject({ kind: 'busy' });
+
+    // Another visitor arrives long after the TTL with the session table full:
+    // the conversation that is mid-answer must not be evicted to make room.
+    now = 1000;
+    const other = chat.send({ message: 'someone else', collection: null });
+    release('go');
+    expect((await pending).sessionId).toBe(first.sessionId);
+    await other;
   });
 
   it('forgets the longest-idle conversation when too many are open', async () => {
@@ -154,6 +213,32 @@ describe('AdvisorChat', () => {
 });
 
 describe('advisor tools', () => {
+  it('says when a check ran without a collection, in the result and in the step label', async () => {
+    const without = await toolResult('check_meta_deck', { format: 'standard', archetype: 'izzet-prowess' }, null);
+    expect(without['collectionLoaded']).toBe(false);
+    expect(without['note']).toMatch(/No collection is loaded/);
+    const withOne = await toolResult('check_meta_deck', { format: 'standard', archetype: 'izzet-prowess' });
+    expect(withOne['collectionLoaded']).toBe(true);
+    expect(withOne['note']).toBeUndefined();
+
+    const standIns = await toolResult('find_stand_ins', { card: 'Slickshot Show-Off', format: 'standard' }, null);
+    expect(standIns['collectionLoaded']).toBe(false);
+
+    const model = new ScriptedLlm([callTool('check_meta_deck', { format: 'standard', archetype: 'izzet-prowess' }), say('ok')]);
+    const turn = await new AdvisorChat({ data, model }).send({ message: 'go', collection: null });
+    expect(turn.steps).toEqual([{ tool: 'check_meta_deck', summary: 'Checked izzet-prowess' }]);
+  });
+
+  it('describes spare copies the same way in every tool', async () => {
+    const check = await toolResult('check_decklist', { deckText: '4 Steam Vents\n4 Shock\n4 Opt\n', format: 'standard' });
+    const vents = (check['missing'] as Array<Record<string, unknown>>).find(m => m['card'] === 'Steam Vents')!;
+    const fromCheck = (vents['standIns'] as Array<Record<string, string>>).find(s => s['card'] === 'Island')!;
+    const direct = await toolResult('find_stand_ins', { card: 'Steam Vents', format: 'standard', deckColors: 'UR' });
+    const fromDirect = (direct['standIns'] as Array<Record<string, string>>).find(s => s['card'] === 'Island')!;
+    expect(fromCheck['source']).toBe('owned, any number spare');
+    expect(fromDirect['source']).toBe('owned, any number spare');
+  });
+
   it('collection_summary describes the collection, or says none is loaded', async () => {
     expect(await toolResult('collection_summary', {})).toMatchObject({
       loaded: true, differentCards: 3, copies: 12, wildcards: { common: 5, uncommon: 5, rare: 2, mythic: 0 },

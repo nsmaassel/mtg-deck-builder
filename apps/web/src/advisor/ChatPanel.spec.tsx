@@ -40,6 +40,7 @@ describe('ChatPanel', () => {
     expect(within(log).getByText('Which Standard deck am I closest to building?')).toBeInTheDocument();
     expect(await within(log).findByText('Izzet Prowess: you own 80% of it.')).toBeInTheDocument();
     expect(within(within(log).getByRole('list', { name: 'What the advisor ran' })).getByText(/Ranked the standard meta/)).toBeInTheDocument();
+    expect(screen.queryByText(/earlier conversation had expired/)).toBeNull();
     expect(mockChat).toHaveBeenCalledWith('Which Standard deck am I closest to building?', undefined, collection);
   });
 
@@ -72,6 +73,33 @@ describe('ChatPanel', () => {
     expect(screen.queryByText('Answer.')).toBeNull();
     await user.type(screen.getByRole('textbox', { name: 'Your question' }), 'again{Enter}');
     await waitFor(() => expect(mockChat).toHaveBeenLastCalledWith('again', undefined, null));
+  });
+
+  it('drops an answer that arrives after the conversation was cleared', async () => {
+    const user = userEvent.setup();
+    let deliver: (turn: unknown) => void = () => undefined;
+    mockChat
+      .mockReturnValueOnce(new Promise(resolve => { deliver = resolve; }))
+      .mockResolvedValueOnce({ sessionId: 's2', reply: 'New answer.', steps: [] });
+    render(<ChatPanel collection={null} available />);
+
+    await user.type(screen.getByRole('textbox', { name: 'Your question' }), 'old question{Enter}');
+    await user.click(screen.getByRole('button', { name: 'New conversation' }));
+    deliver({ sessionId: 's1', reply: 'Late answer.', steps: [] });
+
+    await user.type(screen.getByRole('textbox', { name: 'Your question' }), 'new question{Enter}');
+    await screen.findByText('New answer.');
+    expect(screen.queryByText('Late answer.')).toBeNull();
+    // The new conversation did not inherit the old session.
+    expect(mockChat).toHaveBeenLastCalledWith('new question', undefined, null);
+  });
+
+  it('says when the server had lost the earlier conversation', async () => {
+    const user = userEvent.setup();
+    mockChat.mockResolvedValue({ sessionId: 's9', reply: 'Which deck do you mean?', steps: [], restarted: true });
+    render(<ChatPanel collection={null} available />);
+    await user.type(screen.getByRole('textbox', { name: 'Your question' }), 'and the sideboard?{Enter}');
+    expect(await screen.findByText(/earlier conversation had expired/)).toBeInTheDocument();
   });
 
   it('shows the server\'s explanation when the advisor cannot answer, and keeps the question', async () => {

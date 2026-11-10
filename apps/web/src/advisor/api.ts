@@ -104,6 +104,8 @@ export interface ChatTurn {
   sessionId: string;
   reply: string;
   steps: ChatStep[];
+  /** The server no longer had the conversation and started a new one with this answer. */
+  restarted?: boolean;
 }
 
 export type CraftMode = 'inventory' | 'none';

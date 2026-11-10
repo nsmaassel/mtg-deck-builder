@@ -46,6 +46,14 @@ export class ChatBudget {
     return { allowed: true };
   }
 
+  /**
+   * Give back the day's count for a message that got no answer. The minute's
+   * count stays, so a failing provider cannot be hammered.
+   */
+  refund(): void {
+    if (this.usedToday > 0) this.usedToday -= 1;
+  }
+
   get remainingToday(): number {
     const today = new Date(this.now()).toISOString().slice(0, 10);
     return today === this.day ? Math.max(0, this.options.perDay - this.usedToday) : this.options.perDay;

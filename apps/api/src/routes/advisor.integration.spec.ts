@@ -312,6 +312,33 @@ describe('POST /api/advisor/chat', () => {
     expect(JSON.parse(on.body).agent).toEqual({ available: true, model: 'scripted' });
   });
 
+  it('tells the client when the conversation it named is gone', async () => {
+    const instance = withChat(new ScriptedLlm([say('fresh')]));
+    const { body } = await post<{ sessionId: string; restarted?: boolean }>(
+      '/api/advisor/chat', { sessionId: 'from-before-a-restart', message: 'and the sideboard?' }, instance,
+    );
+    expect(body.restarted).toBe(true);
+    expect(body.sessionId).not.toBe('from-before-a-restart');
+  });
+
+  it('charges the day\'s budget only for messages that got an answer', async () => {
+    const budget = new ChatBudget({ perDay: 5, perMinute: 50 });
+    const failing = withChat(new ScriptedLlm([{ errorCode: '503', errorMessage: 'overloaded' }]), budget);
+    expect((await post('/api/advisor/chat', { message: 'hi' }, failing)).status).toBe(502);
+    expect(budget.remainingToday).toBe(5);
+
+    const tooLong = buildApp({
+      advisor,
+      chat: new AdvisorChat({ data: advisor, model: new ScriptedLlm([say('one')]), maxTurnsPerSession: 1 }),
+      chatBudget: budget,
+    });
+    const first = await post<{ sessionId: string }>('/api/advisor/chat', { message: 'one' }, tooLong);
+    const second = await post<{ error: string }>('/api/advisor/chat', { sessionId: first.body.sessionId, message: 'two' }, tooLong);
+    expect(second.status).toBe(409);
+    expect(second.body.error).toBe('Conversation too long');
+    expect(budget.remainingToday).toBe(4);
+  });
+
   it('stops at the spending ceiling without calling the model', async () => {
     const model = new ScriptedLlm([say('one')]);
     const instance = withChat(model, new ChatBudget({ perDay: 1, perMinute: 10 }));

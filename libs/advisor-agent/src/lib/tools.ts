@@ -11,7 +11,7 @@ import {
   parseDeckText,
   parseFormat,
 } from '@mtg/deck-advisor';
-import type { AdvisorData, Collection, DeckCheck, SubstituteView } from '@mtg/deck-advisor';
+import type { AdvisorData, Collection, DeckCheck } from '@mtg/deck-advisor';
 
 /** What a conversation knows about the player. The browser sends it with every message. */
 export interface PlayerContext {
@@ -32,19 +32,37 @@ function unknownFormat(format: string) {
   return { error: `Unknown format "${format}". Use one of: ${FORMATS.join(', ')}.` };
 }
 
-function standIn(substitute: SubstituteView) {
+/** The service reports "any number" as this many copies. */
+const UNLIMITED = 99;
+
+interface StandIn {
+  card: { name: string };
+  quality: string;
+  source: 'owned' | 'craft';
+  available: number;
+  craftRarity?: string;
+  reasons: string[];
+}
+
+function standIn(substitute: StandIn) {
+  const spare = substitute.available >= UNLIMITED ? 'any number' : String(substitute.available);
   return {
     card: substitute.card.name,
     match: substitute.quality,
-    source: substitute.source === 'owned' ? `owned, ${substitute.available} spare` : `craft (${substitute.craftRarity} wildcard)`,
+    source: substitute.source === 'owned' ? `owned, ${spare} spare` : `craft (${substitute.craftRarity} wildcard)`,
     why: substitute.reasons.join('; '),
   };
 }
 
+const NO_COLLECTION_NOTE =
+  'No collection is loaded, so every card is counted as not owned. Say so, and suggest loading one in the "Your collection" panel.';
+
 /** A deck check, cut down to what the model needs to explain it. */
-function summarizeCheck(check: DeckCheck) {
+function summarizeCheck(check: DeckCheck, collectionLoaded: boolean) {
   const { summary, plan } = check;
   return {
+    collectionLoaded,
+    note: collectionLoaded ? undefined : NO_COLLECTION_NOTE,
     format: check.format,
     deck: check.deckName ?? check.archetype,
     colors: check.colors.join('') || 'colourless',
@@ -102,6 +120,22 @@ function describeCard(card: IndexedCard, collection: Collection | null) {
 export function createAdvisorTools(data: AdvisorData, player: PlayerContext): FunctionTool[] {
   const empty: Collection = { owned: new Map() };
   const collection = () => player.collection ?? empty;
+  const loaded = player.collection !== null;
+
+  // Working out which cards may enter a deck scans the whole card pool, so a finder is kept per
+  // format and colours for the turn: the model often asks about several cards of one deck.
+  const finders = new Map<string, SubstituteFinder>();
+  const finderFor = (format: Format, colors: string[]): SubstituteFinder => {
+    const key = `${format}:${colors.join('')}`;
+    let finder = finders.get(key);
+    if (!finder) {
+      finder = new SubstituteFinder({
+        index: data.index, format, collection: collection(), colors, inDeck: new Map(), text: data.text,
+      });
+      finders.set(key, finder);
+    }
+    return finder;
+  };
 
   const collectionSummary = new FunctionTool({
     name: 'collection_summary',
@@ -180,7 +214,7 @@ export function createAdvisorTools(data: AdvisorData, player: PlayerContext): Fu
         craft: spendWildcards === false ? 'none' : 'inventory',
       });
       const { player: pilot, result, event, date } = found.representative;
-      return { list: `${pilot}, ${result}, ${event} (${date})`, ...summarizeCheck(check) };
+      return { list: `${pilot}, ${result}, ${event} (${date})`, ...summarizeCheck(check, loaded) };
     },
   });
 
@@ -202,7 +236,7 @@ export function createAdvisorTools(data: AdvisorData, player: PlayerContext): Fu
         return { error: 'No cards could be read from that text. A decklist has one "<count> <card name>" per line.' };
       }
       const check = checkDeck(deck, key, collection(), data, { craft: spendWildcards === false ? 'none' : 'inventory' });
-      return summarizeCheck(check);
+      return summarizeCheck(check, loaded);
     },
   });
 
@@ -236,20 +270,13 @@ export function createAdvisorTools(data: AdvisorData, player: PlayerContext): Fu
       const colors = deckColors
         ? [...deckColors.toUpperCase()].filter(c => 'WUBRG'.includes(c))
         : card.colorIdentity.length ? card.colorIdentity : frontColors(card);
-      const finder = new SubstituteFinder({
-        index: data.index, format: key, collection: collection(), colors, inDeck: new Map(), text: data.text,
-      });
-      const found = finder.suggest(card, { limit: 5 });
       return {
+        collectionLoaded: loaded,
+        note: loaded ? undefined : 'No collection is loaded, so only crafts can be suggested. Say so.',
         card: card.name,
         format: key,
         colors: colors.join('') || 'colourless',
-        standIns: found.map(s => ({
-          card: s.card.name,
-          match: s.quality,
-          source: s.source === 'owned' ? `owned, ${Number.isFinite(s.available) ? s.available : 'any number'} spare` : `craft (${s.craftRarity} wildcard)`,
-          why: s.reasons.join('; '),
-        })),
+        standIns: finderFor(key, colors).suggest(card, { limit: 5 }).map(standIn),
       };
     },
   });

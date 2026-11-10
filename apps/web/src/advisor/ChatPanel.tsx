@@ -12,6 +12,8 @@ interface Message {
   from: 'you' | 'advisor';
   text: string;
   steps?: ChatStep[];
+  /** The server had lost the earlier conversation when it gave this answer. */
+  restarted?: boolean;
 }
 
 const SUGGESTIONS = [
@@ -34,6 +36,8 @@ export function ChatPanel({ collection, available }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const log = useRef<HTMLDivElement>(null);
+  // Bumped when the conversation is cleared, so an answer still on its way is dropped.
+  const conversation = useRef(0);
 
   useEffect(() => {
     if (log.current) log.current.scrollTop = log.current.scrollHeight;
@@ -46,15 +50,25 @@ export function ChatPanel({ collection, available }: Props) {
     setDraft('');
     setBusy(true);
     setError(null);
+    const asked = conversation.current;
     try {
       const turn = await advisorApi.chat(message, sessionId, collection);
+      if (asked !== conversation.current) return;
       setSessionId(turn.sessionId);
-      setMessages(current => [...current, { from: 'advisor', text: turn.reply, steps: turn.steps }]);
+      setMessages(current => [...current, { from: 'advisor', text: turn.reply, steps: turn.steps, restarted: turn.restarted }]);
     } catch (err) {
-      setError(describeError(err));
+      if (asked === conversation.current) setError(describeError(err));
     } finally {
-      setBusy(false);
+      if (asked === conversation.current) setBusy(false);
     }
+  };
+
+  const startOver = () => {
+    conversation.current += 1;
+    setMessages([]);
+    setSessionId(undefined);
+    setError(null);
+    setBusy(false);
   };
 
   return (
@@ -62,7 +76,7 @@ export function ChatPanel({ collection, available }: Props) {
       <div className="panel-head">
         <h2 id="chat-heading">Ask the advisor</h2>
         {messages.length > 0 && (
-          <button type="button" className="btn-quiet" onClick={() => { setMessages([]); setSessionId(undefined); setError(null); }}>
+          <button type="button" className="btn-quiet" onClick={startOver}>
             New conversation
           </button>
         )}
@@ -92,6 +106,11 @@ export function ChatPanel({ collection, available }: Props) {
               {messages.map((message, i) => (
                 <div key={i} className={`chat-message chat-${message.from}`}>
                   <span className="chat-author">{message.from === 'you' ? 'You' : 'Advisor'}</span>
+                  {message.restarted && (
+                    <p className="chat-notice">
+                      The earlier conversation had expired on the server, so this answer does not know what came before it.
+                    </p>
+                  )}
                   {message.steps && message.steps.length > 0 && (
                     <ul className="chat-steps" aria-label="What the advisor ran">
                       {message.steps.map((step, j) => <li key={j}>{step.summary}</li>)}

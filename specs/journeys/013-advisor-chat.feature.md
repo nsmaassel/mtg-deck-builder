@@ -42,6 +42,17 @@ Feature: Conversational deck advice
     Then I am told chat is back tomorrow, and that the deck check still works
     And the model is not called
 
+  Scenario: A question that gets no answer costs nothing
+    Given the model fails, or my conversation is at its length limit
+    When I ask a question
+    Then the day's budget is not charged
+    And my conversation is left exactly as it was, so asking again is not asking twice
+
+  Scenario: The server has forgotten my conversation
+    Given my conversation expired or the server restarted
+    When I ask a follow-up
+    Then the answer is marked as starting a new conversation
+
   Scenario: No model configured
     Given the server has no model key
     Then the chat panel says so instead of offering an input
