@@ -3,16 +3,22 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "libs/power-level/src",
   "projectType": "library",
-  "tags": ["type:lib", "scope:power-level"],
+  "tags": [
+    "type:lib",
+    "scope:power-level"
+  ],
   "targets": {
     "test": {
       "executor": "@nx/vitest:test",
-      "options": { "config": "libs/power-level/vite.config.ts" }
+      "options": {
+        "config": "libs/power-level/vite.config.ts"
+      }
     },
     "typecheck": {
       "executor": "nx:run-commands",
-      "options": { "command": "tsc --noEmit -p libs/power-level/tsconfig.json" }
+      "options": {
+        "command": "tsc --noEmit -p libs/power-level/tsconfig.lib.json && tsc --noEmit -p libs/power-level/tsconfig.spec.json"
+      }
     }
   }
 }
-
