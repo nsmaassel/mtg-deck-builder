@@ -19,7 +19,7 @@
  *   --offline                    do not touch the network; use what is already in the cache
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import {
   META_FORMATS,
@@ -363,7 +363,9 @@ function main(): void {
     });
 
     const file = join(options.out, `${format}.json`);
-    writeFileSync(file, `${JSON.stringify(snapshot)}\n`);
+    // Written beside the target and moved into place, so a reader never sees half a snapshot.
+    writeFileSync(`${file}.part`, `${JSON.stringify(snapshot)}\n`);
+    renameSync(`${file}.part`, file);
 
     const ruleCounts = `${rules.archetypes.length} archetypes, ${rules.fallbacks.length} fallbacks`;
     printSummary(snapshot, window, matched, `${rulesLabel}: ${ruleCounts}`);

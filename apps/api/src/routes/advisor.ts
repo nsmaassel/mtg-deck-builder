@@ -131,7 +131,7 @@ export async function advisorRoutes(app: FastifyInstance, options: { advisor: Ad
     handler: async (request, reply) => {
       if (!data) return unavailable(reply);
       const profile = (request.query.profile ?? 'regular') as SampleProfile;
-      if (!(profile in SAMPLE_PROFILES)) {
+      if (!Object.hasOwn(SAMPLE_PROFILES, profile)) {
         return reply.status(400).send({ error: 'Unknown profile', message: `Choose one of: ${Object.keys(SAMPLE_PROFILES).join(', ')}.` });
       }
       // Pioneer by default: every Standard card is Pioneer-legal, so one sample serves both metas.

@@ -14,22 +14,37 @@ export interface LoadAdvisorOptions {
   metaDir?: string;
 }
 
+export interface LoadedAdvisor {
+  data: AdvisorData;
+  /** Snapshot files that were skipped, with the reason. */
+  warnings: string[];
+}
+
 /**
  * Read the generated data the advisor runs on. The card index is required
- * (throws `CardIndexMissingError`); meta snapshots are optional, and a format
- * without one simply has no meta to show.
+ * (throws `CardIndexMissingError`). Meta snapshots are optional: a format
+ * without one has no meta to show, and an unreadable file is skipped with a
+ * warning rather than taking the advisor down.
  */
-export function loadAdvisorData(options: LoadAdvisorOptions = {}): AdvisorData {
+export function loadAdvisorData(options: LoadAdvisorOptions = {}): LoadedAdvisor {
   const index = loadCardIndex(options.cardIndexPath);
   const meta = new Map<string, MetaSnapshot>();
+  const warnings: string[] = [];
 
   const metaDir = resolve(options.metaDir ?? process.env['META_DIR'] ?? DEFAULT_META_DIR);
   if (existsSync(metaDir)) {
     for (const file of readdirSync(metaDir).filter(f => f.endsWith('.json')).sort()) {
-      const snapshot = JSON.parse(readFileSync(join(metaDir, file), 'utf8')) as MetaSnapshot;
-      meta.set(snapshot.format, snapshot);
+      try {
+        const snapshot = JSON.parse(readFileSync(join(metaDir, file), 'utf8')) as MetaSnapshot;
+        if (typeof snapshot.format !== 'string' || !Array.isArray(snapshot.archetypes)) {
+          throw new Error('not a meta snapshot');
+        }
+        meta.set(snapshot.format, snapshot);
+      } catch (err) {
+        warnings.push(`Skipped meta snapshot ${file}: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }
 
-  return { index, text: new TextModel(index), meta };
+  return { data: { index, text: new TextModel(index), meta }, warnings };
 }

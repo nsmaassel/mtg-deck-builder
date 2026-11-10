@@ -39,10 +39,40 @@ Sideboard
     expect(deck.main).toHaveLength(2);
   });
 
-  it('treats the first blank line of a headerless list as the start of the sideboard', () => {
-    const deck = parseDeckText('4 Shock\n4 Opt\n\n2 Negate\n1 Abrade\n');
-    expect(deck.main.map(l => l.name)).toEqual(['Shock', 'Opt']);
+  it('reads an MTGO-style list: a full main deck, a blank line, then the sideboard', () => {
+    const deck = parseDeckText('4 Shock\n4 Opt\n52 Mountain\n\n2 Negate\n1 Abrade\n');
+    expect(deck.main.map(l => l.name)).toEqual(['Shock', 'Opt', 'Mountain']);
     expect(deck.sideboard.map(l => l.name)).toEqual(['Negate', 'Abrade']);
+  });
+
+  it('keeps a list grouped by card type in the main deck', () => {
+    const deck = parseDeckText('// Creatures\n4 Monastery Swiftspear\n\n// Spells\n4 Lightning Strike\n\n// Lands\n20 Mountain\n');
+    expect(deck.main.map(l => l.name)).toEqual(['Monastery Swiftspear', 'Lightning Strike', 'Mountain']);
+    expect(deck.sideboard).toEqual([]);
+  });
+
+  it('does not mistake a short last group for a sideboard when the rest is not a whole deck', () => {
+    const deck = parseDeckText('4 Shock\n4 Opt\n\n2 Negate\n');
+    expect(deck.main).toHaveLength(3);
+    expect(deck.sideboard).toEqual([]);
+  });
+
+  it('takes the sideboard of a grouped list from its last, sideboard-sized group', () => {
+    const deck = parseDeckText('20 Shock\n\n20 Opt\n\n20 Mountain\n\n15 Negate\n');
+    expect(deck.main.map(l => l.name)).toEqual(['Shock', 'Opt', 'Mountain']);
+    expect(deck.sideboard).toEqual([{ name: 'Negate', count: 15 }]);
+  });
+
+  it('reads cards before the first header as the main deck', () => {
+    const deck = parseDeckText('4 Shock\n\n4 Opt\nSideboard\n2 Negate\n');
+    expect(deck.main.map(l => l.name)).toEqual(['Shock', 'Opt']);
+    expect(deck.sideboard.map(l => l.name)).toEqual(['Negate']);
+  });
+
+  it('treats a commented section name as a header', () => {
+    const deck = parseDeckText('4 Shock\n// Sideboard\n2 Negate\n');
+    expect(deck.main).toEqual([{ name: 'Shock', count: 4 }]);
+    expect(deck.sideboard).toEqual([{ name: 'Negate', count: 2 }]);
   });
 
   it('does not start a sideboard on a blank line inside an Arena export', () => {
@@ -110,5 +140,11 @@ describe('parseFormat', () => {
   it('returns undefined for formats it does not know', () => {
     expect(parseFormat('Gladiator')).toBeUndefined();
     expect(parseFormat(undefined)).toBeUndefined();
+  });
+
+  it('is not fooled by names every object has', () => {
+    for (const name of ['constructor', 'toString', 'valueOf', '__proto__', 'hasOwnProperty']) {
+      expect(parseFormat(name)).toBeUndefined();
+    }
   });
 });

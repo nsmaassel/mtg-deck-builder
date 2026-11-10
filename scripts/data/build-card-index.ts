@@ -138,7 +138,9 @@ async function main(): Promise<void> {
     );
   }
   const json = JSON.stringify(file);
-  writeFileSync(out, out.endsWith('.gz') ? gzipSync(json, { level: 9 }) : json);
+  // Written beside the target and moved into place, so a reader never sees half an index.
+  writeFileSync(`${out}.part`, out.endsWith('.gz') ? gzipSync(json, { level: 9 }) : json);
+  renameSync(`${out}.part`, out);
 
   const onArena = file.cards.filter(c => c.ar !== undefined).length;
   const tagged = file.cards.filter(c => c.g?.length).length;

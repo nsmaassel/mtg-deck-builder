@@ -157,4 +157,6 @@ export interface DeckPlan {
    * and a stand-in as its match score.
    */
   fidelity: number;
+  /** Every stand-in found for each missing card of `gap.cards`, owned and craftable, best first. */
+  standIns: ReadonlyMap<CardGap, Substitute[]>;
 }

@@ -326,10 +326,17 @@ This project includes a `Dockerfile` and `render.yaml` for one-click deployment 
 5. **Deploy** — Render will build the Docker image and start the service
 
 The Dockerfile uses a multi-stage build:
-- **Builder stage**: Installs all dependencies, runs `pnpm build` to compile TypeScript and build the React SPA, then builds the advisor's data (`pnpm data:cards`, `pnpm data:meta`). The card index is required and fails the build if Scryfall cannot be reached; the meta snapshots are optional.
+- **Builder stage**: Installs all dependencies, runs `pnpm build` to compile TypeScript and build the React SPA
+- **Data stage**: Builds the advisor's data (`pnpm data:cards`, `pnpm data:meta`). It copies only the files those scripts import, so an app change does not download Scryfall's bulk files again. The card index is required and fails the build if Scryfall cannot be reached; the meta snapshots are optional.
 - **Runner stage**: Copies only `dist/`, `data/generated/` and `node_modules/`, runs the Fastify server which serves both the API (`/api/*`) and the SPA (all other routes)
 
-The data is a snapshot taken at image build time: rebuild the image to refresh cards and the meta. The process holds about 300 MB with the card index loaded.
+The data is a snapshot taken when the data stage last ran. To refresh cards and the meta, pass a new `DATA_DATE`:
+
+```bash
+docker build --build-arg DATA_DATE=$(date +%F) -t mtg-deck-builder .
+```
+
+The process holds about 300 MB with the card index loaded.
 
 **Local Docker test:**
 ```bash

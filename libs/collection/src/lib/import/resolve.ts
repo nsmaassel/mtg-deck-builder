@@ -1,15 +1,17 @@
 import type { CardLookup, CardRef, CollectionEntry, CollectionImport, ResolvedCollection } from './types';
 
 function resolveEntry(entry: CollectionEntry, lookup: CardLookup): CardRef | undefined {
-  const byId = entry.arenaId !== undefined ? lookup.byArenaId(entry.arenaId) : undefined;
-  if (byId) return byId;
-  return entry.name ? lookup.byName(entry.name) : undefined;
+  // A name says which card is meant; a bare number may be some other tool's own id that happens
+  // to be a valid Arena id for a different card. So the name wins, and the id covers the rest.
+  const byName = entry.name ? lookup.byName(entry.name) : undefined;
+  if (byName) return byName;
+  return entry.arenaId !== undefined ? lookup.byArenaId(entry.arenaId) : undefined;
 }
 
 /**
- * Maps import entries onto cards: by Arena id when the entry has one, otherwise (or when the id
- * is unknown) by name. Copies are summed per oracle id across entries and printings and are not
- * clamped to a deck limit.
+ * Maps import entries onto cards: by name when the entry has one that matches, otherwise by Arena
+ * id. Copies are summed per oracle id across entries and printings and are not clamped to a deck
+ * limit.
  */
 export function resolveCollection(imp: CollectionImport, lookup: CardLookup): ResolvedCollection {
   const owned = new Map<string, number>();

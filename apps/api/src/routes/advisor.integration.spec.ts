@@ -88,9 +88,11 @@ describe('GET /api/advisor/collection/sample', () => {
     expect(body.collection.wildcards['rare']).toBeGreaterThan(0);
   });
 
-  it('rejects a profile it does not have', async () => {
-    const response = await app().inject({ method: 'GET', url: '/api/advisor/collection/sample?profile=whale' });
-    expect(response.statusCode).toBe(400);
+  it('rejects a profile it does not have, including names every object has', async () => {
+    for (const profile of ['whale', 'toString', 'constructor']) {
+      const response = await app().inject({ method: 'GET', url: `/api/advisor/collection/sample?profile=${profile}` });
+      expect(response.statusCode).toBe(400);
+    }
   });
 });
 
@@ -187,6 +189,7 @@ describe('POST /api/advisor/deck/check', () => {
 
   it('rejects an unknown format, an empty list and an oversized list', async () => {
     expect((await post('/api/advisor/deck/check', { deckText: '4 Shock', format: 'tiny-leaders' })).status).toBe(400);
+    expect((await post('/api/advisor/deck/check', { deckText: '4 Shock', format: 'constructor' })).status).toBe(400);
     const empty = await post<{ error: string }>('/api/advisor/deck/check', { deckText: 'just words', format: 'standard' });
     expect(empty.status).toBe(400);
     expect(empty.body.error).toBe('No cards in the decklist');

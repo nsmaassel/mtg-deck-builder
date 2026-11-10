@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Format } from '@mtg/card-index';
 import { parseDeckText } from './deck-text';
-import { craftCost, planDeck, rankDecks } from './plan';
+import { craftCost, planDeck } from './plan';
 import type { PlanOptions } from './plan';
 import { TextModel } from './similarity';
 import { buildTestIndex, collectionOf, oracleId } from './testing/fixtures';
@@ -83,6 +83,17 @@ describe('planDeck', () => {
     expect(result.wildcardsLeft?.common).toBe(4);
   });
 
+  it('does not let one spare playset excuse two crafts', () => {
+    // Consider is a near-equivalent for Opt, but there are only 2 spare copies for 4 missing cards
+    // across two boards. The first 2 are covered; the other 2 are worth their wildcards.
+    const result = plan('Deck\n2 Opt\n\nSideboard\n2 Opt\n', { Consider: 2 }, { common: 4, uncommon: 0, rare: 0, mythic: 0 });
+    const crafted = result.steps.filter(s => s.action === 'craft').reduce((n, s) => n + s.count, 0);
+    const swapped = result.steps.filter(s => s.action === 'substitute').reduce((n, s) => n + s.count, 0);
+    expect([crafted, swapped]).toEqual([2, 2]);
+    expect(result.steps.some(s => s.action === 'unfilled')).toBe(false);
+    expect(result.wildcardsLeft?.common).toBe(2);
+  });
+
   it('crafts as far as the inventory goes and substitutes the rest', () => {
     const result = plan(
       '4 Sheoldred, the Apocalypse\n',
@@ -156,6 +167,27 @@ describe('planDeck', () => {
     expect(result.arenaText).toBe('Deck\n2 Callous Sell-Sword\n\nSideboard\n1 Negate\n');
   });
 
+  it('names the companion again in the export when it is in the final sideboard', () => {
+    const deckText = 'Companion\n1 Negate\n\nDeck\n4 Shock\n\nSideboard\n1 Negate\n2 Opt\n';
+    const owned = plan(deckText, { Shock: 4, Negate: 1, Opt: 2 });
+    expect(owned.arenaText).toBe('Companion\n1 Negate\n\nDeck\n4 Shock\n\nSideboard\n1 Negate\n2 Opt\n');
+    expect(owned.gap.totalCards).toBe(7);
+
+    // Without the card there is no companion to name.
+    const missing = plan(deckText, { Shock: 4, Opt: 2 }, undefined, { candidatesPerCard: 0 });
+    expect(missing.arenaText.startsWith('Companion')).toBe(false);
+  });
+
+  it('keeps every stand-in it found for each missing card, owned and craftable', () => {
+    const result = plan('4 Slickshot Show-Off\n4 Shock\n', { Shock: 4, 'Tempest Angler': 4 });
+    const slickshot = result.gap.cards.find(c => c.name === 'Slickshot Show-Off')!;
+    const found = result.standIns.get(slickshot)!;
+    expect(found.map(s => [s.card.name, s.source])).toEqual(
+      expect.arrayContaining([['Tempest Angler', 'owned'], ['Crackling Cyclops', 'craft']]),
+    );
+    expect(result.standIns.has(result.gap.cards.find(c => c.name === 'Shock')!)).toBe(false);
+  });
+
   it('prefers the stand-in the archetype actually plays', () => {
     // Elvish Mystic and Fyndhorn Elves are the same card in all but name.
     const owned = { 'Elvish Mystic': 2, 'Fyndhorn Elves': 2 };
@@ -165,28 +197,6 @@ describe('planDeck', () => {
     expect(chosen()).toEqual(['Elvish Mystic']);
     const usage = { archetype: 'Mono-Green', mainShare: (id: string) => (id === oracleId('Fyndhorn Elves') ? 0.7 : 0), sideShare: () => 0 };
     expect(chosen({ usage })).toEqual(['Fyndhorn Elves']);
-  });
-});
-
-describe('rankDecks', () => {
-  const decks = [
-    { id: 'expensive', text: '4 Sheoldred, the Apocalypse\n4 Slickshot Show-Off\n' },
-    { id: 'owned', text: '4 Shock\n4 Opt\n' },
-    { id: 'cheap', text: '4 Shock\n2 Go for the Throat\n' },
-  ];
-
-  it('puts decks the player can already build first, then the cheapest to finish', () => {
-    const ranked = rankDecks(decks, d => parseDeckText(d.text), collectionOf({ Shock: 4, Opt: 4 }), index, 'standard');
-    expect(ranked.map(r => r.item.id)).toEqual(['owned', 'cheap', 'expensive']);
-    expect(ranked[0]?.cost).toBe(0);
-    expect(ranked[2]?.cost).toBe(craftCost({ common: 0, uncommon: 0, rare: 4, mythic: 4 }));
-  });
-
-  it('counts a deck the wildcard inventory covers as buildable', () => {
-    const collection = collectionOf({ Shock: 4 }, { common: 0, uncommon: 2, rare: 0, mythic: 0 });
-    const ranked = rankDecks(decks, d => parseDeckText(d.text), collection, index, 'standard');
-    expect(ranked.map(r => r.item.id).slice(0, 2).sort()).toEqual(['cheap', 'owned'].sort());
-    expect(ranked.find(r => r.item.id === 'cheap')?.gap.craftable).toBe(true);
   });
 });
 

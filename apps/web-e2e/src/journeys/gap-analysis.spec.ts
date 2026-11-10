@@ -7,7 +7,7 @@ const minimalCollection = readFileSync(join(__dirname, '../fixtures/minimal-coll
 
 test.describe('Journey 5: Gap Analysis', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/#/commander');
   });
 
   test('@regression shows the missing-staples section for a small collection', async ({ page }) => {

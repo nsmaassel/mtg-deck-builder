@@ -22,6 +22,13 @@ function addLine(lines: DeckLine[], name: string, count: number): void {
   else lines.push({ name, count });
 }
 
+/** A sideboard is at most this many cards. */
+const SIDEBOARD_SIZE = 15;
+/** The smallest main deck any format plays (Limited). */
+const SMALLEST_MAIN_DECK = 40;
+
+const total = (lines: DeckLine[]): number => lines.reduce((sum, line) => sum + line.count, 0);
+
 /**
  * Read a decklist as people paste it: an MTG Arena export with `Deck` /
  * `Sideboard` / `Commander` / `Companion` sections, an MTGO-style list where a
@@ -30,25 +37,40 @@ function addLine(lines: DeckLine[], name: string, count: number): void {
 export function parseDeckText(text: string): DeckList {
   const deck: DeckList = { commander: [], companion: [], main: [], sideboard: [], unrecognized: [] };
   let board: Board | 'skip' = 'main';
-  let sawHeader = false;
-  let sawMainCard = false;
-  let blankSinceCard = false;
+  // Until a section header appears, blank lines split the cards into blocks that are sorted out below.
+  let blocks: DeckLine[][] | undefined = [[]];
+
+  const closeBlocks = () => {
+    if (!blocks) return;
+    const filled = blocks.filter(block => block.length > 0);
+    blocks = undefined;
+    // An MTGO export is the main deck, a blank line, then the sideboard. Lists grouped by card type
+    // use blank lines too, so the last block is a sideboard only if it is the size of one and
+    // what comes before it is a whole deck.
+    const last = filled.at(-1);
+    const before = filled.slice(0, -1).flat();
+    const hasSideboard = last !== undefined && filled.length > 1
+      && total(last) <= SIDEBOARD_SIZE && total(before) >= SMALLEST_MAIN_DECK;
+    for (const line of hasSideboard ? before : filled.flat()) addLine(deck.main, line.name, line.count);
+    if (hasSideboard) for (const line of last) addLine(deck.sideboard, line.name, line.count);
+  };
 
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     if (!line) {
-      if (sawMainCard) blankSinceCard = true;
+      if (blocks && blocks.at(-1)!.length > 0) blocks.push([]);
       continue;
     }
-    if (line.startsWith('//') || line.startsWith('#')) continue;
 
-    const header = SECTION_HEADERS[line.replace(/[:\s]/g, '').toLowerCase()];
+    // `// Sideboard` is a header in some exports; any other comment is a note.
+    const comment = /^(?:\/\/|#)\s*(.*)$/.exec(line);
+    const header = SECTION_HEADERS[(comment ? comment[1]! : line).replace(/[:\s]/g, '').toLowerCase()];
     if (header) {
+      closeBlocks();
       board = header;
-      sawHeader = true;
-      blankSinceCard = false;
       continue;
     }
+    if (comment) continue;
 
     // Arena's `About` block carries the deck name on a `Name ...` line.
     if (board === 'skip') {
@@ -65,19 +87,16 @@ export function parseDeckText(text: string): DeckList {
       continue;
     }
 
-    // Without section headers, the first blank line after the main deck starts the sideboard.
-    if (!sawHeader && blankSinceCard && board === 'main') board = 'sideboard';
-    blankSinceCard = false;
-
     const count = Number.parseInt(match[1]!, 10);
     const name = match[2]!.trim();
     if (count <= 0 || !name) continue;
 
-    const target: Board = sideboardPrefix ? 'sideboard' : board;
-    addLine(deck[target], name, count);
-    if (target === 'main') sawMainCard = true;
+    if (sideboardPrefix) addLine(deck.sideboard, name, count);
+    else if (blocks) addLine(blocks.at(-1)!, name, count);
+    else addLine(deck[board], name, count);
   }
 
+  closeBlocks();
   return deck;
 }
 

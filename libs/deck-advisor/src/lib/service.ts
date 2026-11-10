@@ -1,10 +1,9 @@
 import type { CardIndex, Format, IndexedCard, Rarity } from '@mtg/card-index';
 import type { MetaArchetype, MetaSnapshot, TournamentDeck } from '@mtg/meta-decks/types';
-import { analyzeGap, deckCopies } from './gap';
+import { analyzeGap, isLand } from './gap';
 import { craftCost, planDeck } from './plan';
 import type { PlanOptions } from './plan';
 import type { TextModel } from './similarity';
-import { suggestSubstitutes } from './substitutes';
 import type {
   ArchetypeUsage,
   Board,
@@ -183,7 +182,6 @@ export function checkDeck(
   const usage = options.archetype ? archetypeUsage(options.archetype, data.index) : undefined;
   const plan = planDeck(deck, collection, data.index, format, data.text, { usage, craft: options.craft });
   const { gap } = plan;
-  const inDeck = deckCopies(gap);
 
   const cards: DeckCardView[] = gap.cards.map(entry => {
     const view: DeckCardView = {
@@ -197,13 +195,7 @@ export function checkDeck(
     };
     if (entry.craftRarity) view.craftRarity = entry.craftRarity;
     if (entry.card) view.card = cardView(entry.card);
-    if (entry.card && entry.missing > 0 && entry.board !== 'commander') {
-      view.substitutes = suggestSubstitutes(
-        entry.card,
-        { index: data.index, format, collection, colors: gap.colors, inDeck, usage, text: data.text },
-        { limit: options.substitutesPerCard ?? 5 },
-      ).map(substituteView);
-    }
+    view.substitutes = (plan.standIns.get(entry) ?? []).slice(0, options.substitutesPerCard ?? 5).map(substituteView);
     return view;
   });
 
@@ -276,7 +268,7 @@ function keyCards(archetype: MetaArchetype, index: CardIndex, limit = 4): string
   for (const entry of archetype.cards) {
     const card = index.byName(entry.name);
     // Lands say little about what a deck does.
-    if (card && /\bLand\b/.test(card.typeLine.split('//')[0] ?? '')) continue;
+    if (card && isLand(card)) continue;
     out.push(card?.name ?? entry.name);
     if (out.length === limit) break;
   }

@@ -15,10 +15,10 @@ export {
 } from './lib/gap';
 export { tagOverlap, TextModel, tokenizeRulesText } from './lib/similarity';
 export type { TagOverlap } from './lib/similarity';
-export { suggestSubstitutes } from './lib/substitutes';
+export { SubstituteFinder, suggestSubstitutes } from './lib/substitutes';
 export type { SubstituteContext, SubstituteOptions } from './lib/substitutes';
-export { planDeck, rankDecks, craftCost } from './lib/plan';
-export type { PlanOptions, RankedDeck } from './lib/plan';
+export { planDeck, craftCost } from './lib/plan';
+export type { PlanOptions } from './lib/plan';
 export { SAMPLE_PROFILES, sampleCollection } from './lib/sample-collection';
 export type { SampleProfile } from './lib/sample-collection';
 export {

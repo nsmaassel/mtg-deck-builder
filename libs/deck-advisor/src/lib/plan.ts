@@ -2,7 +2,7 @@ import type { CardIndex, Format, IndexedCard } from '@mtg/card-index';
 import { formatArenaDeck } from './deck-text';
 import { FORMAT_RULES } from './formats';
 import { analyzeGap, deckCopies, emptyWildcards, isLand } from './gap';
-import { suggestSubstitutes } from './substitutes';
+import { SubstituteFinder } from './substitutes';
 import type { TextModel } from './similarity';
 import type {
   ArchetypeUsage,
@@ -25,9 +25,12 @@ export interface PlanOptions {
    * the deck from the collection alone.
    */
   craft?: 'inventory' | 'none';
-  /** Stand-ins considered per missing card. Default 12. */
+  /** Owned stand-ins the plan may draw on per missing card. Default 12. */
   candidatesPerCard?: number;
 }
+
+/** Stand-ins of both kinds kept per missing card, for callers that list them. */
+const STAND_INS_KEPT = 30;
 
 /** With a stand-in this good already owned, a wildcard is better spent elsewhere. */
 const GOOD_ENOUGH_TO_SKIP_CRAFT = 0.8;
@@ -91,6 +94,8 @@ export function planDeck(
   // or a stand-in could collide with a later craft of the same card.
   const reserved = deckCopies(gap);
 
+  const finder = new SubstituteFinder({ index, format, collection, colors: gap.colors, inDeck: reserved, usage, text });
+  const standIns = new Map<CardGap, Substitute[]>();
   const holes: Hole[] = [];
   const steps: PlanStep[] = [];
   for (const entry of gap.cards) {
@@ -103,14 +108,10 @@ export function planDeck(
       continue;
     }
     // A commander defines the deck; nothing stands in for it.
-    const options_ = entry.board === 'commander'
-      ? []
-      : suggestSubstitutes(
-          entry.card,
-          { index, format, collection, colors: gap.colors, inDeck: reserved, usage, text },
-          { sources: ['owned'], limit: options.candidatesPerCard ?? 12 },
-        );
-    holes.push({ gap: entry, card: entry.card, importance: importance(entry, usage), options: options_, left: entry.missing });
+    const ranked = entry.board === 'commander' ? [] : finder.suggest(entry.card, { limit: STAND_INS_KEPT });
+    standIns.set(entry, ranked);
+    const owned = ranked.filter(s => s.source === 'owned').slice(0, options.candidatesPerCard ?? 12);
+    holes.push({ gap: entry, card: entry.card, importance: importance(entry, usage), options: owned, left: entry.missing });
   }
 
   // Crafts go where a wildcard buys the most: important cards with no good stand-in.
@@ -118,11 +119,20 @@ export function planDeck(
   const wildcardsLeft = collection.wildcards ? { ...collection.wildcards } : undefined;
   if (wildcardsLeft && rules.onArena && options.craft !== 'none') {
     const craftValue = (hole: Hole) => hole.importance * (1 - (hole.options[0]?.score ?? 0));
+    // Copies of a stand-in already counted on to cover one card cannot excuse skipping the craft of another.
+    const spoken = new Map<string, number>();
     for (const hole of [...holes].sort((a, b) => craftValue(b) - craftValue(a))) {
       const rarity = hole.gap.craftRarity;
       if (!rarity) continue;
       const best = hole.options[0];
-      if (best && best.score >= GOOD_ENOUGH_TO_SKIP_CRAFT && best.available >= hole.left) continue;
+      if (best && best.score >= GOOD_ENOUGH_TO_SKIP_CRAFT) {
+        const id = best.card.oracleId;
+        const free = best.available - (spoken.get(id) ?? 0);
+        if (free >= hole.left) {
+          spoken.set(id, (spoken.get(id) ?? 0) + hole.left);
+          continue;
+        }
+      }
       const count = Math.min(hole.left, wildcardsLeft[rarity]);
       if (count === 0) continue;
       wildcardsLeft[rarity] -= count;
@@ -167,7 +177,20 @@ export function planDeck(
     }
   }
 
-  const finalDeck = { commander: built.commander, companion: built.companion, main: built.main, sideboard: built.sideboard };
+  // Arena lists a companion under `Companion` and again in the sideboard. The gap counts it once,
+  // as a sideboard card; the export names it as the companion again if it made the final sideboard.
+  const companions = deck.companion.flatMap(line => {
+    const card = index.byName(line.name);
+    const name = card ? card.arenaName ?? card.name : line.name;
+    const alreadyListed = built.companion.some(l => l.name === name);
+    return !alreadyListed && built.sideboard.some(l => l.name === name) ? [{ name, count: 1 }] : [];
+  });
+  const finalDeck = {
+    commander: built.commander,
+    companion: [...built.companion, ...companions],
+    main: built.main,
+    sideboard: built.sideboard,
+  };
   const crafted = Object.values(wildcardsSpent).reduce((sum, n) => sum + n, 0);
   const plan: DeckPlan = {
     format,
@@ -177,6 +200,7 @@ export function planDeck(
     arenaText: formatArenaDeck(finalDeck),
     wildcardsSpent,
     fidelity: gap.totalCards > 0 ? (gap.ownedCards + crafted + substituteScore) / gap.totalCards : 0,
+    standIns,
   };
   if (wildcardsLeft) plan.wildcardsLeft = wildcardsLeft;
   return plan;
@@ -185,34 +209,4 @@ export function planDeck(
 /** Wildcards weighed by how hard they are to come by, in rare-wildcard equivalents. */
 export function craftCost(wildcards: Wildcards): number {
   return wildcards.common * 0.05 + wildcards.uncommon * 0.15 + wildcards.rare + wildcards.mythic * 2;
-}
-
-export interface RankedDeck<T> {
-  item: T;
-  gap: ReturnType<typeof analyzeGap>;
-  /** `craftCost` of the wildcards still needed. */
-  cost: number;
-}
-
-/**
- * Order decks by how close the collection is to building them: buildable ones
- * first, then by the wildcards still needed, then by copies already owned.
- */
-export function rankDecks<T>(
-  items: readonly T[],
-  deckOf: (item: T) => DeckList,
-  collection: Collection,
-  index: CardIndex,
-  format: Format,
-): Array<RankedDeck<T>> {
-  return items
-    .map(item => {
-      const gap = analyzeGap(deckOf(item), collection, index, format);
-      return { item, gap, cost: craftCost(gap.wildcardsNeeded) };
-    })
-    .sort((a, b) =>
-      Number(b.gap.craftable === true) - Number(a.gap.craftable === true) ||
-      a.cost - b.cost ||
-      b.gap.completion - a.gap.completion,
-    );
 }

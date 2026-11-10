@@ -7,7 +7,7 @@ const sampleCollection = readFileSync(join(__dirname, '../fixtures/sample-collec
 
 test.describe('Journey 1: Core Deck Build — Happy Path', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/#/commander');
   });
 
   test('@smoke builds a 100-card deck for Atraxa', async ({ page }) => {

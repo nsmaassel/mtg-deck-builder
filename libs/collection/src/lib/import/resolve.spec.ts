@@ -64,16 +64,18 @@ describe('resolveCollection', () => {
     expect(resolved.names.get('oracle-fire-ice')).toBe('Fire // Ice');
   });
 
-  it('tries the id first and does not look the name up when the id matches', () => {
+  it('trusts the name over the id when both are given', () => {
+    // 200 is Opt's Arena id, but the row says Lightning Bolt: the number is some other tool's own key.
     const lookup = stubLookup();
-    resolveCollection(imp([{ count: 4, name: 'Lightning Bolt', arenaId: 100 }]), lookup);
-    expect(lookup.calls).toEqual(['id:100']);
+    const resolved = resolveCollection(imp([{ count: 4, name: 'Lightning Bolt', arenaId: 200 }]), lookup);
+    expect(lookup.calls).toEqual(['name:Lightning Bolt']);
+    expect(resolved.owned).toEqual(new Map([['oracle-bolt', 4]]));
   });
 
-  it('falls back to the name when the id is unknown', () => {
+  it('falls back to the id when the name is unknown', () => {
     const lookup = stubLookup();
-    const resolved = resolveCollection(imp([{ count: 4, name: 'Lightning Bolt', arenaId: 999999 }]), lookup);
-    expect(lookup.calls).toEqual(['id:999999', 'name:Lightning Bolt']);
+    const resolved = resolveCollection(imp([{ count: 4, name: 'Blitzschlag', arenaId: 100 }]), lookup);
+    expect(lookup.calls).toEqual(['name:Blitzschlag', 'id:100']);
     expect(resolved.owned).toEqual(new Map([['oracle-bolt', 4]]));
   });
 

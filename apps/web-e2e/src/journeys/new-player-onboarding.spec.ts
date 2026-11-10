@@ -3,7 +3,7 @@ import { DeckBuilderPage } from '../pages/deck-builder.page';
 
 test.describe('Journey 9: New Player Onboarding — Build Without a Collection', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/#/commander');
   });
 
   test('@smoke @onboarding builds a 100-card deck with no collection', async ({ page }) => {

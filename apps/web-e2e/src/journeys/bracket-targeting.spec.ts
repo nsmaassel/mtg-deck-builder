@@ -8,7 +8,7 @@ const sampleCollection = readFileSync(join(__dirname, '../fixtures/sample-collec
 test.describe('Journey 2: Power Level Bracket Targeting', () => {
   test('@regression swap suggestions appear when targeting lower bracket', async ({ page }) => {
     const builder = new DeckBuilderPage(page);
-    await page.goto('/');
+    await page.goto('/#/commander');
     await builder.pasteCollection(sampleCollection);
     await builder.enterCommander("Atraxa, Praetors' Voice");
     // Sample collection has Game Changers — should build at Bracket 3+
@@ -29,7 +29,7 @@ test.describe('Journey 2: Power Level Bracket Targeting', () => {
 
   test('@regression no swap suggestions when no bracket target set', async ({ page }) => {
     const builder = new DeckBuilderPage(page);
-    await page.goto('/');
+    await page.goto('/#/commander');
     await builder.pasteCollection(sampleCollection);
     await builder.enterCommander("Atraxa, Praetors' Voice");
     // Leave target-bracket as default (no target)

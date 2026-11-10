@@ -55,5 +55,7 @@ const ARENA_FORMAT_NAMES: Record<string, Format> = {
 /** Map a user- or client-supplied format name onto a format key. */
 export function parseFormat(name: string | undefined): Format | undefined {
   if (!name) return undefined;
-  return ARENA_FORMAT_NAMES[name.toLowerCase().replace(/[^a-z]/g, '')];
+  const key = name.toLowerCase().replace(/[^a-z]/g, '');
+  // Own keys only: `constructor` is on every object and is not a format.
+  return Object.hasOwn(ARENA_FORMAT_NAMES, key) ? ARENA_FORMAT_NAMES[key] : undefined;
 }

@@ -8,7 +8,7 @@ const sampleCollection = readFileSync(join(__dirname, '../fixtures/sample-collec
 test.describe('Journey 3: Owned Cards Only Mode', () => {
   test('@regression no unowned cards in owned-only mode', async ({ page }) => {
     const builder = new DeckBuilderPage(page);
-    await page.goto('/');
+    await page.goto('/#/commander');
     await builder.pasteCollection(sampleCollection);
     await builder.enterCommander('Krenko, Mob Boss');
     await builder.selectMode('owned-only');

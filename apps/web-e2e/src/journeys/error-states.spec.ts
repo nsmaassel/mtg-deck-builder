@@ -7,7 +7,7 @@ const sampleCollection = readFileSync(join(__dirname, '../fixtures/sample-collec
 
 test.describe('Journey 8: Error States', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/#/commander');
   });
 
   test('shows error when submitting without collection', async ({ page }) => {

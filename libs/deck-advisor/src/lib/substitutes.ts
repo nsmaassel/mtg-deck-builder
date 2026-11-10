@@ -2,7 +2,7 @@ import { RARITIES } from '@mtg/card-index';
 import type { CardIndex, Format, IndexedCard } from '@mtg/card-index';
 import { FORMAT_RULES } from './formats';
 import { frontColors, isCastable, isLand, usableCopies } from './gap';
-import { PRIMARY_ROLE_PATTERN, tagOverlap } from './similarity';
+import { PRIMARY_ROLE_PATTERN, roleWeight, tagOverlap } from './similarity';
 import type { TextModel } from './similarity';
 import type {
   ArchetypeUsage,
@@ -41,10 +41,14 @@ const PARTIAL = 0.45;
 /** Doing one of the original's primary jobs earns "partial" from this score up. */
 const PARTIAL_ON_ROLE = 0.35;
 
-/** Rules text is only compared for this many of the best candidates by every other signal. */
-const TEXT_SHORTLIST = 60;
+/**
+ * Rules text and tag lists are only worked out for the best candidates by every
+ * other signal, this many per source so crafts cannot crowd out owned cards.
+ */
+const SHORTLIST: Record<SubstituteSource, number> = { owned: 40, craft: 20 };
 
 const SPELL_WEIGHTS: ScoreBreakdown = { role: 0.42, text: 0.13, type: 0.12, cost: 0.17, color: 0.04, meta: 0.12 };
+const UNTAGGED_SPELL_WEIGHTS: ScoreBreakdown = { ...SPELL_WEIGHTS, role: 0, text: SPELL_WEIGHTS.role + SPELL_WEIGHTS.text };
 // For a land, `color` is how much of the original's mana it makes and `cost` is whether it enters untapped.
 const LAND_WEIGHTS: ScoreBreakdown = { role: 0.3, text: 0.05, type: 0, cost: 0.15, color: 0.4, meta: 0.1 };
 
@@ -168,56 +172,6 @@ function withinColors(colors: readonly string[], allowed: readonly string[]): bo
   return colors.every(c => allowed.includes(c));
 }
 
-function isEligible(target: IndexedCard, card: IndexedCard, ctx: SubstituteContext): boolean {
-  if (card.oracleId === target.oracleId) return false;
-  const rules = FORMAT_RULES[ctx.format];
-  if (!card.legal.includes(ctx.format)) return false;
-  if (rules.onArena && !card.onArena) return false;
-
-  const land = isLand(target);
-  if (isLand(card) !== land) return false;
-  if (card.isBasicLand && !land) return false;
-
-  // Lands and commander decks answer to colour identity; a 60-card deck only has to cast the card.
-  if (land || rules.hasCommander) return withinColors(card.colorIdentity, ctx.colors);
-  return isCastable(card, ctx.colors);
-}
-
-function* candidates(target: IndexedCard, ctx: SubstituteContext, sources: SubstituteSource[]): Generator<Candidate> {
-  const rules = FORMAT_RULES[ctx.format];
-  const room = (card: IndexedCard): number =>
-    card.isBasicLand ? Infinity : rules.maxCopies - (ctx.inDeck.get(card.oracleId) ?? 0);
-  const spare = (card: IndexedCard): number =>
-    usableCopies(card, ctx.collection) - (ctx.inDeck.get(card.oracleId) ?? 0);
-
-  if (sources.includes('owned')) {
-    const seen = new Set<string>();
-    const offer = function* (card: IndexedCard | undefined): Generator<Candidate> {
-      if (!card || seen.has(card.oracleId) || !isEligible(target, card, ctx)) return;
-      seen.add(card.oracleId);
-      const available = Math.min(spare(card), room(card));
-      if (available >= 1) yield { card, source: 'owned', available };
-    };
-    for (const oracleId of ctx.collection.owned.keys()) yield* offer(ctx.index.get(oracleId));
-    // Basic lands are free on Arena whether or not the import listed them.
-    if (isLand(target)) {
-      for (const color of ctx.colors) yield* offer(ctx.index.byName(BASIC_FOR_COLOR[color] ?? ''));
-    }
-  }
-
-  if (sources.includes('craft') && rules.onArena && target.arenaRarity) {
-    const targetRank = RARITIES.indexOf(target.arenaRarity);
-    for (const card of ctx.index.all()) {
-      if (!card.arenaRarity || RARITIES.indexOf(card.arenaRarity) >= targetRank) continue;
-      // Crafting more copies of a card the list already plays is a change of deck, not a stand-in.
-      if (ctx.inDeck.has(card.oracleId)) continue;
-      if (spare(card) >= 1 || !isEligible(target, card, ctx)) continue;
-      const available = room(card);
-      if (available >= 1) yield { card, source: 'craft', available };
-    }
-  }
-}
-
 interface Scored extends Candidate {
   breakdown: ScoreBreakdown;
   weights: ScoreBreakdown;
@@ -237,53 +191,6 @@ function weigh(breakdown: ScoreBreakdown, weights: ScoreBreakdown, skip: Array<k
     weightSum += weights[key];
   }
   return weightSum > 0 ? total / weightSum : 0;
-}
-
-function scoreCandidate(target: IndexedCard, candidate: Candidate, ctx: SubstituteContext): Scored {
-  const { card } = candidate;
-  const overlap = tagOverlap(target, card, ctx.index);
-  const meta = metaScore(card, ctx.usage);
-  const land = isLand(target);
-
-  let breakdown: ScoreBreakdown;
-  let weights: ScoreBreakdown;
-  if (land) {
-    const wanted = target.producedMana.filter(c => ctx.colors.includes(c));
-    const made = wanted.filter(c => card.producedMana.includes(c));
-    breakdown = {
-      role: overlap.score,
-      text: 0,
-      type: 1,
-      cost: 1 - Math.max(0, entersTapped(card) - entersTapped(target)),
-      // A utility land asks for no colour, so any land of the deck's colours covers it.
-      color: wanted.length ? (made.length / wanted.length) * fixingQuality(card) : 1,
-      // Commander popularity says little about a land in another deck; only archetype evidence counts.
-      meta: ctx.usage ? meta.score : 0,
-    };
-    weights = ctx.usage ? LAND_WEIGHTS : { ...LAND_WEIGHTS, meta: 0 };
-  } else {
-    breakdown = {
-      role: overlap.score,
-      text: 0,
-      type: typeScore(target, card),
-      cost: costScore(target, card),
-      color: colorScore(target, card),
-      meta: meta.score,
-    };
-    // Untagged cards (the newest set, usually) are judged on rules text instead.
-    const untagged = target.tags.length === 0 || card.tags.length === 0;
-    weights = untagged ? { ...SPELL_WEIGHTS, role: 0, text: SPELL_WEIGHTS.role + SPELL_WEIGHTS.text } : SPELL_WEIGHTS;
-  }
-
-  return {
-    ...candidate,
-    breakdown,
-    weights,
-    shared: overlap.shared,
-    uncovered: overlap.missing.filter(tag => PRIMARY_ROLE_PATTERN.test(tag)),
-    metaShare: meta.share,
-    partial: weigh(breakdown, weights, ['text']),
-  };
 }
 
 function describe(target: IndexedCard, scored: Scored, ctx: SubstituteContext): string[] {
@@ -326,43 +233,226 @@ function article(rarity: string): string {
   return `${rarity === 'uncommon' ? 'an' : 'a'} ${rarity}`;
 }
 
+interface Pools {
+  spells: Candidate[];
+  lands: Candidate[];
+}
+
 /**
- * Rank stand-ins for a card the player lacks: spare cards they own, and cards
- * that cost a cheaper wildcard. Every candidate is legal in the format and
- * castable in the deck's colours.
+ * Finds stand-ins for the missing cards of one deck.
+ *
+ * Which cards may enter the deck at all (legal, castable, with a copy to
+ * spare) depends on the deck, not on the card being replaced, so that is
+ * worked out once here and reused for every missing card. A large collection
+ * is tens of thousands of candidates per card otherwise.
  */
+export class SubstituteFinder {
+  private owned?: Pools;
+  private craftable?: Pools;
+  private readonly tagWeights = new Map<string, number>();
+  private readonly cardWeights = new Map<string, number>();
+
+  constructor(private readonly ctx: SubstituteContext) {}
+
+  /**
+   * Rank stand-ins for a card the player lacks: spare cards they own, and
+   * cards that cost a cheaper wildcard. Every candidate is legal in the
+   * format and castable in the deck's colours.
+   */
+  suggest(target: IndexedCard, options: SubstituteOptions = {}): Substitute[] {
+    const { ctx } = this;
+    const limit = options.limit ?? 5;
+    const minScore = options.minScore ?? 0.3;
+    const sources = options.sources ?? ['owned', 'craft'];
+
+    const targetTags = new Map(target.tags.map(tag => [tag, this.tagWeight(tag)]));
+    const shortlist = sources.flatMap(source =>
+      this.candidates(target, source)
+        .map(candidate => this.scoreFast(target, targetTags, candidate))
+        .sort((a, b) => b.partial - a.partial || a.card.name.localeCompare(b.card.name))
+        .slice(0, SHORTLIST[source]),
+    );
+
+    return shortlist
+      .map(scored => {
+        // The shortlist is small enough for the costly signals: rules text, and which tags overlap.
+        const overlap = tagOverlap(target, scored.card, ctx.index);
+        scored.shared = overlap.shared;
+        scored.uncovered = overlap.missing.filter(tag => PRIMARY_ROLE_PATTERN.test(tag));
+        scored.breakdown.text = ctx.text.similarity(target, scored.card);
+        const score = weigh(scored.breakdown, scored.weights);
+        const substitute: Substitute = {
+          card: scored.card,
+          source: scored.source,
+          score,
+          quality: quality(target, scored, score, ctx),
+          available: scored.available,
+          breakdown: scored.breakdown,
+          reasons: describe(target, scored, ctx),
+        };
+        if (scored.source === 'craft') substitute.craftRarity = scored.card.arenaRarity;
+        return substitute;
+      })
+      .filter(s => s.score >= minScore)
+      // An owned card beats a craft of equal merit: it is free.
+      .sort((a, b) => b.score - a.score || (a.source === b.source ? 0 : a.source === 'owned' ? -1 : 1) || a.card.name.localeCompare(b.card.name))
+      .slice(0, limit);
+  }
+
+  private candidates(target: IndexedCard, source: SubstituteSource): Candidate[] {
+    const land = isLand(target);
+    if (source === 'owned') {
+      const pool = land ? this.ownedPools().lands : this.ownedPools().spells;
+      return pool.filter(candidate => candidate.card.oracleId !== target.oracleId);
+    }
+    if (!FORMAT_RULES[this.ctx.format].onArena || !target.arenaRarity) return [];
+    const targetRank = RARITIES.indexOf(target.arenaRarity);
+    const pool = land ? this.craftPools().lands : this.craftPools().spells;
+    return pool.filter(
+      candidate =>
+        candidate.card.oracleId !== target.oracleId && RARITIES.indexOf(candidate.card.arenaRarity!) < targetRank,
+    );
+  }
+
+  /** May this card go into the deck at all, whatever it would replace? */
+  private fitsDeck(card: IndexedCard): boolean {
+    const { ctx } = this;
+    const rules = FORMAT_RULES[ctx.format];
+    if (!card.legal.includes(ctx.format)) return false;
+    if (rules.onArena && !card.onArena) return false;
+    // Lands and commander decks answer to colour identity; a 60-card deck only has to cast the card.
+    if (isLand(card) || rules.hasCommander) return withinColors(card.colorIdentity, ctx.colors);
+    return isCastable(card, ctx.colors);
+  }
+
+  private room(card: IndexedCard): number {
+    if (card.isBasicLand) return Infinity;
+    return FORMAT_RULES[this.ctx.format].maxCopies - (this.ctx.inDeck.get(card.oracleId) ?? 0);
+  }
+
+  private spare(card: IndexedCard): number {
+    return usableCopies(card, this.ctx.collection) - (this.ctx.inDeck.get(card.oracleId) ?? 0);
+  }
+
+  private ownedPools(): Pools {
+    if (this.owned) return this.owned;
+    const { ctx } = this;
+    const pools: Pools = { spells: [], lands: [] };
+    const seen = new Set<string>();
+    const offer = (card: IndexedCard | undefined) => {
+      if (!card || seen.has(card.oracleId) || !this.fitsDeck(card)) return;
+      seen.add(card.oracleId);
+      const available = Math.min(this.spare(card), this.room(card));
+      if (available < 1) return;
+      // A basic land only ever stands in for a land.
+      if (isLand(card)) pools.lands.push({ card, source: 'owned', available });
+      else pools.spells.push({ card, source: 'owned', available });
+    };
+    for (const oracleId of ctx.collection.owned.keys()) offer(ctx.index.get(oracleId));
+    // Basic lands are free on Arena whether or not the import listed them.
+    for (const color of ctx.colors) offer(ctx.index.byName(BASIC_FOR_COLOR[color] ?? ''));
+    return (this.owned = pools);
+  }
+
+  private craftPools(): Pools {
+    if (this.craftable) return this.craftable;
+    const { ctx } = this;
+    const pools: Pools = { spells: [], lands: [] };
+    for (const card of ctx.index.all()) {
+      if (!card.arenaRarity || card.isBasicLand) continue;
+      // Crafting more copies of a card the list already plays is a change of deck, not a stand-in.
+      if (ctx.inDeck.has(card.oracleId)) continue;
+      if (this.spare(card) >= 1 || !this.fitsDeck(card)) continue;
+      const available = this.room(card);
+      if (available < 1) continue;
+      (isLand(card) ? pools.lands : pools.spells).push({ card, source: 'craft', available });
+    }
+    return (this.craftable = pools);
+  }
+
+  private tagWeight(tag: string): number {
+    let weight = this.tagWeights.get(tag);
+    if (weight === undefined) {
+      weight = roleWeight(tag, this.ctx.index);
+      this.tagWeights.set(tag, weight);
+    }
+    return weight;
+  }
+
+  /** Total weight of a card's tags, the candidate's side of the overlap ratio. */
+  private cardWeight(card: IndexedCard): number {
+    let weight = this.cardWeights.get(card.oracleId);
+    if (weight === undefined) {
+      weight = 0;
+      for (const tag of card.tags) weight += this.tagWeight(tag);
+      this.cardWeights.set(card.oracleId, weight);
+    }
+    return weight;
+  }
+
+  /** Same number as `tagOverlap(...).score`, without building the lists of tags. */
+  private roleScore(target: IndexedCard, targetTags: Map<string, number>, card: IndexedCard): number {
+    if (targetTags.size === 0 || card.tags.length === 0) return 0;
+    let shared = 0;
+    for (const tag of card.tags) shared += targetTags.get(tag) ?? 0;
+    const union = this.cardWeight(target) + this.cardWeight(card) - shared;
+    return union > 0 ? shared / union : 0;
+  }
+
+  /** Every signal except rules text, which is only compared for the shortlist. */
+  private scoreFast(target: IndexedCard, targetTags: Map<string, number>, candidate: Candidate): Scored {
+    const { ctx } = this;
+    const { card } = candidate;
+    const role = this.roleScore(target, targetTags, card);
+    const meta = metaScore(card, ctx.usage);
+
+    let breakdown: ScoreBreakdown;
+    let weights: ScoreBreakdown;
+    if (isLand(target)) {
+      const wanted = target.producedMana.filter(c => ctx.colors.includes(c));
+      const made = wanted.filter(c => card.producedMana.includes(c));
+      breakdown = {
+        role,
+        text: 0,
+        type: 1,
+        cost: 1 - Math.max(0, entersTapped(card) - entersTapped(target)),
+        // A utility land asks for no colour, so any land of the deck's colours covers it.
+        color: wanted.length ? (made.length / wanted.length) * fixingQuality(card) : 1,
+        // Commander popularity says little about a land in another deck; only archetype evidence counts.
+        meta: ctx.usage ? meta.score : 0,
+      };
+      weights = ctx.usage ? LAND_WEIGHTS : { ...LAND_WEIGHTS, meta: 0 };
+    } else {
+      breakdown = {
+        role,
+        text: 0,
+        type: typeScore(target, card),
+        cost: costScore(target, card),
+        color: colorScore(target, card),
+        meta: meta.score,
+      };
+      // Untagged cards (the newest set, usually) are judged on rules text instead.
+      const untagged = target.tags.length === 0 || card.tags.length === 0;
+      weights = untagged ? UNTAGGED_SPELL_WEIGHTS : SPELL_WEIGHTS;
+    }
+
+    return {
+      ...candidate,
+      breakdown,
+      weights,
+      shared: [],
+      uncovered: [],
+      metaShare: meta.share,
+      partial: weigh(breakdown, weights, ['text']),
+    };
+  }
+}
+
+/** Stand-ins for one card. For several cards of the same deck, keep a `SubstituteFinder`. */
 export function suggestSubstitutes(
   target: IndexedCard,
   ctx: SubstituteContext,
   options: SubstituteOptions = {},
 ): Substitute[] {
-  const limit = options.limit ?? 5;
-  const minScore = options.minScore ?? 0.3;
-  const sources = options.sources ?? ['owned', 'craft'];
-
-  const shortlist = [...candidates(target, ctx, sources)]
-    .map(candidate => scoreCandidate(target, candidate, ctx))
-    .sort((a, b) => b.partial - a.partial || a.card.name.localeCompare(b.card.name))
-    .slice(0, TEXT_SHORTLIST);
-
-  return shortlist
-    .map(scored => {
-      scored.breakdown.text = ctx.text.similarity(target, scored.card);
-      const score = weigh(scored.breakdown, scored.weights);
-      const substitute: Substitute = {
-        card: scored.card,
-        source: scored.source,
-        score,
-        quality: quality(target, scored, score, ctx),
-        available: scored.available,
-        breakdown: scored.breakdown,
-        reasons: describe(target, scored, ctx),
-      };
-      if (scored.source === 'craft') substitute.craftRarity = scored.card.arenaRarity;
-      return substitute;
-    })
-    .filter(s => s.score >= minScore)
-    // An owned card beats a craft of equal merit: it is free.
-    .sort((a, b) => b.score - a.score || (a.source === b.source ? 0 : a.source === 'owned' ? -1 : 1) || a.card.name.localeCompare(b.card.name))
-    .slice(0, limit);
+  return new SubstituteFinder(ctx).suggest(target, options);
 }
