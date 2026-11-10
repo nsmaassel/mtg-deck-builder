@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
+import { AdvisorChat } from '@mtg/advisor-agent';
+import { ScriptedLlm, callTool, lastToolResult, say } from '@mtg/advisor-agent/testing';
 import { TextModel } from '@mtg/deck-advisor';
 import type { AdvisorData, DeckCheck, MetaView } from '@mtg/deck-advisor';
 import { buildTestIndex, oracleId } from '@mtg/deck-advisor/testing';
 import type { MetaArchetype, MetaSnapshot, TournamentDeck } from '@mtg/meta-decks/types';
 import { buildApp } from '../app';
+import { ChatBudget } from '../chat-budget';
 
 const index = buildTestIndex();
 
@@ -265,5 +268,75 @@ describe('POST /api/advisor/meta/check', () => {
   it('answers 404 for an archetype or list that does not exist', async () => {
     expect((await post('/api/advisor/meta/check', { format: 'standard', archetypeId: 'nope' })).status).toBe(404);
     expect((await post('/api/advisor/meta/check', { format: 'standard', archetypeId: 'izzet-prowess', list: 7 })).status).toBe(404);
+  });
+});
+
+describe('POST /api/advisor/chat', () => {
+  const withChat = (model: ScriptedLlm, budget?: ChatBudget) =>
+    buildApp({ advisor, chat: new AdvisorChat({ data: advisor, model }), chatBudget: budget ?? null });
+
+  it('answers through the agent, with the tools it used and a session to continue', async () => {
+    let seen: Record<string, unknown> = {};
+    const model = new ScriptedLlm([
+      callTool('collection_summary'),
+      request => {
+        seen = lastToolResult(request);
+        return say('You own 8 cards.');
+      },
+      say('Still 8.'),
+    ]);
+    const instance = withChat(model);
+    const first = await post<{ sessionId: string; reply: string; steps: Array<{ tool: string; summary: string }> }>(
+      '/api/advisor/chat', { message: '  What do I own?  ', collection: { cards: cards({ Shock: 4, Opt: 4 }) } }, instance,
+    );
+    expect(first.status).toBe(200);
+    expect(first.body.reply).toBe('You own 8 cards.');
+    expect(first.body.steps).toEqual([{ tool: 'collection_summary', summary: 'Looked at your collection' }]);
+    // The collection sent with the message is the one the tool saw.
+    expect(seen).toMatchObject({ loaded: true, differentCards: 2, copies: 8 });
+
+    const second = await post<{ sessionId: string; reply: string }>(
+      '/api/advisor/chat', { sessionId: first.body.sessionId, message: 'And now?' }, instance,
+    );
+    expect(second.body).toMatchObject({ sessionId: first.body.sessionId, reply: 'Still 8.' });
+  });
+
+  it('says so in the status and answers 503 when no model is configured', async () => {
+    const status = await app().inject({ method: 'GET', url: '/api/advisor/status' });
+    expect(JSON.parse(status.body).agent).toEqual({ available: false });
+    const { status: code, body } = await post<{ error: string }>('/api/advisor/chat', { message: 'hi' });
+    expect(code).toBe(503);
+    expect(body.error).toBe('Chat not configured');
+
+    const on = await withChat(new ScriptedLlm([])).inject({ method: 'GET', url: '/api/advisor/status' });
+    expect(JSON.parse(on.body).agent).toEqual({ available: true, model: 'scripted' });
+  });
+
+  it('stops at the spending ceiling without calling the model', async () => {
+    const model = new ScriptedLlm([say('one')]);
+    const instance = withChat(model, new ChatBudget({ perDay: 1, perMinute: 10 }));
+    expect((await post('/api/advisor/chat', { message: 'first' }, instance)).status).toBe(200);
+    const refused = await post<{ error: string; message: string }>('/api/advisor/chat', { message: 'second' }, instance);
+    expect(refused.status).toBe(429);
+    expect(refused.body.message).toMatch(/daily budget/);
+    expect(model.requests).toHaveLength(1);
+  });
+
+  it('hides the provider\'s error text when the model fails', async () => {
+    const model = new ScriptedLlm([{ errorCode: '429', errorMessage: 'Quota exceeded for project secret-project-123' }]);
+    const { status, body } = await post<{ error: string; message: string }>('/api/advisor/chat', { message: 'hi' }, withChat(model));
+    expect(status).toBe(502);
+    expect(JSON.stringify(body)).not.toContain('secret-project-123');
+  });
+
+  it('rejects an empty, missing or oversized message before spending anything', async () => {
+    const model = new ScriptedLlm([]);
+    const budget = new ChatBudget({ perDay: 5, perMinute: 5 });
+    const instance = withChat(model, budget);
+    expect((await post('/api/advisor/chat', {}, instance)).status).toBe(400);
+    expect((await post('/api/advisor/chat', { message: '   ' }, instance)).status).toBe(400);
+    expect((await post('/api/advisor/chat', { message: 'x'.repeat(2001) }, instance)).status).toBe(400);
+    expect(budget.remainingToday).toBe(5);
+    expect(model.requests).toHaveLength(0);
   });
 });

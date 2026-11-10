@@ -246,7 +246,7 @@ textarea { resize: vertical; }
   background: #101a33; color: var(--ink); font: inherit; font-size: 0.92rem;
 }
 .advisor textarea { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.85rem; line-height: 1.45; }
-.inline-error { color: var(--bad); margin-top: 0.75rem; }
+.inline-error { color: var(--bad); margin: 0.75rem 0; }
 .loading { color: var(--ink-soft); padding: 1rem 0; }
 .notice { background: #2a2413; border: 1px solid #5c4d1c; color: #ecd9a0; border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.9rem; margin: 0.75rem 0; }
 
@@ -400,6 +400,25 @@ textarea { resize: vertical; }
 .export details { width: 100%; font-size: 0.85rem; color: var(--ink-soft); }
 .export summary { cursor: pointer; }
 .arena-text { margin-top: 0.5rem; background: #0b1226; border-radius: 6px; padding: 0.75rem; max-height: 18rem; overflow: auto; font-size: 0.8rem; line-height: 1.45; color: var(--ink); }
+
+/* Chat */
+.chat-lede { color: var(--ink-soft); font-size: 0.9rem; line-height: 1.5; max-width: 70ch; margin-bottom: 0.9rem; }
+.chat-suggestions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.9rem; }
+.chat-suggestions .btn { font-weight: 500; font-size: 0.9rem; text-align: left; }
+.chat-log { display: grid; gap: 0.9rem; max-height: 26rem; overflow-y: auto; padding: 0.25rem 0.25rem 0.25rem 0; margin-bottom: 0.9rem; }
+.chat-message { display: grid; gap: 0.25rem; max-width: 75ch; }
+.chat-author { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); }
+.chat-you .chat-text { color: #f4efe0; font-weight: 600; }
+.chat-advisor { background: #111b36; border-left: 3px solid var(--gold); border-radius: 4px; padding: 0.6rem 0.8rem; }
+.chat-text { white-space: pre-wrap; line-height: 1.55; font-size: 0.93rem; overflow-wrap: anywhere; }
+.chat-steps { list-style: none; display: grid; gap: 0.1rem; font-size: 0.78rem; color: var(--ink-faint); }
+.chat-steps li::before { content: '↳ '; }
+.chat-thinking { color: var(--ink-soft); font-size: 0.9rem; }
+.chat-form { display: flex; gap: 0.6rem; }
+.chat-form input {
+  flex: 1; min-width: 0; padding: 0.65rem; border: 1px solid #44527a; border-radius: 6px;
+  background: #101a33; color: var(--ink); font: inherit; font-size: 0.95rem;
+}
 
 .attribution { color: var(--ink-faint); font-size: 0.78rem; line-height: 1.55; display: grid; gap: 0.3rem; }
 

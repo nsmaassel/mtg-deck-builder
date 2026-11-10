@@ -25,6 +25,8 @@ export interface StoredCollection {
 
 export interface AdvisorStatus {
   ready: boolean;
+  /** The conversational agent; off when the server has no model configured. */
+  agent?: { available: boolean; model?: string };
   cards?: { count: number; builtAt: string; sourceUpdatedAt?: string };
   formats: Array<{ key: string; label: string; onArena: boolean }>;
   meta: Array<{
@@ -93,6 +95,17 @@ export interface ArchetypeCheck {
   check: DeckCheck;
 }
 
+export interface ChatStep {
+  tool: string;
+  summary: string;
+}
+
+export interface ChatTurn {
+  sessionId: string;
+  reply: string;
+  steps: ChatStep[];
+}
+
 export type CraftMode = 'inventory' | 'none';
 
 type CollectionPayload = Pick<StoredCollection, 'cards' | 'wildcards'> | undefined;
@@ -116,6 +129,9 @@ export const advisorApi = {
 
   checkArchetype: (format: string, archetypeId: string, list: number, collection: StoredCollection | null, craft: CraftMode) =>
     post<ArchetypeCheck>('/advisor/meta/check', { format, archetypeId, list, collection: payload(collection), craft }),
+
+  chat: (message: string, sessionId: string | undefined, collection: StoredCollection | null) =>
+    post<ChatTurn>('/advisor/chat', { message, sessionId, collection: payload(collection) }),
 };
 
 /** The server's explanation when it gave one, else the error's own message. */

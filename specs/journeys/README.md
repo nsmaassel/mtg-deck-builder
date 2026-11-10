@@ -16,6 +16,7 @@ Each `.feature.md` file maps to one or more automated tests.
 | J-010 | [Check a Deck Against My Collection](./010-deck-check.feature.md) | `libs/deck-advisor/src/lib/*.spec.ts`, `apps/api/src/routes/advisor.integration.spec.ts` | `@smoke @regression` |
 | J-011 | [Bring My Arena Collection](./011-collection-import.feature.md) | `libs/collection/src/lib/import/*.spec.ts` | `@smoke @regression` |
 | J-012 | [Find the Meta Deck I Am Closest To](./012-meta-decks.feature.md) | `libs/meta-decks/src/lib/*.spec.ts` | `@regression` |
+| J-013 | [Ask the Advisor](./013-advisor-chat.feature.md) | `libs/advisor-agent/src/lib/chat.spec.ts` | `@regression` |
 
 ## Running Tests
 

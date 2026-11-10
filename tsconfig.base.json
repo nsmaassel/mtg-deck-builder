@@ -22,6 +22,8 @@
       "@mtg/deck-builder": ["libs/deck-builder/src/index.ts"],
       "@mtg/ai-advisor": ["libs/ai-advisor/src/index.ts"],
       "@mtg/power-level": ["libs/power-level/src/index.ts"],
+      "@mtg/advisor-agent": ["libs/advisor-agent/src/index.ts"],
+      "@mtg/advisor-agent/testing": ["libs/advisor-agent/src/testing.ts"],
       "@mtg/card-index": ["libs/card-index/src/index.ts"],
       "@mtg/card-index/node": ["libs/card-index/src/node.ts"],
       "@mtg/deck-advisor": ["libs/deck-advisor/src/index.ts"],

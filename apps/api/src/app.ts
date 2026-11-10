@@ -4,7 +4,9 @@ import { commanderRoutes } from './routes/commanders';
 import { deckRoutes } from './routes/decks';
 import { themeRoutes } from './routes/themes';
 import { advisorRoutes } from './routes/advisor';
+import type { AdvisorChat } from '@mtg/advisor-agent';
 import type { AdvisorData } from '@mtg/deck-advisor';
+import type { ChatBudget } from './chat-budget';
 import { resolve } from 'path';
 import { existsSync, readFileSync, statSync } from 'fs';
 import { ScryfallError } from '@mtg/scryfall';
@@ -72,6 +74,10 @@ async function serveStatic(url: string, reply: FastifyReply): Promise<boolean> {
 export interface AppOptions {
   /** Generated card and meta data for the deck advisor. Without it the advisor routes answer 503. */
   advisor?: AdvisorData | null;
+  /** The advisor's conversational agent, when a model is configured. */
+  chat?: AdvisorChat | null;
+  /** Spending ceiling for chat messages. */
+  chatBudget?: ChatBudget | null;
 }
 
 export function buildApp(options: AppOptions = {}) {
@@ -97,7 +103,11 @@ export function buildApp(options: AppOptions = {}) {
   app.register(commanderRoutes);
   app.register(deckRoutes);
   app.register(themeRoutes);
-  app.register(advisorRoutes, { advisor: options.advisor ?? null });
+  app.register(advisorRoutes, {
+    advisor: options.advisor ?? null,
+    chat: options.chat ?? null,
+    chatBudget: options.chatBudget ?? null,
+  });
 
   // External data-source failures (Scryfall/EDHRec) are already retried inside
   // their clients; if one still fails, surface a friendly 502 instead of a raw

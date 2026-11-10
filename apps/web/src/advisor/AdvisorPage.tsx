@@ -9,6 +9,7 @@ import type {
   SavedDeck,
   StoredCollection,
 } from './api';
+import { ChatPanel } from './ChatPanel';
 import { CollectionPanel } from './CollectionPanel';
 import { DeckCheckView } from './DeckCheckView';
 import { DeckPaste } from './DeckPaste';
@@ -127,6 +128,8 @@ export function AdvisorPage({ recheckDelayMs = RECHECK_DELAY_MS }: Props = {}) {
       </section>
 
       <CollectionPanel collection={collection} onChange={updateCollection} onSavedDecks={setSavedDecks} />
+
+      <ChatPanel collection={collection} available={status.agent?.available === true} />
 
       <section className="panel" aria-labelledby="deck-heading">
         <div className="panel-head">

@@ -18,8 +18,9 @@ Deck sites tell an Arena player which cards they are missing and stop there. The
 | **Any decklist** | Paste a list in any Arena format (Standard, Alchemy, Historic, Timeless, Pioneer, Brawl, Standard Brawl) or paper Commander. |
 | **Stand-ins for missing cards** | For each card you lack: cards you own that do the same job, and cheaper crafts, each with its reasons and what it fails to cover. Always legal in the format and castable in the deck's colours. |
 | **A list you can build today** | Wildcards go to the cards that are hardest to replace, everything else is swapped, and the result copies straight into Arena's deck import. |
+| **Ask the advisor** | A Google ADK agent whose tools are the checks above. Ask which deck to build or where your wildcards should go; it runs the checks and explains them. Needs a Gemini key or Vertex AI on the server; the rest works without. |
 
-Every recommendation is computed, not generated: stand-ins are scored on Scryfall Tagger's functional tags, rules text, card type, mana value, colour, and how often the deck's archetype actually plays the card. See [J-010](./specs/journeys/010-deck-check.feature.md) for the scoring table.
+Every recommendation is computed, not generated: stand-ins are scored on Scryfall Tagger's functional tags, rules text, card type, mana value, colour, and how often the deck's archetype actually plays the card. See [J-010](./specs/journeys/010-deck-check.feature.md) for the scoring table. The agent only chooses which checks to run and puts the results into words ([J-013](./specs/journeys/013-advisor-chat.feature.md)).
 
 ### What it does not know
 
@@ -81,6 +82,7 @@ graph TB
         COL[libs/collection<br/>Collection import]
         IDX[libs/card-index<br/>Local card database]
         ADV[libs/deck-advisor<br/>Gap, stand-ins, plan]
+        AGT[libs/advisor-agent<br/>ADK agent + tools]
         META[libs/meta-decks<br/>Meta snapshots]
         SCR[libs/scryfall<br/>Card data + prices]
         EDH[libs/edhrec<br/>Meta rankings + synergy]
@@ -97,7 +99,8 @@ graph TB
     end
 
     WEB -->|HTTP| API
-    API --> COL & DB & AI & ADV
+    API --> COL & DB & AI & ADV & AGT
+    AGT --> ADV
     ADV --> IDX & META
     API --> PL
     DB --> SCR & EDH
@@ -159,8 +162,18 @@ npx tsx --tsconfig tsconfig.json scripts/eval-decks.ts
 
 Create `.env` in `apps/api/`:
 ```env
-ANTHROPIC_API_KEY=sk-ant-...   # Required for AI explanations
+ANTHROPIC_API_KEY=sk-ant-...   # Commander Builder: AI explanations
 LOG_LEVEL=info
+
+# Deck Advisor chat (optional). One of:
+GOOGLE_API_KEY=...             # Gemini API key
+# GOOGLE_GENAI_USE_VERTEXAI=true   # or Vertex AI with the machine's own credentials,
+# GOOGLE_CLOUD_PROJECT=...         # which is how Cloud Run reaches it
+# GOOGLE_CLOUD_LOCATION=us-central1
+
+ADVISOR_AGENT_MODEL=gemini-3.8-flash   # default
+ADVISOR_AGENT_DAILY_LIMIT=300          # chat messages per UTC day, all visitors
+ADVISOR_AGENT_PER_MINUTE=20
 ```
 
 ---
@@ -191,6 +204,7 @@ This project uses a **spec-first, BDD workflow**: write the journey spec, then t
 | J-010 | Check a deck against my collection, with stand-ins | `@smoke @regression` | [010-deck-check](./specs/journeys/010-deck-check.feature.md) |
 | J-011 | Bring my Arena collection | `@smoke @regression` | [011-collection-import](./specs/journeys/011-collection-import.feature.md) |
 | J-012 | Find the meta deck I am closest to | `@regression` | [012-meta-decks](./specs/journeys/012-meta-decks.feature.md) |
+| J-013 | Ask the advisor | `@regression` | [013-advisor-chat](./specs/journeys/013-advisor-chat.feature.md) |
 
 E2E specs live in `apps/web-e2e/src/journeys/`: `happy-path`, `bracket-targeting`, `owned-only`, `error-states`, `gap-analysis`, `new-player-onboarding`. They cover the Commander Builder, which now lives at `/#/commander`. J-010 to J-012 are covered by unit, API integration and component tests.
 
@@ -228,6 +242,7 @@ libs/
   collection/   Collection import: Arena text, tracker JSON, CSV, Player.log — pure TS, no HTTP
   card-index/   Local card database built from Scryfall bulk data: legality, Arena rarity, functional tags
   deck-advisor/ Deck gap, stand-in scoring, build plan, meta ranking
+  advisor-agent/ Google ADK agent: the engine's checks as tools, the instruction, the chat runner
   meta-decks/   Meta snapshots from tournament decklists: archetype rules, shares, card frequencies
   scryfall/     Scryfall API client — card data, prices, commander search
   edhrec/       EDHRec API client — recommendations, synergy scores, caching
@@ -260,6 +275,7 @@ scripts/
 | `POST` | `/api/advisor/deck/check` | `{ deckText, format, collection?, craft? }` → gap, stand-ins, buildable list |
 | `POST` | `/api/advisor/meta` | `{ format, collection? }` → archetypes, ranked by the collection when given |
 | `POST` | `/api/advisor/meta/check` | `{ format, archetypeId, list?, collection?, craft? }` → check of an archetype's list |
+| `POST` | `/api/advisor/chat` | `{ message, sessionId?, collection? }` → `{ sessionId, reply, steps }`. 503 without a model, 429 over the budget |
 
 The API keeps nothing between requests. The collection lives in the browser and travels with each request as `{ cards: { <oracleId>: copies }, wildcards? }`.
 

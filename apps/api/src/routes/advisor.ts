@@ -1,4 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
+import { AdvisorChatError } from '@mtg/advisor-agent';
+import type { AdvisorChat } from '@mtg/advisor-agent';
 import { FORMATS } from '@mtg/card-index';
 import type { Format } from '@mtg/card-index';
 import { importCollection, mergeImports, resolveCollection } from '@mtg/collection';
@@ -16,12 +18,14 @@ import {
 } from '@mtg/deck-advisor';
 import type { AdvisorData, Collection, DeckLine, SampleProfile, Wildcards } from '@mtg/deck-advisor';
 import type { MetaArchetype, TournamentDeck } from '@mtg/meta-decks/types';
+import type { ChatBudget } from '../chat-budget';
 
 /** A full collection is a few hundred kilobytes of JSON; an export file can be several megabytes of text. */
 const IMPORT_BODY_LIMIT = 8 * 1024 * 1024;
 const COLLECTION_BODY_LIMIT = 2 * 1024 * 1024;
 const MAX_COLLECTION_CARDS = 40_000;
 const MAX_DECK_TEXT = 20_000;
+const MAX_CHAT_MESSAGE = 2_000;
 
 interface CollectionBody {
   cards?: Record<string, number>;
@@ -104,13 +108,23 @@ function listSummary(list: TournamentDeck) {
   return { player: list.player, result: list.result, event: list.event, date: list.date, uri: webLink(list.uri) };
 }
 
-export async function advisorRoutes(app: FastifyInstance, options: { advisor: AdvisorData | null }): Promise<void> {
+export interface AdvisorRouteOptions {
+  advisor: AdvisorData | null;
+  /** The conversational agent. Absent when no model is configured; the rest of the advisor does not need it. */
+  chat?: AdvisorChat | null;
+  chatBudget?: ChatBudget | null;
+}
+
+export async function advisorRoutes(app: FastifyInstance, options: AdvisorRouteOptions): Promise<void> {
   const data = options.advisor;
+  const chat = data ? (options.chat ?? null) : null;
+  const chatBudget = options.chatBudget ?? null;
 
   app.get('/api/advisor/status', async () => {
-    if (!data) return { ready: false, formats: [], meta: [] };
+    if (!data) return { ready: false, formats: [], meta: [], agent: { available: false } };
     return {
       ready: true,
+      agent: chat ? { available: true, model: chat.modelName } : { available: false },
       cards: { count: data.index.size, builtAt: data.index.builtAt, sourceUpdatedAt: data.index.cardsUpdatedAt },
       formats: FORMATS.map(key => ({ key, label: FORMAT_RULES[key].label, onArena: FORMAT_RULES[key].onArena })),
       meta: [...data.meta.values()].sort((a, b) => formatOrder(a.format) - formatOrder(b.format)).map(snapshot => ({
@@ -334,6 +348,57 @@ export async function advisorRoutes(app: FastifyInstance, options: { advisor: Ad
         list: listSummary(list),
         check,
       });
+    },
+  });
+
+  app.post<{ Body: { sessionId?: string; message: string; collection?: CollectionBody } }>('/api/advisor/chat', {
+    bodyLimit: COLLECTION_BODY_LIMIT,
+    schema: {
+      body: {
+        type: 'object',
+        required: ['message'],
+        properties: {
+          sessionId: { type: 'string', maxLength: 64 },
+          message: { type: 'string', minLength: 1, maxLength: MAX_CHAT_MESSAGE },
+          collection: collectionSchema,
+        },
+      },
+    },
+    handler: async (request, reply) => {
+      if (!data) return unavailable(reply);
+      if (!chat) {
+        return reply.status(503).send({
+          error: 'Chat not configured',
+          message: 'The advisor\'s chat needs a model key on this server. Everything else on this page works without it.',
+        });
+      }
+      const message = request.body.message.trim();
+      if (!message) return reply.status(400).send({ error: 'Empty message' });
+
+      const decision = chatBudget?.spend();
+      if (decision && !decision.allowed) {
+        return reply.status(429).send({
+          error: 'Chat budget reached',
+          message: decision.reason === 'day'
+            ? 'The advisor has answered as many questions as its daily budget allows. The deck check on this page still works; chat is back tomorrow (UTC).'
+            : 'The advisor is answering a lot of questions right now. Try again in a minute.',
+        });
+      }
+
+      try {
+        const collection = request.body.collection ? toCollection(request.body.collection) : null;
+        return reply.send(await chat.send({ sessionId: request.body.sessionId, message, collection }));
+      } catch (err) {
+        if (err instanceof AdvisorChatError && err.kind === 'limit') {
+          return reply.status(409).send({ error: 'Conversation too long', message: err.message });
+        }
+        // The provider's own error text can name projects and quotas: log it, do not send it.
+        request.log.error({ err }, 'advisor chat failed');
+        return reply.status(502).send({
+          error: 'Chat unavailable',
+          message: 'The advisor could not answer just now. The deck check on this page still works; try the question again in a moment.',
+        });
+      }
     },
   });
 }

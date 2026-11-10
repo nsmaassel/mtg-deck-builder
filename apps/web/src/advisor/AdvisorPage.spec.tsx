@@ -26,6 +26,7 @@ vi.mock('./api', () => ({
 
 const status: AdvisorStatus = {
   ready: true,
+  agent: { available: true, model: 'gemini-test' },
   cards: { count: 33000, builtAt: '2026-11-09T00:00:00Z', sourceUpdatedAt: '2026-11-09T22:06:00Z' },
   formats: [
     { key: 'standard', label: 'Standard', onArena: true },
@@ -55,6 +56,18 @@ describe('AdvisorPage', () => {
     expect(screen.getByRole('link', { name: 'Scryfall' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'MTGODecklistCache' })).toHaveAttribute('href', 'https://example.test/cache');
     expect(screen.getByText(/Your collection stays in this browser/)).toBeInTheDocument();
+  });
+
+  it('offers the chat when the server has a model, and says so when it does not', async () => {
+    const { unmount } = render(<AdvisorPage recheckDelayMs={0} />);
+    await screen.findByText('Izzet Prowess');
+    expect(screen.getByRole('textbox', { name: 'Your question' })).toBeInTheDocument();
+    unmount();
+
+    mockStatus.mockResolvedValue({ ...status, agent: { available: false } });
+    render(<AdvisorPage recheckDelayMs={0} />);
+    await screen.findByText('Izzet Prowess');
+    expect(screen.getByText(/Chat is off on this server/)).toBeInTheDocument();
   });
 
   it('checks a meta deck when it is picked', async () => {

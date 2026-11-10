@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "outDir": "../../dist/libs/advisor-agent", "types": ["vitest/globals", "node"] },
+  "include": ["src/**/*.spec.ts", "src/lib/testing.ts"]
+}
