@@ -1,0 +1,16 @@
+Mono path[0] = 'C:/Program Files/Wizards of the Coast/MTGA/MTGA_Data/Managed'
+Initialize engine version: 2022.3.62f2 (7670c08855a9)
+  Renderer: <redacted>
+  Vendor: <redacted>
+DETAILED LOGS: DISABLED
+Startup Timestamp: 3/15/2026 11:50:03 AM
+Loaded embedded metadata
+Environment set to Prod, AWS
+Version: 2026.57.20.11631 / 2026.57.20.11631.1247675 / 
+[UnityCrossThreadLogger]FrontDoorConnectionAWS.Open {"creator":"ArenaGlobals.Constructor"}
+[UnityCrossThreadLogger]Got non-message event: Wizards.Arena.TcpConnection.TcpOpenedEvent
+3/15/2026 11:50:10 AM LoadWrapperScene
+3/15/2026 11:50:11 AM Coroutine_StartupSequence
+[UnityCrossThreadLogger]Default currency for SKUs: USD
+3/15/2026 11:50:14 AM Coroutine_StartupSequence - Data retrieved
+[UnityCrossThreadLogger]Client.SceneChange {"fromSceneName":"None","toSceneName":"Home","initiator":"System","context":"Landing Page 'Home'"}

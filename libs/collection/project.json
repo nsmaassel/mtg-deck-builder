@@ -11,7 +11,9 @@
     },
     "typecheck": {
       "executor": "nx:run-commands",
-      "options": { "command": "tsc --noEmit -p libs/collection/tsconfig.json" }
+      "options": {
+        "command": "tsc --noEmit -p libs/collection/tsconfig.lib.json && tsc --noEmit -p libs/collection/tsconfig.spec.json"
+      }
     }
   }
 }
