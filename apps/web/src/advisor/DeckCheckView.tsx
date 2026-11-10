@@ -160,9 +160,13 @@ export function DeckCheckView({ check, context, hasCollection, craft, onCraftCha
             {context && (
               <>
                 {' · '}
-                <a href={context.list.uri} target="_blank" rel="noreferrer">
-                  {context.list.player}, {context.list.result}
-                </a>{' '}
+                {context.list.uri ? (
+                  <a href={context.list.uri} target="_blank" rel="noreferrer">
+                    {context.list.player}, {context.list.result}
+                  </a>
+                ) : (
+                  `${context.list.player}, ${context.list.result}`
+                )}{' '}
                 at {context.list.event} ({context.list.date})
               </>
             )}

@@ -95,8 +95,13 @@ function formatOrder(format: string): number {
   return index === -1 ? FORMATS.length : index;
 }
 
+/** Snapshot links come from third-party data and end up in an href: web links only. */
+function webLink(uri: string): string {
+  return /^https?:\/\//i.test(uri) ? uri : '';
+}
+
 function listSummary(list: TournamentDeck) {
-  return { player: list.player, result: list.result, event: list.event, date: list.date, uri: list.uri };
+  return { player: list.player, result: list.result, event: list.event, date: list.date, uri: webLink(list.uri) };
 }
 
 export async function advisorRoutes(app: FastifyInstance, options: { advisor: AdvisorData | null }): Promise<void> {

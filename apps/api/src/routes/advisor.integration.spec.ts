@@ -249,6 +249,19 @@ describe('POST /api/advisor/meta/check', () => {
     expect(slickshot.substitutes[0]?.reasons).toContain('In 50% of Izzet Prowess main decks');
   });
 
+  it('only passes on web links from the snapshot', async () => {
+    const hostile: MetaSnapshot = {
+      ...snapshot,
+      archetypes: [{ ...izzet, representative: { ...izzet.representative, uri: 'javascript:alert(1)' } }],
+    };
+    const instance = buildApp({ advisor: { ...advisor, meta: new Map([['standard', hostile]]) } });
+    const { body } = await post<{ list: { uri: string }; archetype: { lists: Array<{ uri: string }> } }>(
+      '/api/advisor/meta/check', { format: 'standard', archetypeId: 'izzet-prowess' }, instance,
+    );
+    expect(body.list.uri).toBe('');
+    expect(body.archetype.lists.map(l => l.uri)).toEqual(['']);
+  });
+
   it('answers 404 for an archetype or list that does not exist', async () => {
     expect((await post('/api/advisor/meta/check', { format: 'standard', archetypeId: 'nope' })).status).toBe(404);
     expect((await post('/api/advisor/meta/check', { format: 'standard', archetypeId: 'izzet-prowess', list: 7 })).status).toBe(404);
