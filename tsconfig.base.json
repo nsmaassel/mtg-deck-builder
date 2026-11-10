@@ -22,7 +22,11 @@
       "@mtg/edhrec": ["libs/edhrec/src/index.ts"],
       "@mtg/deck-builder": ["libs/deck-builder/src/index.ts"],
       "@mtg/ai-advisor": ["libs/ai-advisor/src/index.ts"],
-      "@mtg/power-level": ["libs/power-level/src/index.ts"]
+      "@mtg/power-level": ["libs/power-level/src/index.ts"],
+      "@mtg/card-index": ["libs/card-index/src/index.ts"],
+      "@mtg/deck-advisor": ["libs/deck-advisor/src/index.ts"],
+      "@mtg/meta-decks": ["libs/meta-decks/src/index.ts"],
+      "@mtg/combos": ["libs/combos/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

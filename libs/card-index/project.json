@@ -1,0 +1,24 @@
+{
+  "name": "card-index",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/card-index/src",
+  "projectType": "library",
+  "tags": [
+    "type:lib",
+    "scope:card-index"
+  ],
+  "targets": {
+    "test": {
+      "executor": "@nx/vitest:test",
+      "options": {
+        "config": "libs/card-index/vite.config.ts"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit -p libs/card-index/tsconfig.lib.json && tsc --noEmit -p libs/card-index/tsconfig.spec.json"
+      }
+    }
+  }
+}
