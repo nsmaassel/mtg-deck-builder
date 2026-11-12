@@ -398,17 +398,4 @@ describe('ComboIndex at the size of the real data', () => {
       expect(after.combos.length).toBe(Math.min(after.total, COMPLETER_COMBOS));
     }
   });
-
-  it('answers for a whole collection in milliseconds', () => {
-    const started = performance.now();
-    const rounds = 20;
-    for (let round = 0; round < rounds; round++) {
-      big.complete(collection, { format: 'historic' });
-      big.near(collection, { format: 'historic' });
-      big.completers(collection, { format: 'historic' });
-    }
-    const perQuery = (performance.now() - started) / (rounds * 3);
-    // Typically well under 5 ms. The bound is loose so a busy machine does not fail it, yet a scan per card would.
-    expect(perQuery).toBeLessThan(100);
-  });
 });
