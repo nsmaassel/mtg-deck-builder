@@ -3,7 +3,7 @@
 Two tools for Magic: The Gathering players, in one app:
 
 - **Deck Advisor** — play the top decks with the cards you have. Load your MTG Arena collection, pick a deck from the tournament meta or paste any list, and see how much of it you own, what the rest costs in wildcards, and the closest cards in your collection for everything you are missing.
-- **Commander Builder** — pick a commander and get a full 100-card deck built from cards you own, scored by EDHRec data and assessed against the official Commander Brackets.
+- **Commander Builder** — pick a commander and get a full 100-card deck built around what it does, from the cards you own first, assessed against the official Commander Brackets.
 
 ---
 
@@ -58,15 +58,15 @@ Untapped.gg, MTGGoldfish, AetherHub and Moxfield are not used: their terms forbi
 
 | Feature | Status | Description |
 |---------|--------|-------------|
-| 🃏 **Build from commander** | ✅ Shipped | Pick any legendary creature, get the best 99 from your collection + EDHRec top picks |
+| 🃏 **Build from commander** | ✅ Shipped | Pick any legendary creature, get the best 99 from your collection plus the top picks for what that commander does |
 | ⚡ **Power level assessment** | ✅ Shipped | Official Commander Brackets 1–5: Game Changers, tutors, combo detection via Commander Spellbook |
-| 🔄 **Bracket targeting** | ✅ Shipped | Target a bracket — get named swap suggestions with EDHRec-ranked alternatives |
-| 📊 **Gap analysis** | ✅ Shipped | Missing staples with EDHRec inclusion %, Scryfall price, and slot info |
+| 🔄 **Bracket targeting** | ✅ Shipped | Target a bracket — get named swap suggestions with ranked alternatives |
+| 📊 **Gap analysis** | ✅ Shipped | Cards the deck leans on that you do not own, with the reason each is there, its price and its slot |
 | 🤖 **AI explanations** | ✅ Shipped | Claude explains strategy, key synergies, and top upgrade targets |
 | 🔒 **Owned-only mode** | ✅ Shipped | Build strictly from your collection — no unowned recommendations |
 | 💰 **Budget mode** | ✅ Shipped | Fill gaps only with cards at or below a price cap |
-| 🆕 **New player on-ramp** | ✅ Shipped | Build a full Commander deck from EDHRec recommendations — no MTG Arena export required |
-| 🛡️ **External API resilience** | ✅ Shipped | Rate-limit throttling with exponential backoff + `Retry-After` handling on Scryfall/EDHRec |
+| 🆕 **New player on-ramp** | ✅ Shipped | Build a full Commander deck with no collection at all — no MTG Arena export required |
+| 🧭 **Every pick explained** | ✅ Shipped | Each card carries one or two reasons that are true of it: what it does, and what on the commander asked for it |
 
 ---
 
@@ -88,8 +88,9 @@ graph TB
         ADV[libs/deck-advisor<br/>Gap, stand-ins, plan]
         AGT[libs/advisor-agent<br/>ADK agent + tools]
         META[libs/meta-decks<br/>Meta snapshots]
-        SCR[libs/scryfall<br/>Card data + prices]
-        EDH[libs/edhrec<br/>Meta rankings + synergy]
+        CMB[libs/combos<br/>Combos from Commander Spellbook]
+        REC[libs/commander-recs<br/>Themes, synergy, slots]
+        SCR[libs/scryfall<br/>Fuzzy name lookup]
         DB[libs/deck-builder<br/>Scoring + slot filler]
         PL[libs/power-level<br/>Bracket assessment]
         AI[libs/ai-advisor<br/>Claude explanations]
@@ -97,7 +98,6 @@ graph TB
 
     subgraph External
         SCRYFALL[Scryfall API]
-        EDHREC[EDHRec API]
         CSB[Commander Spellbook<br/>combo detection]
         CLAUDE[Anthropic Claude]
     end
@@ -105,29 +105,47 @@ graph TB
     WEB -->|HTTP| API
     API --> COL & DB & AI & ADV & AGT
     AGT --> ADV
-    ADV --> IDX & META
+    ADV --> IDX & META & CMB
     API --> PL
-    DB --> SCR & EDH
+    DB --> REC
+    REC --> IDX
+    API --> SCR
     PL --> CSB
     SCR --> SCRYFALL
-    EDH --> EDHREC
     AI --> CLAUDE
 ```
 
 ### Deck Building Algorithm
 
-Cards scored per-slot, filled in priority order. Scoring: `inclusion × 0.5 + synergy × 0.5` (both commander-specific from EDHRec). Owned cards get a 1.5× multiplier.
+Recommendations are computed from the local card index (`libs/commander-recs`); nothing is fetched from a recommendation site. The builder first works out what the commander is about: 27 themes read from Scryfall Tagger's tags, the type line, keywords and rules text, plus the creature type it cares about. Then every card in its colours gets:
+
+- **Popularity** (0–1) from Scryfall's EDHREC rank on a log scale. It says how widely a card is played across Commander as a whole, not with this commander.
+- **Synergy** (0–1) from how strongly the card serves the commander's themes.
+- **A slot** from what the card does, and one or two **reasons** that are true of it.
+
+`score = popularity × wp + synergy × ws + cheapness × wc + colour fit × wf`, plus 0.15 for a card you own.
+
+| Slot | wp | ws | wc | wf |
+|------|----|----|----|----|
+| Ramp, draw, interaction | 0.65 | 0.20 | 0.15 | – |
+| Synergy | 0.35 | 0.55 | 0.10 | – |
+| Win conditions | 0.30 | 0.60 | 0.10 | – |
+| Lands | 0.45 | 0.15 | – | 0.40 |
+
+Staple slots lean on popularity, so Sol Ring keeps its place; synergy and win-condition slots lean on synergy, so two commanders in the same colours get different decks. Every owned card is scored on its own merits, so an owned-only build is the best deck the collection allows. `scripts/eval-commander-recs.ts` prints the themes and top picks for any commander.
+
+What it cannot know: how often a card is played *with this commander*. No open data has that, so two commanders in the same colours share most of their ramp and removal.
 
 | Slot | Target | Notes |
 |------|--------|-------|
 | Commander | 1 | User-provided |
-| Ramp | 10 | Mana rocks + ramp spells, color-legal |
+| Ramp | 10 | Mana rocks, mana creatures, land ramp |
 | Card Draw | 10 | Draw spells |
 | Interaction | 10 | Removal + counterspells |
-| Win Conditions | 5 | Game Changers boosted |
-| Synergy | 25 | Highest blended score remaining |
-| Lands | 36 | Owned nonbasics + basics to fill |
-| Flex | 3 | Best remaining |
+| Win Conditions | 5 | Finishers and Game Changers |
+| Synergy | 25 | Best fit for the commander among everything still unplaced |
+| Lands | 36 | Nonbasics that fit the colours, up to a cap by colour count, then basics |
+| Flex | 3 | Most widely played cards left |
 
 ### Power Level Assessment (Commander Brackets)
 
@@ -139,7 +157,7 @@ Cards scored per-slot, filled in priority order. Scoring: `inclusion × 0.5 + sy
 | 4 | Optimized | 4+ Game Changers or 2-card combo + GC |
 | 5 | cEDH | 6+ GC + 2 Tier-A tutors + avg CMC <2.0 |
 
-Swap suggestions rank alternatives by blended score (50% inclusion + 50% synergy). Candidate pool comes from EDHRec for the specific commander — color identity is correct by construction.
+Swap suggestions rank alternatives by a blend of popularity and synergy. The candidates are this commander's own recommendations that did not make the deck, so colour identity is correct by construction.
 
 ---
 
@@ -255,16 +273,19 @@ libs/
   deck-advisor/ Deck gap, stand-in scoring, build plan, meta ranking
   advisor-agent/ Google ADK agent: the engine's checks as tools, the instruction, the chat runner
   meta-decks/   Meta snapshots from tournament decklists: archetype rules, shares, card frequencies
-  scryfall/     Scryfall API client — card data, prices, commander search
-  edhrec/       EDHRec API client — recommendations, synergy scores, caching
+  combos/       Combos from Commander Spellbook's bulk file: what a set of cards completes, and what one more card would
+  commander-recs/ What a commander is about, and every card scored for it: themes, synergy, slots, reasons
+  scryfall/     Scryfall API client — one fuzzy name lookup when the card index does not know a commander as typed
   deck-builder/ Scoring algorithm, slot filler, gap analysis, color identity
   power-level/  Commander Bracket assessment, combo detection, swap suggestions
   ai-advisor/   Anthropic Claude deck explanation wrapper
 specs/
   journeys/     Gherkin user journey specs — source of truth for E2E tests
 scripts/
-  data/         Builders for data/generated: build-card-index.ts, build-meta.ts
-  eval-decks.ts Quality harness — 8 test commanders against live API
+  data/         Builders for data/generated: build-card-index.ts, build-meta.ts, build-combos.ts
+  evals/        advisor-agent.ts — the agent's eval against a real model
+  eval-decks.ts Quality harness — 8 test commanders against a running API
+  eval-commander-recs.ts  Themes and top picks for any commander, from the card index
 ```
 
 ---
@@ -275,7 +296,7 @@ scripts/
 |--------|----------|-------------|
 | `GET` | `/health` | Health check `{ status: 'ok' }` |
 | `POST` | `/api/collection/parse` | Parse MTG Arena export |
-| `GET` | `/api/commanders/search?q=` | Search Scryfall for legendary creatures |
+| `GET` | `/api/commanders/search?q=` | Search the card index for cards that can be a commander |
 | `GET` | `/api/themes` | List supported archetypes |
 | `POST` | `/api/decks/build-from-commander` | **Core:** Build 100-card Commander deck |
 | `POST` | `/api/decks/build-from-theme` | Theme-based commander discovery (API only — no UI yet) |
@@ -286,6 +307,7 @@ scripts/
 | `POST` | `/api/advisor/deck/check` | `{ deckText, format, collection?, craft? }` → gap, stand-ins, buildable list |
 | `POST` | `/api/advisor/meta` | `{ format, collection? }` → archetypes, ranked by the collection when given |
 | `POST` | `/api/advisor/meta/check` | `{ format, archetypeId, list?, collection?, craft? }` → check of an archetype's list |
+| `POST` | `/api/advisor/combos` | `{ format, colors?, collection? }` → combos the collection holds and the cards that would finish the most |
 | `POST` | `/api/advisor/chat` | `{ message, sessionId?, collection? }` → `{ sessionId, reply, steps }`. 503 without a model, 429 over the budget |
 
 The API keeps nothing between requests. The collection lives in the browser and travels with each request as `{ cards: { <oracleId>: copies }, wildcards? }`.
@@ -295,7 +317,7 @@ The API keeps nothing between requests. The collection lives in the browser and 
 ```ts
 // POST /api/decks/build-from-commander
 {
-  collectionText?: string,     // Optional: MTG Arena export. Omit or empty for new-player on-ramp (build from EDHRec only)
+  collectionText?: string,     // Optional: MTG Arena export. Omit or empty for new-player on-ramp (build from the top picks only)
   commanderName: string,
   options?: {
     mode?: 'prefer-owned' | 'owned-only' | 'budget',
@@ -311,8 +333,14 @@ The API keeps nothing between requests. The collection lives in the browser and 
     slots: Record<'ramp'|'draw'|'interaction'|'winConditions'|'synergy'|'lands'|'flex', DeckCard[]>,
     totalCards: number        // always 100
   },
-  analysis: { averageCmc: number, staplesCoveragePercent: number, colorDistribution: Record<string, number> },
-  gaps: { missingStaples: Array<{ name, edhrec_inclusion, wouldFillSlot, usdPrice? }> },
+  // DeckCard: { name, slot, score, popularity, synergy, reasons, ownedInCollection, cmc, type_line, usdPrice? }
+  analysis: {
+    averageCmc: number,
+    topPicksCoveragePercent: number,   // share of our own unconstrained picks that made this deck; not "how many decks play it"
+    colorDistribution: Record<string, number>,
+    themes: Array<{ slug, name, because }>   // what the deck is built around, and what on the commander says so
+  },
+  gaps: { missingCards: Array<{ name, popularity, synergy, reasons, wouldFillSlot, usdPrice }> },
   powerLevel: {
     bracket: 1|2|3|4|5,
     score: number,            // 1–10
@@ -321,15 +349,16 @@ The API keeps nothing between requests. The collection lives in the browser and 
     explanation: string[],
     targetSuggestions?: Array<{
       remove: string, removeReason: string, removeSlot: string,
-      alternatives: Array<{ name, inclusion, synergy?, slot }>
+      alternatives: Array<{ name, popularity, synergy?, slot }>
     }>
   }
 }
 
 // 400 — bad collection format
 // 400 — owned-only mode with no usable collection
-// 404 — commander not found in Scryfall
+// 404 — commander not found
 // 422 — commander not legal in Commander format
+// 503 — the card index is not built on this server (`pnpm data:cards`)
 ```
 
 ---
