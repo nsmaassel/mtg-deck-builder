@@ -290,7 +290,7 @@ export function DeckCheckView({ check, context, hasCollection, craft, onCraftCha
 
       {check.issues.length > 0 && (
         <div className="issues" role="note" aria-label="Problems with this list">
-          <strong>Not a legal {check.format} deck as written</strong>
+          <strong>Not a legal deck as written</strong>
           <ul>
             {check.issues.map(issue => <li key={issue.message}>{issue.message}</li>)}
           </ul>
