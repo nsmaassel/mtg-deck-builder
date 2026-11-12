@@ -111,7 +111,7 @@ The instruction forbids stating card text, legality, ownership, costs or meta nu
 
 Messages differ in cost by an order of magnitude, so the dollar ceiling is the one sized to the bill: every turn's tokens are priced and added to the day, including the tokens of a turn that failed part-way. The turn that crosses the ceiling is still answered, so a day can end one turn over. $0.30 a day is at most $9.30 a month. The default prices are gemini-3.8-flash's list prices from 2027-01-01, twice what it costs until then, so the ceiling errs towards stopping early.
 
-An answer costs about half a cent on the default model (measured: 5,400 prompt and 220 output tokens on average), so the default ceiling is roughly 30 answers a day by the server's own conservative pricing.
+An answer costs a little over half a cent on the default model (measured: about 7,400 prompt and 240 output tokens on average), so the default ceiling is roughly 25 answers a day by the server's own conservative pricing, and about twice that at 2026 prices.
 
 Counts are kept in memory, which fits a single instance and is lost on a restart: the project's billing cut-off, not this, is the last line of defence. The collection travels with each message; conversations are kept in memory for an hour and nowhere else.
 

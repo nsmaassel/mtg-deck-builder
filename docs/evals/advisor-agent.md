@@ -30,12 +30,12 @@ Finding card names in prose has one hard case: `Opt`, `Shock` and `Arena` are ca
 
 | Model | Thinking | Cases passed | Median answer | Tokens per answer (prompt / output) | Cost per answer |
 |-------|----------|--------------|---------------|--------------------------------------|-----------------|
-| gemini-3.8-flash | low | 16 of 16 in two runs of three, 15 in the third | 5.5 s | 6,800 / 230 | $0.006 |
+| gemini-3.8-flash | low | 16 of 16, three runs in a row | 5.5 s | 7,400 / 240 | $0.006 |
 | gemini-3.8-flash | model default | 13 of 14 | 11.6 s | 7,500 / 970 | $0.009 |
 | gemini-3.5-flash-lite | none | 12 of 14 | 1.8 s | 4,600 / 120 | $0.002 |
 | gemini-3.1-flash-lite | none | 11 of 14 | 2.1 s | 4,200 / 190 | $0.001 |
 
-The rows with 14 cases were run before the `short-deck` and `combos-owned` cases existed, and the default-thinking row before two instruction changes, so read them as a comparison of models, not as exact scores. The one failure in the first row was a limit of mine, not the model: a question that needed six deck checks ran out of model calls before it could answer. The limit is now two calls above the tool limit, and a test holds it there. Prices are Google's list prices on the day; gemini-3.8-flash doubles on 2027-01-01, to about one cent an answer.
+The rows with 14 cases were run before the `short-deck` and `combos-owned` cases existed, and the default-thinking row before two instruction changes, so read them as a comparison of models, not as exact scores. One earlier run of the first row lost a case to a limit in the chat, not to the model: a question that needed six deck checks ran out of model calls before it could answer. The limit is now two calls above the tool limit, and a test holds it there. Prices are Google's list prices on the day; gemini-3.8-flash doubles on 2027-01-01, to about one cent an answer.
 
 What the runs showed:
 
