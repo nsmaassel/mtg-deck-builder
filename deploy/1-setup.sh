@@ -15,7 +15,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 . deploy/config.sh
 
-run() { echo "+ $*"; "$@"; }
+# Echoed to stderr, so it still shows when a command's own output is sent to /dev/null.
+run() { echo "+ $*" >&2; "$@"; }
 exists() { "$@" >/dev/null 2>&1; }
 
 run gcloud services enable \

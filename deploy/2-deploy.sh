@@ -12,10 +12,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 . deploy/config.sh
 
-run() { echo "+ $*"; "$@"; }
+# Echoed to stderr, so it still shows when a command's own output is sent to /dev/null.
+run() { echo "+ $*" >&2; "$@"; }
 
 if [ -z "${IMAGE:-}" ]; then
-  IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/${REPOSITORY}/app:$(git rev-parse --short HEAD)"
+  # The build takes the working tree as it is, so the tag says when that is not the commit.
+  TAG="$(git rev-parse --short HEAD)"
+  [ -z "$(git status --porcelain)" ] || TAG="${TAG}-dirty"
+  IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/${REPOSITORY}/app:${TAG}"
   # The image builds its own card index, meta snapshots and combos; DATA_DATE refreshes them at most daily.
   run gcloud builds submit . --project "$PROJECT" --config deploy/cloudbuild.yaml \
     --substitutions="_IMAGE=${IMAGE},_DATA_DATE=$(date -u +%F)"
