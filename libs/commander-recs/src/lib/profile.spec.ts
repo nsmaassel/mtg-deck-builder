@@ -110,6 +110,14 @@ describe('findCommanders', () => {
     ]);
   });
 
+  it('ignores accents, as the card index does', () => {
+    const accented = buildCommanderTestIndex([
+      { name: 'Lim-Dûl the Necromancer', cost: '{5}{B}{B}', type: 'Legendary Creature — Human Wizard', rank: 4000 },
+    ]);
+    expect(findCommanders(accented, 'lim-dul').map(commander => commander.name)).toEqual(['Lim-Dûl the Necromancer']);
+    expect(findCommanders(accented, 'Lim Dûl').map(commander => commander.name)).toEqual(['Lim-Dûl the Necromancer']);
+  });
+
   it('returns nothing for an empty query', () => {
     expect(findCommanders(index, '  ')).toEqual([]);
   });

@@ -13,7 +13,7 @@ import type { BaseLlm } from '@google/adk';
 import type { AdvisorData, Collection } from '@mtg/deck-advisor';
 import { ADVISOR_INSTRUCTION } from './instruction';
 import type { ThinkingLevel } from './thinking';
-import { createAdvisorTools } from './tools';
+import { createAdvisorTools, isRefusedByLimit } from './tools';
 
 const APP_NAME = 'deck-advisor';
 // Visitors are anonymous; conversations are told apart by session id alone.
@@ -229,7 +229,6 @@ export class AdvisorChat {
     const runner = new Runner({ appName: APP_NAME, agent, sessionService: this.sessionService });
 
     const started = this.options.now();
-    const steps: ChatStep[] = [];
     const tools: ToolRun[] = [];
     // A tool's result arrives in a later event than its call; the call id pairs them.
     const pending = new Map<string, ToolRun>();
@@ -255,7 +254,6 @@ export class AdvisorChat {
       for (const call of getFunctionCalls(event)) {
         const name = call.name ?? 'tool';
         const args = (call.args ?? {}) as Record<string, unknown>;
-        steps.push(describeStep(name, args, collection !== null));
         const run: ToolRun = { tool: name, args, result: undefined };
         tools.push(run);
         if (call.id) pending.set(call.id, run);
@@ -271,6 +269,10 @@ export class AdvisorChat {
     }
 
     if (!reply) throw new AdvisorChatError('The model returned no answer.', 'model');
+    // What the player is shown is what ran: a call the turn's limit refused did nothing.
+    const steps = tools
+      .filter(run => !isRefusedByLimit(run.result))
+      .map(run => describeStep(run.tool, run.args, collection !== null));
     record.contextTokens = context;
     this.options.onTurn?.({ sessionId, message, reply, tools, usage, ms: this.options.now() - started });
     return { sessionId, reply, steps, usage };

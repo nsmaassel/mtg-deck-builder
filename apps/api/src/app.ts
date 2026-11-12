@@ -104,7 +104,7 @@ export function buildApp(options: AppOptions = {}) {
   const index = options.advisor?.index ?? null;
   app.register(collectionRoutes);
   app.register(commanderRoutes, { index });
-  app.register(deckRoutes, { index });
+  app.register(deckRoutes, { index, combos: options.advisor?.combos ?? null });
   app.register(themeRoutes, { index });
   app.register(advisorRoutes, {
     advisor: options.advisor ?? null,

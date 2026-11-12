@@ -98,7 +98,6 @@ graph TB
 
     subgraph External
         SCRYFALL[Scryfall API]
-        CSB[Commander Spellbook<br/>combo detection]
         CLAUDE[Anthropic Claude]
     end
 
@@ -110,7 +109,7 @@ graph TB
     DB --> REC
     REC --> IDX
     API --> SCR
-    PL --> CSB
+    API --> CMB
     SCR --> SCRYFALL
     AI --> CLAUDE
 ```
@@ -151,11 +150,13 @@ What it cannot know: how often a card is played *with this commander*. No open d
 
 | Bracket | Label | Key Signals |
 |---------|-------|-------------|
-| 1 | Exhibition | No Game Changers, no tutors, <40% staples |
-| 2 | Core | Tier-B tutors or 40–65% staples |
-| 3 | Enhanced | 1+ Game Changer or 2+ Tier-A tutors |
+| 1 | Exhibition | No Game Changers, no tutors, spells averaging under 30 for how widely played they are |
+| 2 | Core | Tier-B tutors, or spells averaging 30–39 |
+| 3 | Enhanced | 1+ Game Changer, 2+ Tier-A tutors, a two-card combo, or spells averaging 40+ |
 | 4 | Optimized | 4+ Game Changers or 2-card combo + GC |
 | 5 | cEDH | 6+ GC + 2 Tier-A tutors + avg CMC <2.0 |
+
+"Spells averaging N" is the mean popularity of the deck's nonland cards, out of 100, from Scryfall's EDHREC rank: a stand-in for how tuned a list is when it has no Game Changers, tutors or combos to go by. Two-card combos are found in Commander Spellbook's data, read locally (`libs/combos`); the build makes no request to them.
 
 Swap suggestions rank alternatives by a blend of popularity and synergy. The candidates are this commander's own recommendations that did not make the deck, so colour identity is correct by construction.
 
@@ -194,7 +195,7 @@ GOOGLE_API_KEY=...             # Gemini API key
 # GOOGLE_CLOUD_LOCATION=us-central1
 
 ADVISOR_AGENT_MODEL=gemini-3.8-flash   # default
-ADVISOR_AGENT_THINKING=low             # default; minimal, low, medium or high
+ADVISOR_AGENT_THINKING=low             # default; minimal, low, medium, high, or "default" to send none (for a model that takes no level)
 ADVISOR_AGENT_DAILY_USD=0.30           # model spend per UTC day, all visitors, at the prices below
 ADVISOR_AGENT_PRICE_IN=1.50            # USD per million prompt tokens (default: gemini-3.8-flash from 2027-01-01)
 ADVISOR_AGENT_PRICE_OUT=7.50           # USD per million output tokens
@@ -277,7 +278,7 @@ libs/
   commander-recs/ What a commander is about, and every card scored for it: themes, synergy, slots, reasons
   scryfall/     Scryfall API client — one fuzzy name lookup when the card index does not know a commander as typed
   deck-builder/ Scoring algorithm, slot filler, gap analysis, color identity
-  power-level/  Commander Bracket assessment, combo detection, swap suggestions
+  power-level/  Commander Bracket assessment and swap suggestions; takes the deck's combos as an input
   ai-advisor/   Anthropic Claude deck explanation wrapper
 specs/
   journeys/     Gherkin user journey specs — source of truth for E2E tests
@@ -337,6 +338,7 @@ The API keeps nothing between requests. The collection lives in the browser and 
   analysis: {
     averageCmc: number,
     topPicksCoveragePercent: number,   // share of our own unconstrained picks that made this deck; not "how many decks play it"
+    averagePopularityPercent: number,  // how widely played the deck's spells are across Commander, on average; the bracket goes by this
     colorDistribution: Record<string, number>,
     themes: Array<{ slug, name, because }>   // what the deck is built around, and what on the commander says so
   },

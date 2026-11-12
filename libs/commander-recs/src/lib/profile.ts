@@ -1,3 +1,4 @@
+import { normalizeCardName } from '@mtg/card-index';
 import type { CardIndex, Format, IndexedCard } from '@mtg/card-index';
 import { canBeCommander, cardName, matches } from './match';
 import { MAX_THEMES, THEME_THRESHOLD, THEMES, TYPAL, TYPE_BATCHES, typalWants } from './themes';
@@ -151,6 +152,33 @@ export function listThemes(): ThemeInfo[] {
 /** A commander is suggested for a theme it clearly has, not one it brushes against. */
 const SUGGESTION_WEIGHT = 0.7;
 
+// Profiling every commander takes a moment and depends on nothing but the index and the format.
+const themeCommanders = new WeakMap<CardIndex, Map<Format, Map<string, IndexedCard[]>>>();
+
+/** Every commander of the format by the themes it clearly has, each list most played first. */
+function commandersByTheme(index: CardIndex, format: Format): Map<string, IndexedCard[]> {
+  let perFormat = themeCommanders.get(index);
+  if (!perFormat) themeCommanders.set(index, (perFormat = new Map()));
+  let byTheme = perFormat.get(format);
+  if (!byTheme) {
+    byTheme = new Map();
+    const commanders = index
+      .all()
+      .filter(card => card.legal.includes(format) && canBeCommander(card))
+      .sort((a, b) => (a.edhrecRank ?? Infinity) - (b.edhrecRank ?? Infinity) || a.name.localeCompare(b.name));
+    for (const card of commanders) {
+      for (const theme of profileCommander(index, card, { format }).themes) {
+        if (theme.weight < SUGGESTION_WEIGHT) continue;
+        const list = byTheme.get(theme.slug);
+        if (list) list.push(card);
+        else byTheme.set(theme.slug, [card]);
+      }
+    }
+    perFormat.set(format, byTheme);
+  }
+  return byTheme;
+}
+
 /**
  * Legendary commanders whose profile has this theme, most played first.
  *
@@ -162,15 +190,13 @@ export function commandersForTheme(
   slug: string,
   options: { format?: Format; limit?: number } = {},
 ): IndexedCard[] {
-  const format = options.format ?? 'commander';
-  return index
-    .all()
-    .filter(card => card.legal.includes(format) && canBeCommander(card))
-    .filter(card =>
-      profileCommander(index, card, { format }).themes.some(theme => theme.slug === slug && theme.weight >= SUGGESTION_WEIGHT),
-    )
-    .sort((a, b) => (a.edhrecRank ?? Infinity) - (b.edhrecRank ?? Infinity) || a.name.localeCompare(b.name))
-    .slice(0, options.limit ?? 20);
+  const commanders = commandersByTheme(index, options.format ?? 'commander').get(slug) ?? [];
+  return commanders.slice(0, options.limit ?? 20);
+}
+
+/** A name as a search compares it: no case, accents or punctuation, so `lim dul` finds Lim-Dûl. */
+function searchKey(text: string): string {
+  return normalizeCardName(text).replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
 /**
@@ -182,13 +208,12 @@ export function findCommanders(
   query: string,
   options: { format?: Format; limit?: number } = {},
 ): IndexedCard[] {
-  const fold = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  const wanted = fold(query);
+  const wanted = searchKey(query);
   if (!wanted) return [];
   const format = options.format ?? 'commander';
   return index
     .all()
-    .filter(card => card.legal.includes(format) && canBeCommander(card) && fold(cardName(card)).includes(wanted))
+    .filter(card => card.legal.includes(format) && canBeCommander(card) && searchKey(cardName(card)).includes(wanted))
     .sort((a, b) => (a.edhrecRank ?? Infinity) - (b.edhrecRank ?? Infinity) || a.name.localeCompare(b.name))
     .slice(0, options.limit ?? 20);
 }

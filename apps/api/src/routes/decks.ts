@@ -1,11 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import type { CardIndex, IndexedCard } from '@mtg/card-index';
 import { parseArenaCollection } from '@mtg/collection';
-import { profileCommander } from '@mtg/commander-recs';
+import { canBeCommander, profileCommander } from '@mtg/commander-recs';
 import { getCardByName, ScryfallNotFoundError } from '@mtg/scryfall';
-import { buildDeck, candidatesFor } from '@mtg/deck-builder';
+import { buildDeck, candidatesFor, comboLines } from '@mtg/deck-builder';
 import type { Bracket } from '@mtg/power-level';
-import { assessPowerLevelWithCombos } from '@mtg/power-level';
+import { assessPowerLevel } from '@mtg/power-level';
 import { explainDeck } from '@mtg/ai-advisor';
 import { unavailable } from './commander-data';
 import type { CommanderRouteOptions } from './commander-data';
@@ -13,7 +13,7 @@ import type { CommanderRouteOptions } from './commander-data';
 /**
  * The commander as the index knows it. A name the index does not have as
  * typed ("krenko mob boss") goes to Scryfall's fuzzy search for its proper
- * spelling; that is the only request a build makes.
+ * spelling; that is the only request a build makes to anyone.
  */
 async function findCommander(index: CardIndex, name: string): Promise<IndexedCard | undefined> {
   const exact = index.byName(name);
@@ -26,7 +26,7 @@ async function findCommander(index: CardIndex, name: string): Promise<IndexedCar
   }
 }
 
-export async function deckRoutes(app: FastifyInstance, { index }: CommanderRouteOptions): Promise<void> {
+export async function deckRoutes(app: FastifyInstance, { index, combos }: CommanderRouteOptions): Promise<void> {
   app.post<{
     Body: {
       collectionText?: string;
@@ -105,6 +105,13 @@ export async function deckRoutes(app: FastifyInstance, { index }: CommanderRoute
           message: `${commanderName} is not legal in Commander format`,
         });
       }
+      // Legal in the format is not the same as able to lead a deck: Sol Ring is legal in the 99.
+      if (!canBeCommander(commander)) {
+        return reply.status(422).send({
+          error: 'Not a commander',
+          message: `${commander.name} cannot be a commander. Pick a legendary creature, or a card that says it can be your commander.`,
+        });
+      }
 
       // Recommendations come from the local card index: what this commander
       // is about, the best cards for it, and every owned card scored on its merits.
@@ -124,8 +131,10 @@ export async function deckRoutes(app: FastifyInstance, { index }: CommanderRoute
       );
       const swapCandidates = recommendations.filter(r => !deckNames.has(r.name));
 
-      // Enhance power level with Commander Spellbook combo detection (async, best-effort)
-      const powerLevel = await assessPowerLevelWithCombos(result.deck, result.analysis, targetBracket, swapCandidates);
+      // Assess again with what the build itself could not know: the cards left out, for swap
+      // suggestions, and the combos in the deck, from Commander Spellbook's data when it is loaded.
+      const lines = combos ? comboLines(index, combos, result.deck) : [];
+      const powerLevel = assessPowerLevel(result.deck, result.analysis, targetBracket, swapCandidates, lines);
 
       return reply.send({ ...result, powerLevel });
     },

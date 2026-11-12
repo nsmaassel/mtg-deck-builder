@@ -259,10 +259,12 @@ describe('AdvisorChat', () => {
     const traces: TurnTrace[] = [];
     const chat = new AdvisorChat({ data, model, maxToolCallsPerTurn: 2, onTurn: trace => traces.push(trace) });
 
-    await chat.send({ message: 'look up everything', collection: null });
+    const turn = await chat.send({ message: 'look up everything', collection: null });
 
     expect(third['error']).toMatch(/too many checks/i);
     expect(traces[0]!.tools.map(run => 'cards' in (run.result as object))).toEqual([true, true, false]);
+    // The player is shown the two lookups that ran, not the one that was refused.
+    expect(turn.steps.map(step => step.summary)).toEqual(['Looked up Opt', 'Looked up Shock']);
   });
 
   it('leaves a turn that used every tool run, one at a time, the model calls to be told so and answer', async () => {

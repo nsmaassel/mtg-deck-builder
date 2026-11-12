@@ -181,6 +181,7 @@ export function buildDeck(input: BuildDeckInput): BuildDeckResult {
     commanderName: commanderDeckCard.name,
     colorDistribution: countColors(identity, recommendations, used, slots.lands),
     topPicksCoveragePercent: coverage(topPicks, used),
+    averagePopularityPercent: averagePopularity(slots),
     themes: profile.themes.map(({ slug, name, because }) => ({ slug, name, because })),
   };
   const gaps = buildGapReport(deck);
@@ -224,6 +225,13 @@ function countColors(
     if (color && land.type_line === 'Basic Land') add(color);
   }
   return counts;
+}
+
+/** How widely played the deck's spells are across Commander, on average, 0..100. */
+function averagePopularity(slots: Record<SlotName, DeckCard[]>): number {
+  const spells = Object.values(slots).flat().filter(card => card.slot !== 'lands');
+  if (spells.length === 0) return 0;
+  return Math.round((spells.reduce((sum, card) => sum + card.popularity, 0) / spells.length) * 100);
 }
 
 /**

@@ -63,15 +63,15 @@ Scenario: Build targeting a higher bracket shows add suggestions
 
 ---
 
-## Scenario 4: No Actionable Swaps (Top-Picks-Only Bracket)
+## Scenario 4: No Actionable Swaps (A Bracket Reached on Widely Played Cards Alone)
 
 ```gherkin
-Scenario: Targeting lower bracket with a deck that is simply close to the top picks shows explanatory hint
-  Given my deck reaches Bracket 3 only by playing most of the top picks for its commander (no Game Changers, no tutors)
+Scenario: Targeting lower bracket with a deck that is simply full of widely played cards shows explanatory hint
+  Given my deck reaches Bracket 3 only because its spells are widely played (no Game Changers, no tutors, no combos)
   And I select "Target Bracket 2"
   When the deck builds successfully
   Then the suggestions area should show an explanatory message
-  # e.g. "no specific swaps needed — this deck reaches Bracket 3 by playing most of the top picks for its commander"
+  # e.g. "no specific swaps needed — this deck reaches Bracket 3 on widely played cards alone"
   And the message should NOT be silently empty
 ```
 
@@ -81,13 +81,17 @@ Scenario: Targeting lower bracket with a deck that is simply close to the top pi
 
 | Condition | Expected Bracket | Test Commander |
 |-----------|-----------------|----------------|
-| 0 Game Changers, 0 tutors, <40% top picks | 1 | Any with minimal collection in owned-only mode |
-| 1+ Tier-B tutor OR 40%+ top picks | 2 | Most collections |
-| 1+ Game Changer OR 2+ Tier-A tutors | 3 | Collection with Rhystic Study |
+| 0 Game Changers, 0 tutors, spells averaging under 30 | 1 | Any with minimal collection in owned-only mode |
+| 1+ Tier-B tutor OR spells averaging 30+ | 2 | Most collections |
+| 1+ Game Changer OR 2+ Tier-A tutors OR a two-card combo OR spells averaging 40+ | 3 | Collection with Rhystic Study; any build with no collection |
 | 4+ Game Changers OR 2-card combo + GC | 4 | Collection with Jeweled Lotus + combos |
 | 6+ GC + 2 Tier-A + avg CMC <2.0 | 5 | cEDH collection |
 
-"Top picks" is the share of the deck we would build with every card available that is in this deck. A build with no collection and no budget is that deck, so it scores 100%; a small collection in owned-only mode scores low.
+"Spells averaging N" is how widely played the deck's nonland cards are across Commander, on average, out of 100 (from Scryfall's EDHREC rank). It stands in for how tuned a list is when there are no Game Changers, tutors or combos to go by, and it is about the deck's own cards: measured on real builds, the best list for a commander averages 41–50, a list from a large collection 33–45, and from a starter collection 28–38.
+
+Two-card combos come from Commander Spellbook's data, read locally: only combos that need nothing but their two named cards count.
+
+"Top picks" is shown on the page but not scored: the share of the deck we would build with every card available that is in this deck.
 
 ---
 

@@ -18,7 +18,7 @@ An NX monorepo that builds optimized 100-card Commander (MTG) decks from an MTG 
 - **Frontend:** React 18, TypeScript, Vite, plain CSS (no MUI)
 - **Backend:** Fastify (Node.js), TypeScript
 - **Testing:** Vitest (unit + component + integration), Playwright (E2E)
-- **External APIs:** Scryfall (one fuzzy name lookup; card data comes from bulk files built into `data/generated`), Commander Spellbook (combos), Anthropic Claude (AI), Gemini (advisor chat). No requests to edhrec.com: its terms forbid automated access
+- **External APIs:** Scryfall (one fuzzy name lookup; card data comes from bulk files built into `data/generated`), Anthropic Claude (AI), Gemini (advisor chat). Commander Spellbook's combos are a bulk file read at build time, not an API call. No requests to edhrec.com: its terms forbid automated access
 
 ---
 
@@ -74,7 +74,7 @@ An NX monorepo that builds optimized 100-card Commander (MTG) decks from an MTG 
 
 - The card index → build a small one with `buildCommanderTestIndex()` from `@mtg/commander-recs/testing` or `buildTestIndex()` from `@mtg/deck-advisor/testing`; tests never need `data/generated`
 - `@mtg/scryfall` → `vi.mock('@mtg/scryfall', ...)` — never hit real Scryfall in tests
-- `@mtg/power-level` → mock `assessPowerLevelWithCombos` in API route tests (it calls Commander Spellbook)
+- `@mtg/power-level` → mock `assessPowerLevel` in API route tests when the test is about what the route hands it
 - Anthropic Claude → always mocked — no live API calls in tests
 
 ### DOM Selectors (Stable — Do Not Rename)
@@ -125,10 +125,9 @@ Popularity is Scryfall's EDHREC rank: Commander-wide, so it knows Sol Ring is a 
 
 ### Commander Spellbook integration
 
-- Endpoint: `https://backend.commanderspellbook.com/variants/?q=card:"Name1"...`
-- Capped at 80 non-land cards per query
-- In-memory cache keyed by sorted-name hash
-- Any network failure returns `[]` — never blocks a deck build (graceful degradation)
+- Combos come from Commander Spellbook's bulk file, built into `data/generated/combos.json.gz` by `pnpm data:combos` and read through `libs/combos`. Nothing calls their API at request time.
+- A deck build finds its combos with `comboLines()` in `libs/deck-builder` and hands them to `assessPowerLevel`; without the file the assessment goes by its other signals
+- Credit Commander Spellbook and link to the combo's page wherever a combo is shown
 
 ---
 

@@ -38,19 +38,22 @@ function makeDeck(cardNames: string[], rampCmcs: number[] = []): DeckList {
   };
 }
 
-function makeAnalysis(avgCmc = 3.0, topPicks = 50): DeckAnalysis {
+/** `popularity` is how widely played the deck's spells are on average, 0–100: what brackets 1 to 3 turn on. */
+function makeAnalysis(avgCmc = 3.0, popularity = 35): DeckAnalysis {
   return {
     commanderName: 'Test Commander',
     manaCurve: { 2: 20, 3: 30, 4: 10 },
     colorDistribution: { G: 40 },
     averageCmc: avgCmc,
-    topPicksCoveragePercent: topPicks,
+    // Deliberately at odds with the popularity: the coverage is shown to people, not scored.
+    topPicksCoveragePercent: 100 - popularity,
+    averagePopularityPercent: popularity,
     themes: [],
   };
 }
 
 describe('assessPowerLevel', () => {
-  it('returns Bracket 1 for a deck with no game changers, no tutors, few top picks', () => {
+  it('returns Bracket 1 for a deck with no game changers, no tutors, and spells few decks play', () => {
     const deck = makeDeck(['Llanowar Elves', 'Rampant Growth', 'Farseek']);
     const analysis = makeAnalysis(3.0, 20);
     const result = assessPowerLevel(deck, analysis);
@@ -59,12 +62,43 @@ describe('assessPowerLevel', () => {
     expect(result.score).toBe(2);
   });
 
-  it('returns Bracket 2 for a deck with a moderate share of the top picks', () => {
+  it('returns Bracket 2 for a deck of moderately played spells', () => {
     const deck = makeDeck(['Sol Ring', 'Arcane Signet', 'Command Tower']);
-    const analysis = makeAnalysis(3.0, 45);
+    const analysis = makeAnalysis(3.0, 34);
     const result = assessPowerLevel(deck, analysis);
     expect(result.bracket).toBe(2);
     expect(result.label).toBe('Core');
+  });
+
+  it('returns Bracket 3 for a deck of widely played spells, and says what it went by', () => {
+    const deck = makeDeck(['Sol Ring', 'Arcane Signet', 'Command Tower']);
+    const result = assessPowerLevel(deck, makeAnalysis(3.0, 45));
+    expect(result.bracket).toBe(3);
+    expect(result.explanation.join(' ')).toMatch(/average 45 out of 100 for how widely they are played across Commander/);
+  });
+
+  it('goes by the deck\'s own cards, not by how close the deck is to our picks', () => {
+    const deck = makeDeck(['Llanowar Elves', 'Rampant Growth', 'Farseek']);
+    // Every one of our picks, but spells nobody plays: casual.
+    expect(assessPowerLevel(deck, { ...makeAnalysis(3.0, 20), topPicksCoveragePercent: 100 }).bracket).toBe(1);
+    // None of our picks, but staples throughout: well tuned.
+    expect(assessPowerLevel(deck, { ...makeAnalysis(3.0, 45), topPicksCoveragePercent: 0 }).bracket).toBe(3);
+  });
+
+  it('takes the combos it is handed: a two-card combo is Bracket 3 at least, Bracket 4 beside a Game Changer', () => {
+    const combo = { id: 'c1', uses: ['Dramatic Reversal', 'Isochron Scepter'], cardCount: 2, produces: ['Infinite mana'] };
+    const three = { id: 'c2', uses: ['A', 'B', 'C'], cardCount: 3, produces: ['Infinite tokens'] };
+    const casual = makeDeck(['Llanowar Elves', 'Rampant Growth', 'Farseek']);
+
+    const without = assessPowerLevel(casual, makeAnalysis(3.0, 20));
+    expect(without).toMatchObject({ bracket: 1, signals: { twoCardComboCount: 0, combos: [] } });
+
+    const withCombo = assessPowerLevel(casual, makeAnalysis(3.0, 20), undefined, undefined, [combo, three]);
+    expect(withCombo).toMatchObject({ bracket: 3, signals: { twoCardComboCount: 1 } });
+    expect(withCombo.signals.combos).toHaveLength(2);
+
+    const withGameChanger = makeDeck(['Rhystic Study', 'Arcane Signet', 'Rampant Growth']);
+    expect(assessPowerLevel(withGameChanger, makeAnalysis(3.0, 20), undefined, undefined, [combo]).bracket).toBe(4);
   });
 
   it('returns Bracket 3 when a Game Changer is present', () => {

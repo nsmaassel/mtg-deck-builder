@@ -77,6 +77,8 @@ export type BuildDeckResult = {
     averageCmc: number;
     /** Of the cards we would pick with every card available, the share in this deck, 0..100. */
     topPicksCoveragePercent: number;
+    /** How widely played the deck's spells are across Commander, on average, 0..100. The power assessment goes by this. */
+    averagePopularityPercent: number;
     /** What the deck was built around; `because` completes "a commander that …". */
     themes: Array<{ slug: string; name: string; because: string }>;
   };
@@ -96,6 +98,7 @@ export type BuildDeckResult = {
       avgCmc: number;
       interactionCount: number;
       topPicksCoverage: number;
+      averagePopularity: number;
       fastManaRatio: number;
       twoCardComboCount: number;
     };

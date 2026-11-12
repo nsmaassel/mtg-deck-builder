@@ -185,6 +185,11 @@ const TOO_MANY_CALLS = {
   error: 'Too many checks for one question. Answer from the results you already have, and ask the player to narrow the question down if that is not enough.',
 };
 
+/** True for what a tool returns once the turn's allowance of runs is used up: the tool itself did not run. */
+export function isRefusedByLimit(result: unknown): boolean {
+  return result === TOO_MANY_CALLS || (typeof result === 'object' && result !== null && (result as { error?: unknown }).error === TOO_MANY_CALLS.error);
+}
+
 /**
  * The advisor's tools. Each one calls the deterministic engine and returns a
  * compact summary; none of them reaches the network.

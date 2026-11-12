@@ -3,6 +3,8 @@ import type { BuildDeckResult, Bracket } from '../api';
 import { DataCredit, POPULARITY_TOOLTIP, popularityLabel } from './DataCredit';
 
 const TOP_PICKS_TOOLTIP = 'Of the cards we would pick for this commander with every card available, the share that is in this deck';
+const WIDELY_PLAYED_TOOLTIP =
+  "How widely played this deck's spells are across Commander, on average, out of 100 (Scryfall's EDHREC rank). With no Game Changers, tutors or combos to go by, the bracket goes by this.";
 
 interface DeckViewProps {
   result: BuildDeckResult;
@@ -94,8 +96,8 @@ export function DeckView({ result, onExplain, explaining, explanation }: DeckVie
               CMC {powerLevel.signals.avgCmc.toFixed(1)}
             </span>
           )}
-          <span className="signal-chip signal-neutral" title={TOP_PICKS_TOOLTIP}>
-            {powerLevel.signals.topPicksCoverage}% top picks
+          <span className="signal-chip signal-neutral" title={WIDELY_PLAYED_TOOLTIP}>
+            Widely played {powerLevel.signals.averagePopularity}/100
           </span>
         </div>
 
@@ -141,8 +143,8 @@ export function DeckView({ result, onExplain, explaining, explanation }: DeckVie
             ) : (
               <p className="no-suggestions-hint">
                 💡 Bracket {powerLevel.targetBracket} targeted, but no specific swaps are needed —
-                this deck reaches Bracket {powerLevel.bracket} by playing most of the top picks for its
-                commander rather than through Game Changers or tutors. Consider replacing its strongest cards manually.
+                this deck reaches Bracket {powerLevel.bracket} on widely played cards alone, not through
+                Game Changers, tutors or combos. Consider replacing its strongest cards manually.
               </p>
             )}
           </div>

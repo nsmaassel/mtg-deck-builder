@@ -1,5 +1,6 @@
 import type { FastifyReply } from 'fastify';
 import type { CardIndex } from '@mtg/card-index';
+import type { ComboIndex } from '@mtg/combos';
 
 export interface CommanderRouteOptions {
   /**
@@ -7,6 +8,8 @@ export interface CommanderRouteOptions {
    * Null when the data has not been generated.
    */
   index: CardIndex | null;
+  /** Commander Spellbook's combos, for the power assessment. Without them a build is assessed on its other signals. */
+  combos?: ComboIndex | null;
 }
 
 export function unavailable(reply: FastifyReply) {

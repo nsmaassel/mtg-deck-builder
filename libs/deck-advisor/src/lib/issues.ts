@@ -100,8 +100,9 @@ export function deckIssues(deck: DeckList, format: Format, index: CardIndex): De
   const cards = [...copies.values()];
 
   if (unknown.length) {
-    const withGuess = unknown.map(name => {
-      const [closest] = index.closest(name, 1);
+    // A guess scans every card name, so only the names that will be shown get one.
+    const withGuess = unknown.map((name, i) => {
+      const [closest] = i < NAMES_SHOWN ? index.closest(name, 1) : [];
       return closest ? `${name} (closest: ${closest.name})` : name;
     });
     issues.push({ kind: 'unknown', message: `No card matches: ${listed(withGuess)}.`, cards: unknown });

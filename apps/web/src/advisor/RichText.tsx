@@ -12,30 +12,32 @@ const INLINE = /(\*\*[^*\n]+?\*\*|__[^_\n]+?__|\*[^*\s][^*\n]*?\*|`[^`\n]+?`)/g;
 
 function blocks(text: string): Block[] {
   const out: Block[] = [];
+  // A blank line ends a paragraph. It ends a list only if what follows is not another item:
+  // models often put a blank line between items, and "1." three times over is not a list.
+  let afterBlank = false;
   for (const line of text.replace(/\r\n?/g, '\n').split('\n')) {
-    const last = out.at(-1);
     if (!line.trim() || RULE.test(line)) {
-      // A blank line ends the paragraph or list before it.
-      if (last?.kind !== 'heading') out.push({ kind: 'paragraph', lines: [] });
+      afterBlank = true;
       continue;
     }
+    const last = out.at(-1);
     const heading = HEADING.exec(line);
+    const bullet = BULLET.exec(line);
     if (heading) {
       out.push({ kind: 'heading', text: heading[1]! });
-      continue;
-    }
-    const bullet = BULLET.exec(line);
-    if (bullet) {
+    } else if (bullet) {
       const item = { text: bullet[3]!, nested: bullet[1]!.length >= 2 };
       const ordered = bullet[2] !== undefined;
       if (last?.kind === 'list' && (last.ordered === ordered || item.nested)) last.items.push(item);
       else out.push({ kind: 'list', ordered, items: [item] });
-      continue;
+    } else if (last?.kind === 'paragraph' && !afterBlank) {
+      last.lines.push(line.trim());
+    } else {
+      out.push({ kind: 'paragraph', lines: [line.trim()] });
     }
-    if (last?.kind === 'paragraph') last.lines.push(line.trim());
-    else out.push({ kind: 'paragraph', lines: [line.trim()] });
+    afterBlank = false;
   }
-  return out.filter(block => block.kind !== 'paragraph' || block.lines.length > 0);
+  return out;
 }
 
 function inline(text: string): React.ReactNode[] {

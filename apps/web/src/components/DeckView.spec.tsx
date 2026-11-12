@@ -61,6 +61,7 @@ function makeResult(overrides: Partial<BuildDeckResult> = {}): BuildDeckResult {
       colorDistribution: { W: 20, U: 20, B: 20, G: 20 },
       averageCmc: 2.8,
       topPicksCoveragePercent: 62,
+      averagePopularityPercent: 44,
       themes: [{ slug: 'proliferate', name: 'Proliferate', because: 'proliferates' }],
     },
     gaps: {
@@ -84,6 +85,7 @@ function makeResult(overrides: Partial<BuildDeckResult> = {}): BuildDeckResult {
         avgCmc: 2.8,
         interactionCount: 12,
         topPicksCoverage: 62,
+        averagePopularity: 44,
         fastManaRatio: 0.08,
         twoCardComboCount: 0,
       },
@@ -218,9 +220,13 @@ describe('DeckView', () => {
     render(<DeckView result={makeResult()} />);
     const stat = screen.getByText('Top picks: 62%');
     expect(stat).toHaveAttribute('title', expect.stringMatching(/with every card available/));
-    const chip = Array.from(document.querySelectorAll('.signal-chip')).find(c => c.textContent?.includes('top picks'))!;
-    expect(chip).toHaveTextContent('62% top picks');
-    expect(chip).toHaveAttribute('title', expect.stringMatching(/with every card available/));
+  });
+
+  it('shows what the bracket goes by when there is nothing else: how widely played the spells are', () => {
+    render(<DeckView result={makeResult()} />);
+    const chip = Array.from(document.querySelectorAll('.signal-chip')).find(c => c.textContent?.includes('Widely played'))!;
+    expect(chip).toHaveTextContent('Widely played 44/100');
+    expect(chip).toHaveAttribute('title', expect.stringMatching(/across Commander.*the bracket goes by this/));
   });
 
   it('says what the deck was built around', () => {

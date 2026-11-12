@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TextModel } from '@mtg/deck-advisor';
 import type { AdvisorData } from '@mtg/deck-advisor';
-// Fixtures live with the library that defines what they exercise; there is no path alias for them yet.
+import { ComboIndex, CombosBuilder } from '@mtg/combos';
 import { buildCommanderTestIndex } from '@mtg/commander-recs/testing';
 import { buildApp } from '../app.js';
 
@@ -12,7 +12,6 @@ import { buildApp } from '../app.js';
 const mocks = vi.hoisted(() => ({
   getCardByName: vi.fn(),
   assessPowerLevel: vi.fn(),
-  assessPowerLevelWithCombos: vi.fn(),
 }));
 
 // Scryfall is only asked to spell a commander name the index does not know.
@@ -26,10 +25,9 @@ vi.mock('@mtg/scryfall', () => ({
   },
 }));
 
-// Power level looks combos up on Commander Spellbook; the build itself runs for real.
+// The power assessment has its own tests; here it is watched for what the route hands it.
 vi.mock('@mtg/power-level', () => ({
   assessPowerLevel: mocks.assessPowerLevel,
-  assessPowerLevelWithCombos: mocks.assessPowerLevelWithCombos,
 }));
 
 vi.mock('@mtg/ai-advisor', () => ({
@@ -56,6 +54,7 @@ function makePowerLevelResult(bracket: 1 | 2 | 3 | 4 | 5 = 2, targetSuggestions?
       avgCmc: 2.5,
       interactionCount: 8,
       topPicksCoverage: 40,
+      averagePopularity: 35,
       fastManaRatio: 0.05,
       twoCardComboCount: 0,
     },
@@ -112,10 +111,8 @@ describe('POST /api/decks/build-from-commander', () => {
 
     const { ScryfallNotFoundError } = await import('@mtg/scryfall');
     mocks.getCardByName.mockRejectedValue(new ScryfallNotFoundError('not found'));
-    // buildDeck (in deck-builder lib) calls assessPowerLevel synchronously
+    // buildDeck (in the deck-builder lib) assesses once; the route assesses again with swap candidates and combos.
     mocks.assessPowerLevel.mockReturnValue(makePowerLevelResult());
-    // The route then enhances with combo detection via assessPowerLevelWithCombos
-    mocks.assessPowerLevelWithCombos.mockResolvedValue(makePowerLevelResult());
   });
 
   const build = (payload: Record<string, unknown>) =>
@@ -211,7 +208,7 @@ describe('POST /api/decks/build-from-commander', () => {
     const res = await build({ collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME, options: { targetBracket: 1 } });
     expect(res.statusCode).toBe(200);
 
-    const [deck, , targetBracket, candidates] = mocks.assessPowerLevelWithCombos.mock.calls[0] as [
+    const [deck, , targetBracket, candidates] = mocks.assessPowerLevel.mock.calls.at(-1) as [
       BuildBody['deck'], unknown, number, Array<{ name: string; popularity: number; synergy: number; slot: string }>,
     ];
     expect(targetBracket).toBe(1);
@@ -233,7 +230,7 @@ describe('POST /api/decks/build-from-commander', () => {
         alternatives: [{ name: 'Mob Rule 5', popularity: 0.19, synergy: 0, slot: 'winConditions' }],
       },
     ];
-    mocks.assessPowerLevelWithCombos.mockResolvedValue(makePowerLevelResult(3, suggestions));
+    mocks.assessPowerLevel.mockReturnValue(makePowerLevelResult(3, suggestions));
 
     const res = await build({ collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME, options: { targetBracket: 1 } });
 
@@ -465,5 +462,44 @@ describe('GET /api/commanders/search', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ commanders: [] });
+  });
+});
+
+describe('POST /api/decks/build-from-commander: commander checks and combos', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.assessPowerLevel.mockReturnValue(makePowerLevelResult());
+  });
+
+  it('returns 422 for a card that is legal in the format but cannot lead a deck', async () => {
+    const app = buildApp({ advisor });
+    const res = await app.inject({ method: 'POST', url: '/api/decks/build-from-commander', payload: { commanderName: 'Sol Ring' } });
+    expect(res.statusCode).toBe(422);
+    expect(res.json<{ error: string; message: string }>()).toMatchObject({ error: 'Not a commander' });
+  });
+
+  it('hands the power assessment the combos in the deck when combo data is loaded, and none when it is not', async () => {
+    const id = (name: string) => index.byName(name)!.oracleId;
+    const builder = new CombosBuilder(index);
+    builder.add({
+      id: 'ring-tremors',
+      status: 'OK',
+      uses: ['Sol Ring', 'Impact Tremors'].map(name => ({ card: { name, oracleId: id(name) }, quantity: 1 })),
+      requires: [],
+      produces: [{ feature: { name: 'Infinite damage', status: 'S' } }],
+      identity: 'R',
+      popularity: 10,
+    });
+    const combos = ComboIndex.fromFile(builder.build({ timestamp: '2026-11-12T00:00:00Z', version: 'test' }));
+
+    const withCombos = buildApp({ advisor: { ...advisor, combos } });
+    await withCombos.inject({ method: 'POST', url: '/api/decks/build-from-commander', payload: { commanderName: COMMANDER_NAME } });
+    expect(mocks.assessPowerLevel.mock.calls.at(-1)![4]).toEqual([
+      { id: 'ring-tremors', uses: ['Sol Ring', 'Impact Tremors'], cardCount: 2, produces: ['Infinite damage'] },
+    ]);
+
+    const without = buildApp({ advisor });
+    await without.inject({ method: 'POST', url: '/api/decks/build-from-commander', payload: { commanderName: COMMANDER_NAME } });
+    expect(mocks.assessPowerLevel.mock.calls.at(-1)![4]).toEqual([]);
   });
 });

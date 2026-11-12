@@ -50,6 +50,13 @@ export interface DeckAnalysis {
    * closeness to our own picks, not how many decks play a card.
    */
   topPicksCoveragePercent: number;
+  /**
+   * 0..100: how widely played the deck's spells are across Commander, on
+   * average (Scryfall's EDHREC rank; lands and the commander left out). Unlike
+   * the coverage above it is about the deck's own cards, which is why the
+   * power assessment goes by it.
+   */
+  averagePopularityPercent: number;
   themes: DeckTheme[];
 }
 
@@ -106,7 +113,6 @@ export interface BuildDeckResult {
 
 // Re-export so consumers can import from @mtg/deck-builder
 export type { PowerLevelResult, Bracket } from '@mtg/power-level';
-export { assessPowerLevelWithCombos } from '@mtg/power-level';
 
 /** Slot targets per constitution spec */
 export const SLOT_TARGETS: Record<SlotName, number> = {

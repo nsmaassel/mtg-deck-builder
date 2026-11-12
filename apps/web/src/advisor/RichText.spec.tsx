@@ -26,6 +26,19 @@ describe('RichText', () => {
     expect([...container.querySelectorAll('ol > li')].map(li => li.textContent)).toEqual(['Craft the lands', 'Swap the rest']);
   });
 
+  it('keeps one list when the items have blank lines between them', () => {
+    const { container } = render(<RichText text={'1. Craft the lands\n\n2. Swap the rest\n\n3. Add the sideboard\n\nThat is all.'} />);
+    expect(container.querySelectorAll('ol')).toHaveLength(1);
+    expect(container.querySelectorAll('ol > li')).toHaveLength(3);
+    expect(container.querySelectorAll('p')).toHaveLength(1);
+  });
+
+  it('starts a new list when the kind of list changes', () => {
+    const { container } = render(<RichText text={'- one\n- two\n\n1. first\n2. second'} />);
+    expect(container.querySelectorAll('ul > li')).toHaveLength(2);
+    expect(container.querySelectorAll('ol > li')).toHaveLength(2);
+  });
+
   it('shows a heading as a line of its own and drops rules', () => {
     const { container } = render(<RichText text={'### Main deck\nFour swaps.\n\n---\n\nDone.'} />);
     expect(container.querySelector('.rich-heading')?.textContent).toBe('Main deck');

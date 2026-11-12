@@ -60,8 +60,8 @@ const COMBOS_SHOWN = 6;
 const COMPLETERS_SHOWN = 6;
 const COMBOS_PER_COMPLETER = 2;
 const PLAYSET = 4;
-/** More than any list holds: the count shown is exact below it. */
-const COUNT_UP_TO = 2_000;
+/** Every match, not the most played few: the totals shown are counts, and the ranking by combos finished needs them all. */
+const ALL = { limit: Infinity };
 
 function cardView(card: IndexedCard): ComboCardView {
   const view: ComboCardView = { oracleId: card.oracleId, name: card.name };
@@ -113,11 +113,11 @@ export function deckCombos(
   const seated = (combo: Combo) => combo.commanders.every(id => commanders.has(id));
   const query = { format, identity: deckColors(deck, index) };
 
-  const inDeck = combos.complete(held, { ...query, limit: COUNT_UP_TO }).filter(seated);
+  const inDeck = combos.complete(held, { ...query, ...ALL }).filter(seated);
 
   // Grouped here rather than by the index, so the commander rule applies before anything is counted.
   const byCard = new Map<string, Combo[]>();
-  for (const { combo, missing } of combos.near(held, { ...query, limit: COUNT_UP_TO })) {
+  for (const { combo, missing } of combos.near(held, { ...query, ...ALL })) {
     const [lacking] = missing;
     // A missing card that must sit in the command zone is no fix: adding it to the list would not put it there.
     if (!lacking || combo.commanders.includes(lacking) || !seated(combo)) continue;
@@ -157,7 +157,7 @@ export function collectionCombos(
   colors?: readonly string[],
 ): CollectionCombos {
   const query = { format, identity: colors };
-  const owned = combos.complete(collection.owned, { ...query, limit: COUNT_UP_TO });
+  const owned = combos.complete(collection.owned, { ...query, ...ALL });
   const oneCardAway = combos
     .completers(collection.owned, { ...query, limit: COMPLETERS_SHOWN })
     .map(completer => {

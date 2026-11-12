@@ -1,7 +1,6 @@
 import type { DeckList, DeckAnalysis } from '@mtg/deck-builder';
 import { findGameChangers, GAME_CHANGERS } from './game-changers.js';
 import { findTutors } from './tutors.js';
-import { findCombos } from './combos.js';
 import type { ComboResult } from './combos.js';
 
 /**
@@ -32,11 +31,18 @@ export interface PowerLevelSignals {
   avgCmc: number;
   /** Number of interaction cards (removal + counterspells) */
   interactionCount: number;
-  /** Percent of the cards we would pick for this commander, with every card available, that the deck includes */
+  /** Percent of the cards we would pick for this commander, with every card available, that the deck includes. Shown, not scored. */
   topPicksCoverage: number;
+  /**
+   * 0–100: how widely played the deck's spells are across Commander, on average
+   * (Scryfall's EDHREC rank). A stand-in for how tuned a list is when it has no
+   * Game Changers, tutors or combos to go by. It is about the deck's own cards,
+   * so a strong list is not marked down for differing from our picks.
+   */
+  averagePopularity: number;
   /** Ratio of fast mana (0-1 CMC ramp) to total ramp */
   fastManaRatio: number;
-  /** Known combo lines detected via Commander Spellbook (may be empty if not fetched) */
+  /** Combo lines in the deck, from Commander Spellbook's data (empty when the caller supplied none) */
   combos: ComboResult[];
   /** Number of 2-card combo lines detected */
   twoCardComboCount: number;
@@ -119,39 +125,21 @@ const BRACKET_TO_SCORE: Record<Bracket, number> = {
  * framework (WotC, 2024). Returns bracket 1–5, a derived 1–10 score, and a
  * plain-English explanation of every signal that influenced the result.
  *
- * This is the synchronous variant — combo detection is skipped (combos=[]).
- * Use assessPowerLevelWithCombos() when you need combo data.
- *
  * @param deck             The built deck list (100 cards)
  * @param analysis         The DeckAnalysis from buildDeck()
  * @param targetBracket    Optional — if provided, generates swap suggestions
  * @param swapCandidates   Optional — recommended cards NOT in the deck, used to
  *                         populate swap alternatives in targetSuggestions
+ * @param combos           Optional — combo lines whose cards are all in the deck.
+ *                         Without them the assessment goes by the other signals.
  */
 export function assessPowerLevel(
   deck: DeckList,
   analysis: DeckAnalysis,
   targetBracket?: Bracket,
   swapCandidates?: SwapCandidate[],
+  combos: ComboResult[] = [],
 ): PowerLevelResult {
-  return _assess(deck, analysis, [], targetBracket, swapCandidates);
-}
-
-/**
- * Async variant that also queries Commander Spellbook for combo lines.
- * Combo detection is best-effort — any network failure returns the same
- * result as assessPowerLevel() with combos=[].
- *
- * @param swapCandidates Optional recommended cards NOT in the deck, for swap suggestions
- */
-export async function assessPowerLevelWithCombos(
-  deck: DeckList,
-  analysis: DeckAnalysis,
-  targetBracket?: Bracket,
-  swapCandidates?: SwapCandidate[],
-): Promise<PowerLevelResult> {
-  const allCards = [deck.commander, ...Object.values(deck.slots).flat()];
-  const combos = await findCombos(allCards.map(c => c.name));
   return _assess(deck, analysis, combos, targetBracket, swapCandidates);
 }
 
@@ -187,6 +175,7 @@ function _assess(
     avgCmc: analysis.averageCmc,
     interactionCount,
     topPicksCoverage: analysis.topPicksCoveragePercent,
+    averagePopularity: analysis.averagePopularityPercent,
     fastManaRatio,
     combos,
     twoCardComboCount,
@@ -213,11 +202,18 @@ function _assess(
   };
 }
 
+/** Average popularity (0–100) at or above which a list with nothing else to go by counts as well tuned. */
+const STAPLES_WELL_TUNED = 40;
+/** The same, for a list whose ramp is mostly fast mana. */
+const STAPLES_WITH_FAST_MANA = 35;
+/** Below this a list is casual. */
+const STAPLES_CORE = 30;
+
 function computeBracket(signals: PowerLevelSignals, explanation: string[]): Bracket {
   const gc = signals.gameChangers.length;
   const tierA = signals.tierATutors.length;
   const tierB = signals.tierBTutors.length;
-  const { avgCmc, fastManaRatio, topPicksCoverage, twoCardComboCount } = signals;
+  const { avgCmc, fastManaRatio, averagePopularity, twoCardComboCount } = signals;
 
   // --- Bracket 5 (cEDH): full optimization, combo density ---
   if (gc >= 6 && tierA >= 2 && avgCmc > 0 && avgCmc < 2.0) {
@@ -274,26 +270,31 @@ function computeBracket(signals: PowerLevelSignals, explanation: string[]): Brac
     explanation.push(`${tierA} Tier-A tutors without Game Changers — consistent but not oppressive`);
     return 3;
   }
-  if (fastManaRatio > 0.5 && topPicksCoverage >= 50) {
-    explanation.push(`Fast mana ratio ${Math.round(fastManaRatio * 100)}% + ${topPicksCoverage}% of the top picks for this commander`);
+  // With no Game Changers, tutors or combos to go by, how widely played the
+  // deck's spells are stands in for how tuned it is. Measured on real builds:
+  // the best list for a commander averages 41–50, a list from a large
+  // collection 33–45, from a starter collection 28–38.
+  const played = `Its spells average ${averagePopularity} out of 100 for how widely they are played across Commander`;
+  if (fastManaRatio > 0.5 && averagePopularity >= STAPLES_WITH_FAST_MANA) {
+    explanation.push(`Fast mana ratio ${Math.round(fastManaRatio * 100)}%. ${played}`);
     return 3;
   }
-  if (topPicksCoverage >= 65) {
-    explanation.push(`Plays ${topPicksCoverage}% of the top picks for this commander — a well-tuned list`);
+  if (averagePopularity >= STAPLES_WELL_TUNED) {
+    explanation.push(`${played} — a well-tuned list`);
     return 3;
   }
 
   // --- Bracket 2 (Core): precon-level, limited optimization ---
-  if (tierB >= 1 || topPicksCoverage >= 40) {
+  if (tierB >= 1 || averagePopularity >= STAPLES_CORE) {
     const reasons: string[] = [];
     if (tierB >= 1) reasons.push(`${tierB} Tier-B tutor(s): ${signals.tierBTutors.join(', ')}`);
-    if (topPicksCoverage >= 40) reasons.push(`${topPicksCoverage}% of the top picks for this commander`);
+    if (averagePopularity >= STAPLES_CORE) reasons.push(played);
     explanation.push(reasons.join('; '));
     return 2;
   }
 
   // --- Bracket 1 (Exhibition): minimal optimization ---
-  explanation.push('No Game Changers, no tutors, few of the top picks for this commander — casual / precon-level');
+  explanation.push(`No Game Changers, no tutors. ${played} — casual`);
   return 1;
 }
 

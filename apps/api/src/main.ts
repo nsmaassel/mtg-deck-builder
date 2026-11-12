@@ -43,9 +43,12 @@ async function main(): Promise<void> {
     chat = new AdvisorChat({
       data: advisor,
       model: process.env['ADVISOR_AGENT_MODEL'] ?? 'gemini-3.8-flash',
-      // Evaluated on gemini-3.8-flash: at "low" every eval case passes, answers come back in about a
-      // third of the time, and a turn costs about half as much (docs/evals/advisor-agent.md).
-      thinkingLevel: parseThinkingLevel(process.env['ADVISOR_AGENT_THINKING']) ?? 'low',
+      // Evaluated on gemini-3.8-flash: at "low" every eval case passes, answers come back in about
+      // half the time, and a turn costs about half as much (docs/evals/advisor-agent.md).
+      // "default" sends no level at all, for a model that does not take one.
+      thinkingLevel: process.env['ADVISOR_AGENT_THINKING']?.trim().toLowerCase() === 'default'
+        ? undefined
+        : parseThinkingLevel(process.env['ADVISOR_AGENT_THINKING']) ?? 'low',
     });
   }
   // The dollar ceiling is the one sized to the bill: $0.30 a day is at most $9.30 a month.
