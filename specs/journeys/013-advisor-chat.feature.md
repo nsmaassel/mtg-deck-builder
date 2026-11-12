@@ -92,6 +92,7 @@ The agent is a Google ADK `LlmAgent`. Its tools are the same engine the page cal
 | `check_decklist` | The same for a pasted list, in any format |
 | `lookup_cards` | Rules text, cost, legality, Arena rarity, roles and copies owned for up to 8 cards |
 | `find_stand_ins` | Stand-ins for one card outside a full list |
+| `find_combos` | Combos the collection holds in a format and the cards that would finish the most (Commander Spellbook) |
 
 The instruction forbids stating card text, legality, ownership, costs or meta numbers from memory, and forbids proposing a replacement no tool returned.
 
@@ -102,7 +103,7 @@ The instruction forbids stating card text, legality, ownership, costs or meta nu
 | Model spend per UTC day, all visitors | $0.30 | `ADVISOR_AGENT_DAILY_USD`, priced by `ADVISOR_AGENT_PRICE_IN` / `ADVISOR_AGENT_PRICE_OUT` |
 | Chat messages per UTC day, all visitors | 100 | `ADVISOR_AGENT_DAILY_LIMIT` |
 | Chat messages per minute, all visitors | 10 | `ADVISOR_AGENT_PER_MINUTE` |
-| Model calls per message, tool round-trips included | 6 | code |
+| Model calls per message, tool round-trips included | 8 | code |
 | Tool runs per message | 6 | code |
 | Conversation history | 40,000 tokens, then a new conversation | code |
 | Messages per conversation | 30 | code |
@@ -116,4 +117,4 @@ Counts are kept in memory, which fits a single instance and is lost on a restart
 
 ## Evaluated against a real model
 
-The scenarios above are tested with a scripted model, which proves the wiring: tools run, results reach the model, limits hold. Whether a real model follows the instruction is checked by `pnpm eval:agent`: 15 questions, each answer checked against the tool results of its conversation for tool choice, cards and percentages no tool returned, and the wording the instruction promises. Results and what they changed are in [docs/evals/advisor-agent.md](../../docs/evals/advisor-agent.md). It needs a model key and is not part of CI.
+The scenarios above are tested with a scripted model, which proves the wiring: tools run, results reach the model, limits hold. Whether a real model follows the instruction is checked by `pnpm eval:agent`: 16 questions, each answer checked against the tool results of its conversation for tool choice, cards and percentages no tool returned, and the wording the instruction promises. Results and what they changed are in [docs/evals/advisor-agent.md](../../docs/evals/advisor-agent.md). It needs a model key and is not part of CI.

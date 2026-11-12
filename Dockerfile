@@ -30,6 +30,7 @@ RUN apk add --no-cache git
 
 COPY libs/card-index libs/card-index
 COPY libs/meta-decks libs/meta-decks
+COPY libs/combos libs/combos
 COPY scripts/data scripts/data
 
 # The data is a snapshot. Pass a new value to refresh it, for example
@@ -43,6 +44,8 @@ RUN pnpm data:cards
 # Meta snapshots come from community repositories and are optional: without
 # them the advisor still checks pasted decklists.
 RUN pnpm data:meta || echo "WARNING: meta snapshots not built; the advisor will run without meta decks"
+# Combos come from Commander Spellbook's bulk file and are optional too.
+RUN pnpm data:combos || echo "WARNING: combos not built; the advisor will run without them"
 
 # Production stage
 FROM node:20-alpine AS runner

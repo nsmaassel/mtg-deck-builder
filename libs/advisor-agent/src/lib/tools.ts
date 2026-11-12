@@ -5,13 +5,22 @@ import type { Format, IndexedCard } from '@mtg/card-index';
 import {
   SubstituteFinder,
   checkDeck,
+  collectionCombos,
   deckFromTournamentList,
   describeMeta,
   frontColors,
   parseDeckText,
   parseFormat,
 } from '@mtg/deck-advisor';
-import type { AdvisorData, Collection, DeckCheck, DeckTuneView, TuneCardView } from '@mtg/deck-advisor';
+import type {
+  AdvisorData,
+  Collection,
+  ComboCompleterView,
+  ComboView,
+  DeckCheck,
+  DeckTuneView,
+  TuneCardView,
+} from '@mtg/deck-advisor';
 
 /** What a conversation knows about the player. The browser sends it with every message. */
 export interface PlayerContext {
@@ -24,6 +33,10 @@ const MAX_STAND_INS = 3;
 const MAX_CARDS_LOOKED_UP = 8;
 const MAX_TAGS = 8;
 const MAX_TUNE_ROWS = 5;
+const MAX_COMBOS = 4;
+
+const COMBO_SOURCE =
+  'Commander Spellbook (commanderspellbook.com). Each combo there also lists prerequisites (mana, cards in play) and steps that are not included here.';
 
 const formatParam = z.string().describe(`Format name: one of ${FORMATS.join(', ')}. Arena names such as "HistoricBrawl" also work.`);
 
@@ -57,6 +70,25 @@ function standIn(substitute: StandIn) {
 
 const NO_COLLECTION_NOTE =
   'No collection is loaded, so every card is counted as not owned. Say so, and suggest loading one in the "Your collection" panel.';
+
+function combo(view: ComboView) {
+  return {
+    cards: view.cards.map(card => card.name),
+    does: view.moreResults ? [...view.produces, `and ${view.moreResults} more`] : view.produces,
+    alsoNeeds: view.alsoNeeds.length ? view.alsoNeeds : undefined,
+    decksUsingIt: view.popularity,
+  };
+}
+
+function comboCompleter(view: ComboCompleterView, collectionLoaded: boolean) {
+  return {
+    card: view.card.name,
+    copiesOwned: collectionLoaded ? view.owned : undefined,
+    wildcard: view.card.arenaRarity,
+    finishesCombos: view.finishes,
+    forExample: combo(view.combos[0]!),
+  };
+}
 
 /** The list against its archetype's tournament lists, with the field names doing the explaining. */
 function summarizeTune(tune: DeckTuneView, collectionLoaded: boolean) {
@@ -116,6 +148,14 @@ function summarizeCheck(check: DeckCheck, collectionLoaded: boolean) {
       wildcardsLeft: plan.wildcardsLeft,
     },
     comparedWithTournamentLists: check.tune && summarizeTune(check.tune, collectionLoaded),
+    combos: check.combos && (check.combos.inDeckTotal > 0 || check.combos.oneCardAway.length > 0)
+      ? {
+        source: COMBO_SOURCE,
+        inThisList: check.combos.inDeckTotal,
+        mostPlayedInThisList: check.combos.inDeck.slice(0, MAX_COMBOS).map(combo),
+        oneCardWouldAdd: check.combos.oneCardAway.slice(0, MAX_COMBOS).map(entry => comboCompleter(entry, collectionLoaded)),
+      }
+      : undefined,
     unreadableLines: check.unrecognizedLines.length || undefined,
   };
 }
@@ -327,5 +367,35 @@ export function createAdvisorTools(data: AdvisorData, player: PlayerContext, lim
     }),
   });
 
-  return [collectionSummary, listMetaDecks, checkMetaDeck, checkDecklist, lookupCards, findStandIns];
+  const findCombos = new FunctionTool({
+    name: 'find_combos',
+    description:
+      'Combos the player already owns every card of in a format, and the cards they do not own that would finish the most combos. ' +
+      'Needs a loaded collection. For the combos in one decklist, use check_meta_deck or check_decklist instead.',
+    parameters: z.object({
+      format: formatParam,
+      colors: z.string().optional().describe('Only combos that fit inside these colours, as letters from WUBRG, e.g. "UR".'),
+    }),
+    execute: limited(({ format, colors }) => {
+      const key = parseFormat(format);
+      if (!key) return unknownFormat(format);
+      if (!data.combos) return { error: 'Combo data is not loaded on this server.' };
+      if (!player.collection) {
+        return { collectionLoaded: false, note: 'No collection is loaded, so there is nothing to look for combos in. Say so, and suggest loading one in the "Your collection" panel.' };
+      }
+      const identity = colors ? [...colors.toUpperCase()].filter(c => 'WUBRG'.includes(c)) : undefined;
+      const found = collectionCombos(player.collection, key, data.index, data.combos, identity);
+      return {
+        collectionLoaded: true,
+        source: COMBO_SOURCE,
+        format: key,
+        colors: identity?.join('') || 'any',
+        combosOwned: found.ownedTotal,
+        mostPlayedOwned: found.owned.slice(0, MAX_COMBOS).map(combo),
+        oneCardAway: found.oneCardAway.slice(0, MAX_COMBOS).map(entry => comboCompleter(entry, true)),
+      };
+    }),
+  });
+
+  return [collectionSummary, listMetaDecks, checkMetaDeck, checkDecklist, lookupCards, findStandIns, findCombos];
 }

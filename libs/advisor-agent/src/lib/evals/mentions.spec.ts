@@ -18,6 +18,17 @@ describe('CardMentions', () => {
     expect(named('Callous Sell-Sword // Burn Together is the craft.')).toEqual(['Callous Sell-Sword // Burn Together']);
   });
 
+  it('does not read a phrase as a card when it is not capitalised like the card', () => {
+    // "Burn Together" is a card face; "Burn together" is two words that start a sentence.
+    expect(named('Burn together with the rest of your hand.')).toEqual([]);
+    expect(named('Go for the throat when you can.')).toEqual([]);
+    expect(named('Cast Burn Together, then Go for the Throat.')).toEqual(['Callous Sell-Sword // Burn Together', 'Go for the Throat']);
+  });
+
+  it('reads evidence without that care, so a list typed in lower case still counts', () => {
+    expect(mentions.find('4 Go for the throat', { loose: true }).map(mention => mention.card.name)).toEqual(['Go for the Throat']);
+  });
+
   it('sees through list markup and bold', () => {
     expect(named('* **4x Steam Vents** -> 4x **Izzet Guildgate** (partial)')).toEqual(['Steam Vents', 'Izzet Guildgate']);
   });

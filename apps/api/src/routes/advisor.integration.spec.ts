@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { AdvisorChat } from '@mtg/advisor-agent';
 import { ScriptedLlm, callTool, lastToolResult, say } from '@mtg/advisor-agent/testing';
 import { TextModel } from '@mtg/deck-advisor';
-import type { AdvisorData, DeckCheck, MetaView } from '@mtg/deck-advisor';
-import { buildTestIndex, oracleId } from '@mtg/deck-advisor/testing';
+import type { AdvisorData, CollectionCombos, DeckCheck, MetaView } from '@mtg/deck-advisor';
+import { buildTestCombos, buildTestIndex, oracleId } from '@mtg/deck-advisor/testing';
 import type { MetaArchetype, MetaSnapshot, TournamentDeck } from '@mtg/meta-decks/types';
 import { buildApp } from '../app';
 import { ChatBudget } from '../chat-budget';
@@ -400,5 +400,58 @@ describe('POST /api/advisor/chat', () => {
     expect((await post('/api/advisor/chat', { message: 'x'.repeat(2001) }, instance)).status).toBe(400);
     expect(budget.remainingToday).toBe(5);
     expect(model.requests).toHaveLength(0);
+  });
+});
+
+describe('combos', () => {
+  const withCombos = () => buildApp({ advisor: { ...advisor, combos: buildTestCombos(index) } });
+
+  it('says in the status whether combo data is loaded, and how fresh it is', async () => {
+    const loaded = JSON.parse((await withCombos().inject({ method: 'GET', url: '/api/advisor/status' })).body);
+    expect(loaded.combos).toEqual({ count: 6, sourceUpdatedAt: '2026-11-12T00:00:00Z' });
+    const without = JSON.parse((await app().inject({ method: 'GET', url: '/api/advisor/status' })).body);
+    expect(without.combos).toBeUndefined();
+  });
+
+  it('lists the combos a collection holds and the cards that would finish more', async () => {
+    const { status, body } = await post<CollectionCombos & { format: string }>(
+      '/api/advisor/combos', { format: 'Standard', collection: { cards: cards({ Opt: 4, Shock: 2 }) } }, withCombos(),
+    );
+    expect(status).toBe(200);
+    expect(body.format).toBe('standard');
+    expect(body.ownedTotal).toBe(1);
+    expect(body.owned[0]).toMatchObject({
+      id: 'opt-shock', url: 'https://commanderspellbook.com/combo/opt-shock/', produces: ['Infinite damage', 'Infinite storm count', 'Infinite mana'],
+    });
+    expect(body.oneCardAway.map(entry => entry.card.name)).toEqual(['Duress', 'Lightning Strike']);
+  });
+
+  it('narrows to the colours asked for, and finds nothing for an empty collection', async () => {
+    const red = await post<CollectionCombos>(
+      '/api/advisor/combos', { format: 'standard', colors: 'r', collection: { cards: cards({ Opt: 4, Shock: 2 }) } }, withCombos(),
+    );
+    expect(red.body.owned).toEqual([]);
+    expect(red.body.oneCardAway.map(entry => entry.card.name)).toEqual(['Lightning Strike']);
+
+    const empty = await post<CollectionCombos>('/api/advisor/combos', { format: 'standard' }, withCombos());
+    expect(empty.body).toMatchObject({ owned: [], ownedTotal: 0, oneCardAway: [] });
+  });
+
+  it('rejects a format or colours it does not know, and says when the combo data is missing', async () => {
+    expect((await post('/api/advisor/combos', { format: 'tiny-leaders' }, withCombos())).status).toBe(400);
+    expect((await post('/api/advisor/combos', { format: 'standard', colors: 'XYZ' }, withCombos())).status).toBe(400);
+    const missing = await post<{ message: string }>('/api/advisor/combos', { format: 'standard' });
+    expect(missing.status).toBe(503);
+    expect(missing.body.message).toMatch(/pnpm data:combos/);
+  });
+
+  it('adds the combos in a list to its deck check', async () => {
+    const { body } = await post<DeckCheck>(
+      '/api/advisor/deck/check', { deckText: '4 Opt\n4 Shock\n52 Mountain', format: 'standard' }, withCombos(),
+    );
+    expect(body.combos?.inDeckTotal).toBe(1);
+    expect(body.combos?.oneCardAway.map(entry => entry.card.name)).toEqual(['Lightning Strike']);
+    const plain = await post<DeckCheck>('/api/advisor/deck/check', { deckText: '4 Opt\n4 Shock\n52 Mountain', format: 'standard' });
+    expect(plain.body.combos).toBeUndefined();
   });
 });

@@ -1,11 +1,15 @@
-import type { DeckCheck, MetaView, SampleProfile, Wildcards } from '@mtg/deck-advisor';
+import type { CollectionCombos, DeckCheck, MetaView, SampleProfile, Wildcards } from '@mtg/deck-advisor';
 import type { ArchetypeCard, MetaSource } from '@mtg/meta-decks/types';
 import { ApiError, request } from '../api';
 
 export type { DeckCheck, MetaView, SampleProfile, Wildcards };
 export type {
   ArchetypeView,
+  CollectionCombos,
+  ComboCompleterView,
+  ComboView,
   DeckCardView,
+  DeckCombos,
   DeckTuneView,
   GapSummary,
   PlanStepView,
@@ -30,6 +34,8 @@ export interface AdvisorStatus {
   /** The conversational agent; off when the server has no model configured. */
   agent?: { available: boolean; model?: string };
   cards?: { count: number; builtAt: string; sourceUpdatedAt?: string };
+  /** Commander Spellbook's combos; absent when the server has not built them. */
+  combos?: { count: number; sourceUpdatedAt: string };
   formats: Array<{ key: string; label: string; onArena: boolean }>;
   meta: Array<{
     format: string;
@@ -133,6 +139,9 @@ export const advisorApi = {
 
   checkArchetype: (format: string, archetypeId: string, list: number, collection: StoredCollection | null, craft: CraftMode) =>
     post<ArchetypeCheck>('/advisor/meta/check', { format, archetypeId, list, collection: payload(collection), craft }),
+
+  combos: (format: string, collection: StoredCollection | null) =>
+    post<CollectionCombos & { format: string }>('/advisor/combos', { format, collection: payload(collection) }),
 
   chat: (message: string, sessionId: string | undefined, collection: StoredCollection | null) =>
     post<ChatTurn>('/advisor/chat', { message, sessionId, collection: payload(collection) }),

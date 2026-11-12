@@ -259,6 +259,19 @@ textarea { resize: vertical; }
 .tune-grid ul { list-style: none; display: grid; gap: 0.4rem; }
 .tune-row { display: grid; gap: 0.1rem; font-size: 0.9rem; }
 .tune-facts, .tune-own { color: var(--ink-soft); font-size: 0.8rem; }
+.combos { margin-top: 1.5rem; border-top: 1px solid var(--line); padding-top: 1rem; }
+.combos-panel .combos { margin-top: 0.9rem; }
+.combos h3 { font-size: 0.95rem; color: var(--gold); }
+.combos h4 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); margin-bottom: 0.5rem; }
+.combo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: 1rem 1.5rem; margin-top: 0.8rem; }
+.combo-grid ul { list-style: none; display: grid; gap: 0.7rem; }
+.combo-row { display: grid; gap: 0.15rem; font-size: 0.9rem; line-height: 1.45; }
+.combo-plus { color: var(--ink-faint); }
+.combo-does { color: #dfe6f5; font-size: 0.85rem; }
+.combo-needs { color: var(--warn); font-size: 0.8rem; }
+.combo-meta, .combo-own, .combo-credit { color: var(--ink-soft); font-size: 0.8rem; }
+.combo-example { display: grid; gap: 0.15rem; padding-left: 0.7rem; border-left: 2px solid var(--line); }
+.combo-credit { margin-top: 0.9rem; color: var(--ink-faint); line-height: 1.5; }
 .notice { background: #2a2413; border: 1px solid #5c4d1c; color: #ecd9a0; border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.9rem; margin: 0.75rem 0; }
 
 /* Collection */

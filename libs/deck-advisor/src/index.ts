@@ -13,6 +13,8 @@ export {
   isLand,
   usableCopies,
 } from './lib/gap';
+export { collectionCombos, deckCombos } from './lib/combos';
+export type { CollectionCombos, ComboCardView, ComboCompleterView, ComboView, DeckCombos } from './lib/combos';
 export { deckIssues } from './lib/issues';
 export type { DeckIssue, DeckIssueKind } from './lib/issues';
 export { nearestArchetype, tuneDeck } from './lib/tune';

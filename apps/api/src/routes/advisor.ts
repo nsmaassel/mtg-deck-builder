@@ -9,6 +9,7 @@ import {
   FORMAT_RULES,
   SAMPLE_PROFILES,
   checkDeck,
+  collectionCombos,
   deckFromTournamentList,
   describeMeta,
   formatArenaDeck,
@@ -130,6 +131,7 @@ export async function advisorRoutes(app: FastifyInstance, options: AdvisorRouteO
       ready: true,
       agent: chat ? { available: true, model: chat.modelName } : { available: false },
       cards: { count: data.index.size, builtAt: data.index.builtAt, sourceUpdatedAt: data.index.cardsUpdatedAt },
+      combos: data.combos ? { count: data.combos.size, sourceUpdatedAt: data.combos.source.timestamp } : undefined,
       formats: FORMATS.map(key => ({ key, label: FORMAT_RULES[key].label, onArena: FORMAT_RULES[key].onArena })),
       meta: [...data.meta.values()].sort((a, b) => formatOrder(a.format) - formatOrder(b.format)).map(snapshot => ({
         format: snapshot.format,
@@ -351,6 +353,38 @@ export async function advisorRoutes(app: FastifyInstance, options: AdvisorRouteO
         },
         list: listSummary(list),
         check,
+      });
+    },
+  });
+
+  // Combos the collection already holds, and the cards that would finish the most, in one format.
+  app.post<{ Body: { format: string; colors?: string; collection?: CollectionBody } }>('/api/advisor/combos', {
+    bodyLimit: COLLECTION_BODY_LIMIT,
+    schema: {
+      body: {
+        type: 'object',
+        required: ['format'],
+        properties: {
+          format: { type: 'string' },
+          colors: { type: 'string', maxLength: 5, pattern: '^[WUBRGwubrg]*$' },
+          collection: collectionSchema,
+        },
+      },
+    },
+    handler: async (request, reply) => {
+      if (!data) return unavailable(reply);
+      if (!data.combos) {
+        return reply.status(503).send({
+          error: 'Combo data not built',
+          message: 'The combos file is missing on this server. Run `pnpm data:combos`, then restart.',
+        });
+      }
+      const format = parseFormat(request.body.format);
+      if (!format) return reply.status(400).send({ error: 'Unknown format', message: `Use one of: ${FORMATS.join(', ')}.` });
+      const colors = request.body.colors ? [...request.body.colors.toUpperCase()] : undefined;
+      return reply.send({
+        format,
+        ...collectionCombos(toCollection(request.body.collection), format, data.index, data.combos, colors),
       });
     },
   });

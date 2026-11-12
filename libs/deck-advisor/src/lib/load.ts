@@ -1,6 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { loadCardIndex } from '@mtg/card-index/node';
+import type { ComboIndex } from '@mtg/combos';
+import { CombosMissingError, loadCombos } from '@mtg/combos/node';
 import type { MetaSnapshot } from '@mtg/meta-decks/types';
 import type { AdvisorData } from './service';
 import { TextModel } from './similarity';
@@ -12,6 +14,8 @@ export interface LoadAdvisorOptions {
   cardIndexPath?: string;
   /** Directory of `<format>.json` meta snapshots; defaults to `META_DIR`, then data/generated/meta. */
   metaDir?: string;
+  /** Combos file; defaults to `COMBOS_PATH`, then data/generated/combos.json.gz. */
+  combosPath?: string;
 }
 
 export interface LoadedAdvisor {
@@ -22,9 +26,10 @@ export interface LoadedAdvisor {
 
 /**
  * Read the generated data the advisor runs on. The card index is required
- * (throws `CardIndexMissingError`). Meta snapshots are optional: a format
- * without one has no meta to show, and an unreadable file is skipped with a
- * warning rather than taking the advisor down.
+ * (throws `CardIndexMissingError`). Meta snapshots and combos are optional: a
+ * format without a snapshot has no meta to show, a server without the combos
+ * file shows no combos, and an unreadable file is skipped with a warning
+ * rather than taking the advisor down.
  */
 export function loadAdvisorData(options: LoadAdvisorOptions = {}): LoadedAdvisor {
   const index = loadCardIndex(options.cardIndexPath);
@@ -46,5 +51,15 @@ export function loadAdvisorData(options: LoadAdvisorOptions = {}): LoadedAdvisor
     }
   }
 
-  return { data: { index, text: new TextModel(index), meta }, warnings };
+  let combos: ComboIndex | undefined;
+  try {
+    combos = loadCombos(options.combosPath);
+  } catch (err) {
+    // Not built is a normal state (`pnpm data:combos` is its own step); anything else is worth a line in the log.
+    if (!(err instanceof CombosMissingError)) {
+      warnings.push(`Skipped combos: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  return { data: { index, text: new TextModel(index), meta, ...(combos && { combos }) }, warnings };
 }

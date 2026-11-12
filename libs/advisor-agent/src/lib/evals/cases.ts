@@ -173,6 +173,17 @@ export const ADVISOR_EVAL_CASES: EvalCase[] = [
     ],
   },
   {
+    id: 'combos-owned',
+    purpose: 'Finds combos with the tool, credits the source, and passes on what a combo also needs.',
+    collection: 'veteran',
+    turns: [
+      {
+        message: 'Do I already own any combos I could play in Historic?',
+        expect: { calls: [['find_combos']], says: [/Commander Spellbook/i] },
+      },
+    ],
+  },
+  {
     id: 'off-topic',
     purpose: 'Declines anything that is not Magic in a sentence, without running tools.',
     collection: 'regular',

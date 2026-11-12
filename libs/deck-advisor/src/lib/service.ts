@@ -1,5 +1,8 @@
 import type { CardIndex, Format, IndexedCard, Rarity } from '@mtg/card-index';
+import type { ComboIndex } from '@mtg/combos';
 import type { MetaArchetype, MetaSnapshot, TournamentDeck } from '@mtg/meta-decks/types';
+import { deckCombos } from './combos';
+import type { DeckCombos } from './combos';
 import { analyzeGap, isLand } from './gap';
 import { deckIssues } from './issues';
 import type { DeckIssue } from './issues';
@@ -27,6 +30,8 @@ export interface AdvisorData {
   index: CardIndex;
   text: TextModel;
   meta: ReadonlyMap<string, MetaSnapshot>;
+  /** Commander Spellbook's combos. Absent when that file was not built; everything else works without it. */
+  combos?: ComboIndex;
 }
 
 /** A card as the API returns it: enough to show and link, without the rules text. */
@@ -122,6 +127,8 @@ export interface DeckCheck {
   issues: DeckIssue[];
   /** The list against its archetype's tournament lists. Absent where the format has no meta or nothing resembles it. */
   tune?: DeckTuneView;
+  /** Combos in the list and the cards that would add one. Absent when the combo data is not loaded. */
+  combos?: DeckCombos;
   cards: DeckCardView[];
   plan: {
     steps: PlanStepView[];
@@ -279,6 +286,7 @@ export function checkDeck(
   if (deck.name) check.deckName = deck.name;
   if (options.archetype) check.archetype = options.archetype.name;
   if (plan.wildcardsLeft) check.plan.wildcardsLeft = plan.wildcardsLeft;
+  if (data.combos) check.combos = deckCombos(deck, format, collection, data.index, data.combos);
   if (tune) {
     check.tune = {
       archetypeId: tune.archetype.id,

@@ -11,6 +11,7 @@ import type {
 } from './api';
 import { ChatPanel } from './ChatPanel';
 import { CollectionPanel } from './CollectionPanel';
+import { CombosPanel } from './Combos';
 import { DeckCheckView } from './DeckCheckView';
 import { DeckPaste } from './DeckPaste';
 import { MetaBrowser } from './MetaBrowser';
@@ -200,10 +201,18 @@ export function AdvisorPage({ recheckDelayMs = RECHECK_DELAY_MS }: Props = {}) {
         )}
       </div>
 
+      {status.combos && <CombosPanel collection={collection} formats={status.formats} />}
+
       <footer className="attribution">
         <p>
           Card data and functional tags from <a href="https://scryfall.com" target="_blank" rel="noreferrer">Scryfall</a>
           {status.cards?.sourceUpdatedAt && ` (${status.cards.sourceUpdatedAt.slice(0, 10)})`}.
+          {status.combos && (
+            <>
+              {' '}Combos from <a href="https://commanderspellbook.com" target="_blank" rel="noreferrer">Commander Spellbook</a>
+              {` (${status.combos.sourceUpdatedAt.slice(0, 10)}).`}
+            </>
+          )}
           {sources.map(source => (
             <React.Fragment key={source.url}>
               {' '}<a href={source.url} target="_blank" rel="noreferrer">{source.name}</a>: {source.note}

@@ -1,5 +1,6 @@
 import { CardIndex, CardIndexBuilder } from '@mtg/card-index';
 import type { ScryfallPrinting } from '@mtg/card-index';
+import { ComboIndex, CombosBuilder } from '@mtg/combos';
 import type { Collection, Wildcards } from '../types';
 
 const ARENA_FORMATS = ['standard', 'alchemy', 'historic', 'timeless', 'pioneer', 'brawl', 'standardbrawl', 'commander'];
@@ -127,6 +128,45 @@ export function buildTestIndex(extra: CardSpec[] = []): CardIndex {
     builder.addTag({ id: `tag:${slug}`, slug, taggings: ids.map(oracle_id => ({ oracle_id })) });
   }
   return new CardIndex(builder.build({ builtAt: '2026-01-01T00:00:00Z' }));
+}
+
+interface ComboSpec {
+  id: string;
+  cards: string[];
+  produces: string[];
+  identity: string;
+  popularity: number;
+  /** The card that has to be the commander. */
+  commander?: string;
+  /** Generic requirements, as `[name, quantity]`. */
+  requires?: Array<[string, number]>;
+}
+
+const COMBOS: ComboSpec[] = [
+  { id: 'opt-shock', cards: ['Opt', 'Shock'], produces: ['Infinite damage', 'Infinite storm count', 'Infinite mana', 'Infinite scry'], identity: 'UR', popularity: 500 },
+  { id: 'opt-duress', cards: ['Opt', 'Duress'], produces: ['Infinite mill'], identity: 'UB', popularity: 100 },
+  { id: 'niv-opt', cards: ['Niv-Mizzet, Parun', 'Opt'], commander: 'Niv-Mizzet, Parun', produces: ['Infinite card draw'], identity: 'UR', popularity: 900 },
+  { id: 'shock-strike', cards: ['Shock', 'Lightning Strike'], requires: [['Sacrifice outlet', 2]], produces: ['Infinite damage'], identity: 'R', popularity: 50 },
+  // Brainstorm is not legal in Standard or Pioneer.
+  { id: 'brainstorm-opt', cards: ['Brainstorm', 'Opt'], produces: ['Infinite card draw'], identity: 'U', popularity: 700 },
+  { id: 'sheoldred-throat', cards: ['Sheoldred, the Apocalypse', 'Go for the Throat'], produces: ['Infinite lifeloss'], identity: 'B', popularity: 300 },
+];
+
+/** A handful of made-up combos over the fixture cards, shaped like Commander Spellbook's. */
+export function buildTestCombos(index: CardIndex = buildTestIndex()): ComboIndex {
+  const builder = new CombosBuilder(index);
+  for (const spec of COMBOS) {
+    builder.add({
+      id: spec.id,
+      status: 'OK',
+      uses: spec.cards.map(name => ({ card: { name, oracleId: oracleId(name) }, quantity: 1, mustBeCommander: name === spec.commander })),
+      requires: (spec.requires ?? []).map(([name, quantity]) => ({ template: { name }, quantity })),
+      produces: spec.produces.map(name => ({ feature: { name, status: 'S' } })),
+      identity: spec.identity,
+      popularity: spec.popularity,
+    });
+  }
+  return ComboIndex.fromFile(builder.build({ builtAt: '2026-01-01T00:00:00Z', timestamp: '2026-11-12T00:00:00Z', version: 'test' }));
 }
 
 /** A collection from `{ 'Card Name': copies }`. */

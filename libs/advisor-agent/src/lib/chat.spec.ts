@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { TextModel } from '@mtg/deck-advisor';
 import type { AdvisorData } from '@mtg/deck-advisor';
-import { buildTestIndex, collectionOf } from '@mtg/deck-advisor/testing';
+import { buildTestCombos, buildTestIndex, collectionOf } from '@mtg/deck-advisor/testing';
 import type { MetaArchetype, MetaSnapshot, TournamentDeck } from '@mtg/meta-decks/types';
 import type { LlmResponse } from '@google/adk';
 import { AdvisorChat, AdvisorChatError } from './chat';
@@ -37,7 +37,9 @@ const snapshot: MetaSnapshot = {
   sources: [],
 };
 
-const data: AdvisorData = { index, text: new TextModel(index), meta: new Map([['standard', snapshot]]) };
+const data: AdvisorData = {
+  index, text: new TextModel(index), meta: new Map([['standard', snapshot]]), combos: buildTestCombos(index),
+};
 const owned = collectionOf({ Shock: 4, Opt: 4, 'Crackling Cyclops': 4 }, { common: 5, uncommon: 5, rare: 2, mythic: 0 });
 
 /** Run one tool through a real agent turn and return what the model was handed back. */
@@ -115,7 +117,7 @@ describe('AdvisorChat', () => {
     const request = model.requests[0]!;
     expect(JSON.stringify(request.config?.systemInstruction)).toContain('Every fact comes from a tool');
     expect(Object.keys(request.toolsDict).sort()).toEqual([
-      'check_decklist', 'check_meta_deck', 'collection_summary', 'find_stand_ins', 'list_meta_decks', 'lookup_cards',
+      'check_decklist', 'check_meta_deck', 'collection_summary', 'find_combos', 'find_stand_ins', 'list_meta_decks', 'lookup_cards',
     ]);
   });
 
@@ -261,6 +263,19 @@ describe('AdvisorChat', () => {
 
     expect(third['error']).toMatch(/too many checks/i);
     expect(traces[0]!.tools.map(run => 'cards' in (run.result as object))).toEqual([true, true, false]);
+  });
+
+  it('leaves a turn that used every tool run, one at a time, the model calls to be told so and answer', async () => {
+    const lookup = (name: string) => callTool('lookup_cards', { names: [name] });
+    const model = new ScriptedLlm([
+      lookup('Opt'), lookup('Shock'), lookup('Duress'), lookup('Negate'), lookup('Abrade'), lookup('Consider'),
+      lookup('Brainstorm'),
+      request => say('error' in lastToolResult(request) ? 'Six is all I can check at once.' : 'unexpected'),
+    ]);
+
+    await expect(new AdvisorChat({ data, model }).send({ message: 'look up seven cards', collection: null }))
+      .resolves.toMatchObject({ reply: 'Six is all I can check at once.' });
+    expect(model.requests).toHaveLength(8);
   });
 
   it('gives each turn its own allowance of tool runs', async () => {
@@ -431,6 +446,54 @@ describe('advisor tools', () => {
     expect(compared['thisOnePlaysButFewListsDo']).toEqual([
       { card: 'Consider', playedByPercentOfLists: 0, copiesInThisList: 4, copiesOwned: 0, wildcard: 'common' },
     ]);
+  });
+
+  it('find_combos lists the combos the collection holds and the cards that would finish more, with their source', async () => {
+    const result = await toolResult('find_combos', { format: 'standard' });
+    expect(result).toMatchObject({ collectionLoaded: true, format: 'standard', colors: 'any', combosOwned: 1 });
+    expect(result['source']).toMatch(/Commander Spellbook/);
+    expect(result['mostPlayedOwned']).toEqual([
+      { cards: ['Opt', 'Shock'], does: ['Infinite damage', 'Infinite storm count', 'Infinite mana', 'and 1 more'], decksUsingIt: 500 },
+    ]);
+    // Duress finishes the more played combo; Lightning Strike's also needs something no named card provides.
+    expect(result['oneCardAway']).toEqual([
+      { card: 'Duress', copiesOwned: 0, wildcard: 'common', finishesCombos: 1, forExample: { cards: ['Opt', 'Duress'], does: ['Infinite mill'], decksUsingIt: 100 } },
+      {
+        card: 'Lightning Strike', copiesOwned: 0, wildcard: 'common', finishesCombos: 1,
+        forExample: { cards: ['Shock', 'Lightning Strike'], does: ['Infinite damage'], alsoNeeds: ['2x Sacrifice outlet'], decksUsingIt: 50 },
+      },
+    ]);
+
+    const red = await toolResult('find_combos', { format: 'standard', colors: 'r' });
+    expect(red).toMatchObject({ colors: 'R', combosOwned: 0 });
+  });
+
+  it('find_combos needs a collection, the combo data and a format it knows', async () => {
+    expect(await toolResult('find_combos', { format: 'standard' }, null)).toMatchObject({ collectionLoaded: false });
+    expect((await toolResult('find_combos', { format: 'tiny-leaders' }))['error']).toMatch(/Unknown format/);
+
+    let result: Record<string, unknown> = {};
+    const model = new ScriptedLlm([
+      callTool('find_combos', { format: 'standard' }),
+      request => {
+        result = lastToolResult(request);
+        return say('done');
+      },
+    ]);
+    await new AdvisorChat({ data: { ...data, combos: undefined }, model }).send({ message: 'go', collection: owned });
+    expect(result['error']).toMatch(/not loaded/);
+  });
+
+  it('a deck check names the combos in the list and the cards that would add one', async () => {
+    const result = await toolResult('check_decklist', { deckText: '4 Opt\n4 Shock\n52 Mountain', format: 'standard' });
+    expect(result['combos']).toMatchObject({
+      inThisList: 1,
+      mostPlayedInThisList: [{ cards: ['Opt', 'Shock'], decksUsingIt: 500 }],
+      oneCardWouldAdd: [{ card: 'Lightning Strike', copiesOwned: 0, finishesCombos: 1 }],
+    });
+
+    const none = await toolResult('check_decklist', { deckText: '4 Cut Down\n56 Swamp', format: 'standard' });
+    expect(none['combos']).toBeUndefined();
   });
 
   it('lookup_cards returns rules text and ownership, and flags names it cannot find', async () => {

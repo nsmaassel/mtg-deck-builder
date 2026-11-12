@@ -19,6 +19,7 @@ Deck sites tell an Arena player which cards they are missing and stop there. The
 | **Stand-ins for missing cards** | For each card you lack: cards you own that do the same job, and cheaper crafts, each with its reasons and what it fails to cover. Always legal in the format and castable in the deck's colours. |
 | **A list you can build today** | Wildcards go to the cards that are hardest to replace, everything else is swapped, and the result copies straight into Arena's deck import. |
 | **What is wrong with a list, and how it differs** | Rule problems (size, copy limits, legality, colour identity), and for Standard and Pioneer a comparison with the tournament lists of the archetype the list resembles: what most of them play that yours lacks, and what yours plays that few of them do. |
+| **Combos** | The combos your collection already holds in a format, the cards that would finish the most, and for any list the combos in it and the single cards that would add one. From Commander Spellbook, with a link to the steps. |
 | **Ask the advisor** | A Google ADK agent whose tools are the checks above. Ask which deck to build or where your wildcards should go; it runs the checks and explains them. Needs a Gemini key or Vertex AI on the server; the rest works without. |
 
 Every recommendation is computed, not generated: stand-ins are scored on Scryfall Tagger's functional tags, rules text, card type, mana value, colour, and how often the deck's archetype actually plays the card. See [J-010](./specs/journeys/010-deck-check.feature.md) for the scoring table. The agent only chooses which checks to run and puts the results into words ([J-013](./specs/journeys/013-advisor-chat.feature.md)).
@@ -36,7 +37,8 @@ The advisor reads generated files from `data/generated/`, built from public sour
 ```bash
 pnpm data:cards   # card index from Scryfall bulk data (~90 MB download, cached; a few seconds to build)
 pnpm data:meta    # Standard and Pioneer meta snapshots (shallow, sparse clones of two community repos)
-pnpm data         # both
+pnpm data:combos  # combos from Commander Spellbook's bulk file (~32 MB download, cached for a day; needs the card index)
+pnpm data         # all three
 ```
 
 | Data | Source | Terms |
@@ -44,8 +46,9 @@ pnpm data         # both
 | Cards, legality, Arena rarity, functional tags | [Scryfall](https://scryfall.com/docs/api/bulk-data) bulk files `default_cards` and `oracle_tags` | Bulk use is what Scryfall asks for; fetched at most daily. Tags are community-curated: `MTG_DISABLED_TAGS` hides any tag at runtime. |
 | Tournament decklists and standings | [Jiliac/MTGODecklistCache](https://github.com/Jiliac/MTGODecklistCache) | Community cache of lists published on mtgo.com and melee.gg. No licence file; read at build time, not redistributed. |
 | Archetype definitions | [Jiliac/MTGOFormatData](https://github.com/Jiliac/MTGOFormatData) | Community rules; matching logic ported from MTGOArchetypeParser (MIT). No licence file on the data; read at build time, not redistributed. |
+| Combos | [Commander Spellbook](https://commanderspellbook.com) bulk file `variants.json.gz` | Published for tools to read instead of their API. They ask for a named User-Agent, at most one fetch a day, credit and a link back: the page credits them and links each combo to its steps there. |
 
-Untapped.gg, MTGGoldfish, AetherHub and Moxfield are not used: their terms forbid scraping. Without the card index the advisor routes answer 503 and the Commander Builder keeps working.
+Untapped.gg, MTGGoldfish, AetherHub and Moxfield are not used: their terms forbid scraping. Without the card index the advisor routes answer 503. Meta snapshots and combos are optional: without them the advisor still checks pasted lists.
 
 ---
 
@@ -181,7 +184,7 @@ ADVISOR_AGENT_DAILY_LIMIT=100          # chat messages per UTC day, all visitors
 ADVISOR_AGENT_PER_MINUTE=10
 ```
 
-`pnpm eval:agent` puts 15 questions to the configured model and checks every answer against the tool results it was given; see [docs/evals/advisor-agent.md](./docs/evals/advisor-agent.md).
+`pnpm eval:agent` puts 16 questions to the configured model and checks every answer against the tool results it was given; see [docs/evals/advisor-agent.md](./docs/evals/advisor-agent.md).
 
 ---
 
@@ -212,6 +215,7 @@ This project uses a **spec-first, BDD workflow**: write the journey spec, then t
 | J-011 | Bring my Arena collection | `@smoke @regression` | [011-collection-import](./specs/journeys/011-collection-import.feature.md) |
 | J-012 | Find the meta deck I am closest to | `@regression` | [012-meta-decks](./specs/journeys/012-meta-decks.feature.md) |
 | J-013 | Ask the advisor | `@regression` | [013-advisor-chat](./specs/journeys/013-advisor-chat.feature.md) |
+| J-014 | Combos I own, and combos one card away | `@regression` | [014-combos](./specs/journeys/014-combos.feature.md) |
 
 E2E specs live in `apps/web-e2e/src/journeys/`: `happy-path`, `bracket-targeting`, `owned-only`, `error-states`, `gap-analysis`, `new-player-onboarding`. They cover the Commander Builder, which now lives at `/#/commander`. J-010 to J-012 are covered by unit, API integration and component tests.
 
@@ -350,7 +354,7 @@ This project includes a `Dockerfile` and `render.yaml` for one-click deployment 
 
 The Dockerfile uses a multi-stage build:
 - **Builder stage**: Installs all dependencies, runs `pnpm build` to compile TypeScript and build the React SPA
-- **Data stage**: Builds the advisor's data (`pnpm data:cards`, `pnpm data:meta`). It copies only the files those scripts import, so an app change does not download Scryfall's bulk files again. The card index is required and fails the build if Scryfall cannot be reached; the meta snapshots are optional.
+- **Data stage**: Builds the advisor's data (`pnpm data:cards`, `pnpm data:meta`, `pnpm data:combos`). It copies only the files those scripts import, so an app change does not download Scryfall's bulk files again. The card index is required and fails the build if Scryfall cannot be reached; the meta snapshots and the combos are optional.
 - **Runner stage**: Copies only `dist/`, `data/generated/` and `node_modules/`, runs the Fastify server which serves both the API (`/api/*`) and the SPA (all other routes)
 
 The data is a snapshot taken when the data stage last ran. To refresh cards and the meta, pass a new `DATA_DATE`:

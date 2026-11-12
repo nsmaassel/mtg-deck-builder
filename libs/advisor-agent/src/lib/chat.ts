@@ -29,7 +29,11 @@ export interface AdvisorChatOptions {
    * matters here. Left unset, the model's own default applies.
    */
   thinkingLevel?: ThinkingLevel;
-  /** Model calls allowed in one turn, tool round-trips included. Default 6. */
+  /**
+   * Model calls allowed in one turn, tool round-trips included. Default 8: two
+   * more than the tool runs, so a turn that asks for one tool at a time and
+   * uses them all can still be told so and answer.
+   */
   maxLlmCallsPerTurn?: number;
   /** Tool runs allowed in one turn; each result is carried in every later model call. Default 6. */
   maxToolCallsPerTurn?: number;
@@ -120,6 +124,7 @@ const TOOL_LABELS: Record<string, (args: Record<string, unknown>) => string> = {
   check_decklist: args => `Checked your ${String(args['format'] ?? '')} decklist`,
   lookup_cards: args => `Looked up ${Array.isArray(args['names']) ? (args['names'] as unknown[]).join(', ') : 'cards'}`,
   find_stand_ins: args => `Searched for stand-ins for ${String(args['card'] ?? 'a card')}`,
+  find_combos: args => `Looked for ${String(args['format'] ?? '')} combos in your collection`,
 };
 
 /** Tools whose answer depends on the collection; the label only says so when there is one. */
@@ -157,7 +162,7 @@ export class AdvisorChat {
 
   constructor(options: AdvisorChatOptions) {
     this.options = {
-      maxLlmCallsPerTurn: 6,
+      maxLlmCallsPerTurn: 8,
       maxToolCallsPerTurn: 6,
       maxTurnsPerSession: 30,
       maxContextTokens: 40_000,

@@ -11,6 +11,8 @@ interface NameEntry {
   card: IndexedCard;
   /** The card's whole name, as opposed to one face or an alias. */
   full: boolean;
+  /** The name as the card spells it, capitals included. */
+  spelling: string;
 }
 
 const WORD = /[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu;
@@ -29,7 +31,9 @@ const GAME_TERMS = new Set([
  * Finds the cards a piece of prose names, so an answer can be checked against
  * what the tools returned.
  *
- * Multi-word names are taken wherever they start with a capital. One-word names
+ * Multi-word names are taken wherever they are capitalised as the card spells
+ * them, which keeps "The core of the deck" from being read as the card face
+ * `The Core`. One-word names
  * are the hard part, since `Opt`, `Shock` and `Consider` are cards and so are
  * the halves of split cards (`Fire`, `Life`, `Turn`): a single word counts only
  * when it is a card's whole name, and either set in bold on its own (a bold
@@ -45,7 +49,7 @@ export class CardMentions {
       if (!name) return;
       const key = normalizeCardName(name);
       if (!key || this.names.has(key)) return;
-      this.names.set(key, { card, full });
+      this.names.set(key, { card, full, spelling: name });
       this.maxWords = Math.max(this.maxWords, key.split(' ').length);
     };
     // Whole names first, so a face or alias never shadows another card's name.
@@ -79,6 +83,7 @@ export class CardMentions {
         const entry = this.names.get(normalizeCardName(span.replace(/\*\*|__/g, '')));
         if (!entry) continue;
         if (j === i && !(options.loose ? entry.full : this.singleWordCounts(entry, first, words[i - 1], text, bold))) continue;
+        if (j > i && !options.loose && !capitalisedLike(span, entry.spelling)) continue;
         mentions.push({ card: entry.card, text: span });
         i = j;
         break;
@@ -106,6 +111,14 @@ export class CardMentions {
     const gap = text.slice(previous.end, word.start);
     return !gap.includes('\n') && !SENTENCE_END.test(gap.trim());
   }
+}
+
+/** True unless a word the card capitalises is written in lower case. Spans that do not line up word for word pass. */
+function capitalisedLike(span: string, spelling: string): boolean {
+  const written = span.replace(/\*\*|__/g, '').split(/\s+/);
+  const named = spelling.split(/\s+/);
+  if (written.length !== named.length) return true;
+  return named.every((word, i) => !/^\p{Lu}/u.test(word) || /^\p{Lu}/u.test(written[i]!));
 }
 
 function boldSpans(text: string): [number, number][] {

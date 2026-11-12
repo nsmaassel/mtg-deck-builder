@@ -60,3 +60,37 @@ describe('loadAdvisorData', () => {
     expect(() => loadAdvisorData({ cardIndexPath: join(dir, 'missing.json.gz') })).toThrow(/pnpm data:cards/);
   });
 });
+
+describe('loadAdvisorData: combos', () => {
+  const paths = () => ({ cardIndexPath: writeIndex(), metaDir: join(dir, 'nowhere') });
+  const combosFile = {
+    version: 1, builtAt: '2026-01-01T00:00:00Z', source: { timestamp: '2026-11-12T00:00:00Z', version: 'test' },
+    formats: ['standard'], cards: ['o1'], requirements: [], features: ['Infinite damage'], bracketTags: [],
+    combos: [{ i: 'solo', c: [0], p: [0], l: 1 }],
+  };
+
+  it('loads the combos when the file is there', () => {
+    const combosPath = join(dir, 'combos.json.gz');
+    writeFileSync(combosPath, gzipSync(JSON.stringify(combosFile)));
+
+    const { data, warnings } = loadAdvisorData({ ...paths(), combosPath });
+    expect(data.combos?.size).toBe(1);
+    expect(warnings).toEqual([]);
+  });
+
+  it('runs without combos when the file was never built, and says nothing', () => {
+    const { data, warnings } = loadAdvisorData({ ...paths(), combosPath: join(dir, 'no-combos.json.gz') });
+    expect(data.combos).toBeUndefined();
+    expect(warnings).toEqual([]);
+  });
+
+  it('runs without combos when the file is damaged, and says so', () => {
+    const combosPath = join(dir, 'combos-bad.json.gz');
+    writeFileSync(combosPath, 'not gzip at all');
+
+    const { data, warnings } = loadAdvisorData({ ...paths(), combosPath });
+    expect(data.combos).toBeUndefined();
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/^Skipped combos: /);
+  });
+});

@@ -10,6 +10,7 @@ import type {
   TuneCardView,
 } from './api';
 import { CardLink, ManaCost, Meter, RarityDot, WildcardRow, percent } from './bits';
+import { DeckCombosSection } from './Combos';
 
 interface Props {
   check: DeckCheck;
@@ -370,6 +371,7 @@ export function DeckCheckView({ check, context, hasCollection, craft, onCraftCha
       </div>
 
       {check.tune && <TunePanel tune={check.tune} picked={check.archetype !== undefined} hasCollection={hasCollection} />}
+      {check.combos && <DeckCombosSection combos={check.combos} hasCollection={hasCollection} />}
     </div>
   );
 }

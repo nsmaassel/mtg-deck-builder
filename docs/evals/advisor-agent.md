@@ -8,11 +8,11 @@ pnpm eval:agent -- --only ladder-honesty,unknown-card    # some cases
 pnpm eval:agent -- --model gemini-3.5-flash-lite --price-in 0.30 --price-out 2.50
 ```
 
-It needs the generated data (`pnpm data`) and costs about 8 cents a run on the default model. It is not part of CI.
+It needs the generated data (`pnpm data`) and costs about 10 cents a run on the default model. It is not part of CI.
 
 ## What is checked
 
-The rule under test is "code decides, the model explains": every card, number and rules fact in an answer has to come from a tool result. Each of the 15 cases (`libs/advisor-agent/src/lib/evals/cases.ts`) asks a question through the same `AdvisorChat` the server uses and checks the answer against the tool results of its conversation. No second model grades anything.
+The rule under test is "code decides, the model explains": every card, number and rules fact in an answer has to come from a tool result. Each of the 16 cases (`libs/advisor-agent/src/lib/evals/cases.ts`) asks a question through the same `AdvisorChat` the server uses and checks the answer against the tool results of its conversation. No second model grades anything.
 
 | Check | How |
 |-------|-----|
@@ -30,12 +30,12 @@ Finding card names in prose has one hard case: `Opt`, `Shock` and `Arena` are ca
 
 | Model | Thinking | Cases passed | Median answer | Tokens per answer (prompt / output) | Cost per answer |
 |-------|----------|--------------|---------------|--------------------------------------|-----------------|
-| gemini-3.8-flash | low | 15 of 15, three runs in a row | 5.3 s | 5,400 / 220 | $0.005 |
+| gemini-3.8-flash | low | 16 of 16 in two runs of three, 15 in the third | 5.5 s | 6,800 / 230 | $0.006 |
 | gemini-3.8-flash | model default | 13 of 14 | 11.6 s | 7,500 / 970 | $0.009 |
 | gemini-3.5-flash-lite | none | 12 of 14 | 1.8 s | 4,600 / 120 | $0.002 |
 | gemini-3.1-flash-lite | none | 11 of 14 | 2.1 s | 4,200 / 190 | $0.001 |
 
-The rows with 14 cases were run before the `short-deck` case existed, and the default-thinking row before two instruction changes, so read them as a comparison of models, not as exact scores. Prices are Google's list prices on the day; gemini-3.8-flash doubles on 2027-01-01, to about one cent an answer.
+The rows with 14 cases were run before the `short-deck` and `combos-owned` cases existed, and the default-thinking row before two instruction changes, so read them as a comparison of models, not as exact scores. The one failure in the first row was a limit of mine, not the model: a question that needed six deck checks ran out of model calls before it could answer. The limit is now two calls above the tool limit, and a test holds it there. Prices are Google's list prices on the day; gemini-3.8-flash doubles on 2027-01-01, to about one cent an answer.
 
 What the runs showed:
 
@@ -45,7 +45,7 @@ What the runs showed:
 
 ## What it does not show
 
-- Fifteen questions are a sample. A pass says the model followed the instruction on these, on that day.
+- Sixteen questions are a sample. A pass says the model followed the instruction on these, on that day.
 - Grounding is checked for cards and percentages. Plain counts ("13 rare wildcards short") and claims in prose ("the premier removal spell") are not.
 - Nothing here measures whether the advice is good Magic. The stand-ins come from the engine, whose own tests and scoring table are in J-010.
 - Models change under a fixed name. Re-run before trusting an old table.
