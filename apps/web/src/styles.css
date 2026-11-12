@@ -248,6 +248,17 @@ textarea { resize: vertical; }
 .advisor textarea { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.85rem; line-height: 1.45; }
 .inline-error { color: var(--bad); margin: 0.75rem 0; }
 .loading { color: var(--ink-soft); padding: 1rem 0; }
+.issues { background: #2e1620; border: 1px solid #6b2a3c; color: #f3c9d2; border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.9rem; margin: 0.75rem 0; line-height: 1.5; }
+.issues ul { list-style: disc; padding-left: 1.2rem; margin-top: 0.25rem; }
+.tune { margin-top: 1.5rem; border-top: 1px solid var(--line); padding-top: 1rem; }
+.tune h3 { font-size: 0.95rem; color: var(--gold); }
+.tune h4 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); margin-bottom: 0.4rem; }
+.tune-lede, .tune-note { color: var(--ink-soft); font-size: 0.86rem; line-height: 1.5; margin-top: 0.3rem; }
+.tune-note { font-size: 0.8rem; color: var(--ink-faint); margin-top: 0.8rem; }
+.tune-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: 1rem 1.5rem; margin-top: 0.8rem; }
+.tune-grid ul { list-style: none; display: grid; gap: 0.4rem; }
+.tune-row { display: grid; gap: 0.1rem; font-size: 0.9rem; }
+.tune-facts, .tune-own { color: var(--ink-soft); font-size: 0.8rem; }
 .notice { background: #2a2413; border: 1px solid #5c4d1c; color: #ecd9a0; border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.9rem; margin: 0.75rem 0; }
 
 /* Collection */
@@ -411,6 +422,12 @@ textarea { resize: vertical; }
 .chat-you .chat-text { color: #f4efe0; font-weight: 600; }
 .chat-advisor { background: #111b36; border-left: 3px solid var(--gold); border-radius: 4px; padding: 0.6rem 0.8rem; }
 .chat-text { white-space: pre-wrap; line-height: 1.55; font-size: 0.93rem; overflow-wrap: anywhere; }
+.chat-rich { white-space: normal; display: grid; gap: 0.55rem; }
+.chat-rich ul, .chat-rich ol { display: grid; gap: 0.3rem; padding-left: 1.2rem; }
+.chat-rich li.rich-nested { margin-left: 1.1rem; list-style-type: circle; }
+.chat-rich strong { color: #f4efe0; font-weight: 650; }
+.chat-rich code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.86em; }
+.chat-rich .rich-heading { font-weight: 700; color: var(--gold); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.05em; }
 .chat-steps { list-style: none; display: grid; gap: 0.1rem; font-size: 0.78rem; color: var(--ink-faint); }
 .chat-steps li::before { content: '↳ '; }
 .chat-thinking { color: var(--ink-soft); font-size: 0.9rem; }

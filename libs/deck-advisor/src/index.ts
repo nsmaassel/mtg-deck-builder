@@ -13,6 +13,10 @@ export {
   isLand,
   usableCopies,
 } from './lib/gap';
+export { deckIssues } from './lib/issues';
+export type { DeckIssue, DeckIssueKind } from './lib/issues';
+export { nearestArchetype, tuneDeck } from './lib/tune';
+export type { ArchetypeMatch, DeckTune, TuneCard } from './lib/tune';
 export { tagOverlap, TextModel, tokenizeRulesText } from './lib/similarity';
 export type { TagOverlap } from './lib/similarity';
 export { SubstituteFinder, suggestSubstitutes } from './lib/substitutes';
@@ -36,10 +40,12 @@ export type {
   CheckDeckOptions,
   DeckCardView,
   DeckCheck,
+  DeckTuneView,
   GapSummary,
   MetaView,
   PlanStepView,
   SubstituteView,
+  TuneCardView,
 } from './lib/service';
 export type {
   ArchetypeUsage,

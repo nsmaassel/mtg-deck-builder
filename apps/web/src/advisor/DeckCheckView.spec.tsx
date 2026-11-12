@@ -127,3 +127,64 @@ describe('DeckCheckView', () => {
     expect(screen.getByRole('button', { name: 'Copy for Arena import' })).toBeInTheDocument();
   });
 });
+
+describe('DeckCheckView: problems and the tournament comparison', () => {
+  const view = (name: string) => ({ oracleId: `id:${name}`, name, manaCost: '{1}{R}', manaValue: 2, typeLine: 'Instant', colors: ['R'] });
+  const tune = {
+    archetypeId: 'izzet-prowess',
+    archetype: 'Izzet Prowess',
+    lists: 212,
+    similarity: 0.72,
+    missingStaples: [
+      { card: view('Steam Vents'), share: 0.9, typicalCopies: 4, inDeck: 0, owned: 0, craftRarity: 'rare' as const },
+      { card: view('Shock'), share: 0.85, typicalCopies: 3.8, inDeck: 2, owned: 4 },
+    ],
+    unusual: [{ card: view('Hulking Raptor'), share: 0, typicalCopies: 0, inDeck: 4, owned: 4 }],
+    sideboardStaples: [],
+  };
+
+  it('says what keeps the list from being a legal deck', () => {
+    renderCheck({
+      check: { ...incompleteCheck, issues: [{ kind: 'size', message: '28 cards in the main deck. Standard needs at least 60.', cards: [] }] },
+    });
+    const problems = screen.getByRole('note', { name: 'Problems with this list' });
+    expect(within(problems).getByText('28 cards in the main deck. Standard needs at least 60.')).toBeInTheDocument();
+  });
+
+  it('shows no problems box for a legal deck', () => {
+    renderCheck();
+    expect(screen.queryByRole('note', { name: 'Problems with this list' })).not.toBeInTheDocument();
+  });
+
+  it('compares a pasted list with the archetype it resembles', () => {
+    renderCheck({ check: { ...incompleteCheck, archetype: undefined, tune } });
+    const panel = screen.getByRole('region', { name: 'Compared with tournament lists' });
+    expect(within(panel).getByRole('heading', { name: 'Closest to Izzet Prowess: against its 212 tournament lists' })).toBeInTheDocument();
+    expect(within(panel).getByText(/About 72% of the spells match/)).toBeInTheDocument();
+
+    const lacking = within(panel).getByRole('heading', { name: 'Most lists play these, this one does not' }).parentElement as HTMLElement;
+    const [vents, shock] = within(lacking).getAllByRole('listitem');
+    expect(vents).toHaveTextContent('Steam Vents');
+    expect(vents).toHaveTextContent('in 90% of lists, usually 4 copies');
+    expect(within(vents!).getByTitle('rare wildcard')).toBeInTheDocument();
+    expect(shock).toHaveTextContent('in 85% of lists, usually 3.8 copies · this list has 2');
+    expect(shock).toHaveTextContent('you own a playset');
+
+    const unusual = within(panel).getByRole('heading', { name: 'This one plays these, few lists do' }).parentElement as HTMLElement;
+    expect(within(unusual).getByRole('listitem')).toHaveTextContent('Hulking Raptor in no list · this list has 4');
+    expect(within(panel).queryByRole('heading', { name: 'Sideboard cards most lists bring' })).not.toBeInTheDocument();
+  });
+
+  it('words the comparison differently for a list picked from the meta, and leaves ownership out without a collection', () => {
+    renderCheck({ check: { ...incompleteCheck, tune: { ...tune, similarity: undefined } }, hasCollection: false });
+    const panel = screen.getByRole('region', { name: 'Compared with tournament lists' });
+    expect(within(panel).getByRole('heading', { name: 'This list against all 212 Izzet Prowess lists' })).toBeInTheDocument();
+    expect(within(panel).queryByText(/of the spells match/)).not.toBeInTheDocument();
+    expect(within(panel).queryByText(/you own/)).not.toBeInTheDocument();
+  });
+
+  it('says so when a list plays what most lists play', () => {
+    renderCheck({ check: { ...incompleteCheck, tune: { ...tune, missingStaples: [], unusual: [] } } });
+    expect(screen.getByText('Nothing stands out: it plays what most of them play.')).toBeInTheDocument();
+  });
+});

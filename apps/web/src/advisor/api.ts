@@ -6,9 +6,11 @@ export type { DeckCheck, MetaView, SampleProfile, Wildcards };
 export type {
   ArchetypeView,
   DeckCardView,
+  DeckTuneView,
   GapSummary,
   PlanStepView,
   SubstituteView,
+  TuneCardView,
   CardView,
 } from '@mtg/deck-advisor';
 

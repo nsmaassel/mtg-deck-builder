@@ -1,5 +1,14 @@
 import React, { useState } from 'react';
-import type { ArchetypeCheck, CraftMode, DeckCardView, DeckCheck, PlanStepView, SubstituteView } from './api';
+import type {
+  ArchetypeCheck,
+  CraftMode,
+  DeckCardView,
+  DeckCheck,
+  DeckTuneView,
+  PlanStepView,
+  SubstituteView,
+  TuneCardView,
+} from './api';
 import { CardLink, ManaCost, Meter, RarityDot, WildcardRow, percent } from './bits';
 
 interface Props {
@@ -132,6 +141,71 @@ function StepRow({ step }: { step: PlanStepView }) {
   );
 }
 
+function TuneRow({ row, hasCollection, lacking }: { row: TuneCardView; hasCollection: boolean; lacking: boolean }) {
+  const share = row.share === 0 ? 'in no list' : `in ${percent(row.share)} of lists`;
+  return (
+    <li className="tune-row">
+      <CardLink name={row.card.name} />{' '}
+      <span className="tune-facts">
+        {share}
+        {lacking && row.typicalCopies > 0 && `, usually ${row.typicalCopies} ${row.typicalCopies === 1 ? 'copy' : 'copies'}`}
+        {lacking && row.inDeck > 0 && ` · this list has ${row.inDeck}`}
+        {!lacking && ` · this list has ${row.inDeck}`}
+      </span>
+      {lacking && hasCollection && (
+        <span className="tune-own">
+          {row.owned > 0 ? (
+            `you own ${row.owned >= 4 ? 'a playset' : row.owned}`
+          ) : (
+            <>
+              craft <RarityDot rarity={row.craftRarity} />
+            </>
+          )}
+        </span>
+      )}
+    </li>
+  );
+}
+
+/** The list against the tournament lists of its archetype: what they play that it lacks, and the reverse. */
+function TunePanel({ tune, picked, hasCollection }: { tune: DeckTuneView; picked: boolean; hasCollection: boolean }) {
+  const sections: Array<[string, TuneCardView[], boolean]> = [
+    ['Most lists play these, this one does not', tune.missingStaples, true],
+    ['This one plays these, few lists do', tune.unusual, false],
+    ['Sideboard cards most lists bring', tune.sideboardStaples, true],
+  ];
+  const shown = sections.filter(([, rows]) => rows.length > 0);
+  return (
+    <section className="tune" aria-label="Compared with tournament lists">
+      <h3>
+        {picked
+          ? `This list against all ${tune.lists} ${tune.archetype} lists`
+          : `Closest to ${tune.archetype}: against its ${tune.lists} tournament lists`}
+      </h3>
+      {!picked && tune.similarity !== undefined && (
+        <p className="tune-lede">
+          About {percent(tune.similarity)} of the spells match what those lists usually run.
+        </p>
+      )}
+      {shown.length === 0 ? (
+        <p className="tune-lede">Nothing stands out: it plays what most of them play.</p>
+      ) : (
+        <div className="tune-grid">
+          {shown.map(([title, rows, lacking]) => (
+            <div key={title}>
+              <h4>{title}</h4>
+              <ul>
+                {rows.map(row => <TuneRow key={row.card.oracleId} row={row} hasCollection={hasCollection} lacking={lacking} />)}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="tune-note">What other players settled on, not a verdict: an unusual card can be a deliberate choice.</p>
+    </section>
+  );
+}
+
 export function DeckCheckView({ check, context, hasCollection, craft, onCraftChange, onPickList, activeList = 0, busy }: Props) {
   const [copied, setCopied] = useState(false);
   const { summary, plan } = check;
@@ -214,6 +288,15 @@ export function DeckCheckView({ check, context, hasCollection, craft, onCraftCha
         </nav>
       )}
 
+      {check.issues.length > 0 && (
+        <div className="issues" role="note" aria-label="Problems with this list">
+          <strong>Not a legal {check.format} deck as written</strong>
+          <ul>
+            {check.issues.map(issue => <li key={issue.message}>{issue.message}</li>)}
+          </ul>
+        </div>
+      )}
+
       {!hasCollection && (
         <p className="notice">
           No collection loaded, so every card counts as missing. Load one above to see what you own and what could stand in.
@@ -285,6 +368,8 @@ export function DeckCheckView({ check, context, hasCollection, craft, onCraftCha
           </div>
         </aside>
       </div>
+
+      {check.tune && <TunePanel tune={check.tune} picked={check.archetype !== undefined} hasCollection={hasCollection} />}
     </div>
   );
 }

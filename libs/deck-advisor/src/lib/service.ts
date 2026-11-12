@@ -1,9 +1,13 @@
 import type { CardIndex, Format, IndexedCard, Rarity } from '@mtg/card-index';
 import type { MetaArchetype, MetaSnapshot, TournamentDeck } from '@mtg/meta-decks/types';
 import { analyzeGap, isLand } from './gap';
+import { deckIssues } from './issues';
+import type { DeckIssue } from './issues';
 import { craftCost, planDeck } from './plan';
 import type { PlanOptions } from './plan';
 import type { TextModel } from './similarity';
+import { nearestArchetype, tuneDeck } from './tune';
+import type { ArchetypeMatch, TuneCard } from './tune';
 import type {
   ArchetypeUsage,
   Board,
@@ -81,6 +85,32 @@ export interface PlanStepView {
   note: string;
 }
 
+export interface TuneCardView {
+  card: CardView;
+  /** Share of the archetype's lists that play it on this board (0–1). */
+  share: number;
+  /** Mean copies among the lists that play it. */
+  typicalCopies: number;
+  /** Copies in this list, on this board. */
+  inDeck: number;
+  /** Copies the player owns, up to a playset. */
+  owned: number;
+  craftRarity?: Rarity;
+}
+
+/** A list read against the tournament lists of its archetype. */
+export interface DeckTuneView {
+  archetypeId: string;
+  archetype: string;
+  /** Tournament lists the shares are counted over. */
+  lists: number;
+  /** How closely a pasted list resembles the archetype (0–1). Absent for a list taken from the meta. */
+  similarity?: number;
+  missingStaples: TuneCardView[];
+  unusual: TuneCardView[];
+  sideboardStaples: TuneCardView[];
+}
+
 export interface DeckCheck {
   format: Format;
   deckName?: string;
@@ -88,6 +118,10 @@ export interface DeckCheck {
   archetype?: string;
   colors: string[];
   summary: GapSummary;
+  /** What stops the list from being a legal deck in the format. Empty when nothing does. */
+  issues: DeckIssue[];
+  /** The list against its archetype's tournament lists. Absent where the format has no meta or nothing resembles it. */
+  tune?: DeckTuneView;
   cards: DeckCardView[];
   plan: {
     steps: PlanStepView[];
@@ -122,6 +156,18 @@ function substituteView(substitute: Substitute): SubstituteView {
     reasons: substitute.reasons,
   };
   if (substitute.craftRarity) view.craftRarity = substitute.craftRarity;
+  return view;
+}
+
+function tuneCardView(row: TuneCard): TuneCardView {
+  const view: TuneCardView = {
+    card: cardView(row.card),
+    share: Math.round(row.share * 1000) / 1000,
+    typicalCopies: Math.round(row.typicalCopies * 10) / 10,
+    inDeck: row.inDeck,
+    owned: row.owned,
+  };
+  if (row.craftRarity) view.craftRarity = row.craftRarity;
   return view;
 }
 
@@ -179,9 +225,15 @@ export function checkDeck(
   data: AdvisorData,
   options: CheckDeckOptions = {},
 ): DeckCheck {
-  const usage = options.archetype ? archetypeUsage(options.archetype, data.index) : undefined;
+  // A pasted list is read against the archetype it most resembles, when the format has a meta at all.
+  const snapshot = data.meta.get(format);
+  const match: ArchetypeMatch | undefined = options.archetype
+    ? { archetype: options.archetype, similarity: 1 }
+    : snapshot && nearestArchetype(deck, snapshot, data.index);
+  const usage = match ? archetypeUsage(match.archetype, data.index) : undefined;
   const plan = planDeck(deck, collection, data.index, format, data.text, { usage, craft: options.craft });
   const { gap } = plan;
+  const tune = match && tuneDeck(deck, match, collection, data.index);
 
   const cards: DeckCardView[] = gap.cards.map(entry => {
     const view: DeckCardView = {
@@ -203,6 +255,7 @@ export function checkDeck(
     format,
     colors: gap.colors,
     summary: gapSummary(gap),
+    issues: deckIssues(deck, format, data.index),
     cards,
     plan: {
       steps: plan.steps.map(step => {
@@ -226,6 +279,17 @@ export function checkDeck(
   if (deck.name) check.deckName = deck.name;
   if (options.archetype) check.archetype = options.archetype.name;
   if (plan.wildcardsLeft) check.plan.wildcardsLeft = plan.wildcardsLeft;
+  if (tune) {
+    check.tune = {
+      archetypeId: tune.archetype.id,
+      archetype: tune.archetype.name,
+      lists: tune.archetype.deckCount,
+      missingStaples: tune.missingStaples.map(tuneCardView),
+      unusual: tune.unusual.map(tuneCardView),
+      sideboardStaples: tune.sideboardStaples.map(tuneCardView),
+    };
+    if (!options.archetype) check.tune.similarity = Math.round(tune.similarity * 100) / 100;
+  }
   return check;
 }
 

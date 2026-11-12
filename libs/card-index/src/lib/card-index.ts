@@ -38,6 +38,36 @@ function deserialize(card: SerializedCard, file: CardIndexFile): IndexedCard {
   };
 }
 
+/** A name without its punctuation, so a dropped comma or apostrophe is no difference at all. */
+function squash(key: string): string {
+  return key.replace(/[^a-z0-9 ]+/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Edit distance counting a swap of two neighbouring letters as one edit, the
+ * commonest typo. Gives up (returns `limit + 1`) once it must exceed `limit`.
+ */
+function editDistance(a: string, b: string, limit: number): number {
+  if (Math.abs(a.length - b.length) > limit) return limit + 1;
+  let beforeLast: number[] = [];
+  let last = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    let best = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      let value = Math.min(last[j]! + 1, row[j - 1]! + 1, last[j - 1]! + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) value = Math.min(value, beforeLast[j - 2]! + 1);
+      row.push(value);
+      if (value < best) best = value;
+    }
+    if (best > limit) return limit + 1;
+    beforeLast = last;
+    last = row;
+  }
+  return last[b.length]!;
+}
+
 /** In-memory card database with the lookups the advisor needs. */
 export class CardIndex {
   readonly builtAt: string;
@@ -103,6 +133,32 @@ export class CardIndex {
 
   byArenaId(arenaId: number): IndexedCard | undefined {
     return this.byArena.get(arenaId);
+  }
+
+  /**
+   * Cards a name that matched nothing probably meant: a typo's nearest
+   * spellings first, then cards whose name contains the words given, each
+   * group most played first. Scans every name, so it is for the miss path.
+   */
+  closest(name: string, limit = 3): IndexedCard[] {
+    const wanted = squash(normalizeCardName(name));
+    if (wanted.length < 3) return [];
+    const tolerance = Math.max(1, Math.floor(wanted.length / 5));
+
+    const typos: Array<{ card: IndexedCard; distance: number }> = [];
+    const partial = new Set<IndexedCard>();
+    for (const [key, card] of this.byNameKey) {
+      const candidate = squash(key);
+      const distance = editDistance(wanted, candidate, tolerance);
+      if (distance <= tolerance) typos.push({ card, distance });
+      else if (` ${candidate} `.includes(` ${wanted} `)) partial.add(card);
+    }
+
+    const played = (card: IndexedCard) => card.edhrecRank ?? Number.MAX_SAFE_INTEGER;
+    const byPlay = (a: IndexedCard, b: IndexedCard) => played(a) - played(b) || a.name.localeCompare(b.name);
+    typos.sort((a, b) => a.distance - b.distance || byPlay(a.card, b.card));
+    const ordered = [...typos.map(entry => entry.card), ...[...partial].sort(byPlay)];
+    return [...new Set(ordered)].slice(0, limit);
   }
 
   /** How many cards carry the tag. */

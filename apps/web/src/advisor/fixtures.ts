@@ -57,6 +57,7 @@ export const incompleteCheck: DeckCheck = {
     wildcardsLeft: { common: 10, uncommon: 5, rare: 1, mythic: 0 },
     fidelity: 0.87,
   },
+  issues: [],
   unrecognizedLines: [],
 };
 
@@ -67,6 +68,7 @@ export const completeCheck: DeckCheck = {
   summary: { totalCards: 8, ownedCards: 8, completion: 1, cost: 0, craftable: true, wildcardsNeeded: { common: 0, uncommon: 0, rare: 0, mythic: 0 } },
   cards: [row({ name: 'Shock' }), row({ name: 'Mountain' })],
   plan: { steps: [], arenaText: 'Deck\n4 Shock\n4 Mountain\n', wildcardsSpent: { common: 0, uncommon: 0, rare: 0, mythic: 0 }, fidelity: 1 },
+  issues: [],
   unrecognizedLines: [],
 };
 

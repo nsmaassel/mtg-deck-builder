@@ -303,6 +303,46 @@ describe('trivia tags', () => {
 });
 
 describe('CardIndex', () => {
+  it('suggests the nearest spellings for a name that matches nothing, most played first', () => {
+    const index = build([
+      printing({ name: 'Shock', edhrec_rank: 900 }),
+      printing({ name: 'Shack', edhrec_rank: 100 }),
+      printing({ name: 'Stock Up', edhrec_rank: 50 }),
+      printing({ name: 'Lightning Strike' }),
+    ]);
+    const closest = (name: string, limit?: number) => index.closest(name, limit).map(card => card.name);
+
+    // Two letters swapped is one slip, and the only card one slip away.
+    expect(closest('Shcok')).toEqual(['Shock']);
+    // One letter off from two cards: the more played one first.
+    expect(closest('Shick')).toEqual(['Shack', 'Shock']);
+    expect(closest('Shick', 1)).toEqual(['Shack']);
+    // A longer name forgives more.
+    expect(closest('Lightnin Strke')).toEqual(['Lightning Strike']);
+    expect(closest('Bolt')).toEqual([]);
+  });
+
+  it('suggests cards whose name contains the words given, after any near spellings', () => {
+    const index = build([
+      printing({ name: 'Sheoldred, the Apocalypse', edhrec_rank: 40 }),
+      printing({ name: 'Sheoldred, Whispering One', edhrec_rank: 300 }),
+      printing({ name: "Sheoldred's Edict", edhrec_rank: 5000 }),
+      printing({ name: 'Opt' }),
+    ]);
+    const closest = (name: string, limit?: number) => index.closest(name, limit).map(card => card.name);
+
+    // Punctuation left out is not a difference.
+    expect(closest('Sheoldred the Apocalypse')).toEqual(['Sheoldred, the Apocalypse']);
+    expect(closest('Sheoldreds Edict')).toEqual(["Sheoldred's Edict"]);
+    // Part of a name: every card it is part of, most played first.
+    expect(closest('Sheoldred')).toEqual(['Sheoldred, the Apocalypse', 'Sheoldred, Whispering One']);
+    expect(closest('whispering one')).toEqual(['Sheoldred, Whispering One']);
+    // Whole words only, nothing for a name too short to mean anything, and nothing when nothing is like it.
+    expect(closest('Sheol')).toEqual([]);
+    expect(closest('Op')).toEqual([]);
+    expect(closest('Blorptastic Wizard of Zendikar')).toEqual([]);
+  });
+
   it('rejects an index file from another version', () => {
     const file = { ...new CardIndexBuilder().build(), version: 2 };
     expect(() => new CardIndex(file as never)).toThrow(/Unsupported card index version/);

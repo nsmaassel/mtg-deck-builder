@@ -4,7 +4,7 @@ import type { Collection, Wildcards } from '../types';
 
 const ARENA_FORMATS = ['standard', 'alchemy', 'historic', 'timeless', 'pioneer', 'brawl', 'standardbrawl', 'commander'];
 
-interface CardSpec {
+export interface CardSpec {
   name: string;
   cost?: string;
   type: string;
@@ -13,6 +13,7 @@ interface CardSpec {
   tags?: string[];
   /** Formats the card is legal in. Defaults to every Arena format plus Commander. */
   legal?: string[];
+  banned?: string[];
   onArena?: boolean;
   identity?: string[];
   produces?: string[];
@@ -89,12 +90,15 @@ export function oracleId(name: string): string {
   return `id:${name}`;
 }
 
-/** A small, hand-written card pool with the shapes the advisor has to cope with. */
-export function buildTestIndex(): CardIndex {
+/**
+ * A small, hand-written card pool with the shapes the advisor has to cope with.
+ * A spec can add the cards it needs on top.
+ */
+export function buildTestIndex(extra: CardSpec[] = []): CardIndex {
   const builder = new CardIndexBuilder();
   const tagged = new Map<string, string[]>();
 
-  CARDS.forEach((spec, i) => {
+  [...CARDS, ...extra].forEach((spec, i) => {
     const cost = spec.cost ?? '';
     const legal = spec.legal ?? ARENA_FORMATS;
     const printing: ScryfallPrinting = {
@@ -112,7 +116,7 @@ export function buildTestIndex(): CardIndex {
       colors: colorsOf(cost.split(' // ')[0] ?? ''),
       color_identity: spec.identity ?? colorsOf(cost),
       produced_mana: spec.produces,
-      legalities: Object.fromEntries(legal.map(f => [f, 'legal'])),
+      legalities: Object.fromEntries([...legal.map(f => [f, 'legal']), ...(spec.banned ?? []).map(f => [f, 'banned'])]),
       edhrec_rank: spec.rank,
     };
     builder.addPrinting(printing);
