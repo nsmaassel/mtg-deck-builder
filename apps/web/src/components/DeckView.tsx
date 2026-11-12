@@ -1,5 +1,8 @@
 import React from 'react';
 import type { BuildDeckResult, Bracket } from '../api';
+import { DataCredit, POPULARITY_TOOLTIP, popularityLabel } from './DataCredit';
+
+const TOP_PICKS_TOOLTIP = 'Of the cards we would pick for this commander with every card available, the share that is in this deck';
 
 interface DeckViewProps {
   result: BuildDeckResult;
@@ -38,9 +41,20 @@ export function DeckView({ result, onExplain, explaining, explanation }: DeckVie
       <div className="deck-header">
         <h2>🎖️ {deck.commander.name}</h2>
         <p className="deck-stats">
-          {deck.totalCards} cards · Avg CMC: {analysis.averageCmc.toFixed(1)} ·
-          Staples: {analysis.staplesCoveragePercent.toFixed(0)}%
+          {deck.totalCards} cards · Avg CMC: {analysis.averageCmc.toFixed(1)} ·{' '}
+          <span title={TOP_PICKS_TOOLTIP}>Top picks: {analysis.topPicksCoveragePercent.toFixed(0)}%</span>
         </p>
+        {analysis.themes.length > 0 && (
+          <p className="deck-themes">
+            Built around:{' '}
+            {analysis.themes.map((theme, i) => (
+              <React.Fragment key={theme.slug}>
+                {i > 0 && ' · '}
+                <span title={`A commander that ${theme.because}`}>{theme.name}</span>
+              </React.Fragment>
+            ))}
+          </p>
+        )}
         <div className="color-identity">
           {Object.entries(analysis.colorDistribution).map(([color]) => (
             <span key={color} className={`color-pip color-${color.toLowerCase()}`}>
@@ -80,8 +94,8 @@ export function DeckView({ result, onExplain, explaining, explanation }: DeckVie
               CMC {powerLevel.signals.avgCmc.toFixed(1)}
             </span>
           )}
-          <span className="signal-chip signal-neutral">
-            {powerLevel.signals.staplesCoverage}% Staples
+          <span className="signal-chip signal-neutral" title={TOP_PICKS_TOOLTIP}>
+            {powerLevel.signals.topPicksCoverage}% top picks
           </span>
         </div>
 
@@ -109,11 +123,13 @@ export function DeckView({ result, onExplain, explaining, explanation }: DeckVie
                       <div className="swap-alternatives">
                         <span className="swap-alt-label">↪ Replace with:</span>
                         {swap.alternatives.map(alt => (
-                          <span key={alt.name} className="swap-alt-chip" title={`${alt.inclusion}% inclusion${alt.synergy != null ? ` · ${Math.round(alt.synergy * 100)}% synergy` : ''}`}>
+                          <span key={alt.name} className="swap-alt-chip">
                             {alt.name}
-                            <em>{alt.inclusion}%</em>
+                            <em title={POPULARITY_TOOLTIP}>{popularityLabel(alt.popularity)}</em>
                             {alt.synergy != null && alt.synergy > 0.1 && (
-                              <span className="swap-alt-synergy">⚡{Math.round(alt.synergy * 100)}%</span>
+                              <span className="swap-alt-synergy" title="How well it works with this commander">
+                                ⚡{Math.round(alt.synergy * 100)}%
+                              </span>
                             )}
                           </span>
                         ))}
@@ -125,8 +141,8 @@ export function DeckView({ result, onExplain, explaining, explanation }: DeckVie
             ) : (
               <p className="no-suggestions-hint">
                 💡 Bracket {powerLevel.targetBracket} targeted, but no specific swaps are needed —
-                this deck reaches Bracket {powerLevel.bracket} through staples coverage rather than
-                Game Changers or tutors. Consider replacing high-impact staples manually.
+                this deck reaches Bracket {powerLevel.bracket} by playing most of the top picks for its
+                commander rather than through Game Changers or tutors. Consider replacing its strongest cards manually.
               </p>
             )}
           </div>
@@ -138,8 +154,13 @@ export function DeckView({ result, onExplain, explaining, explanation }: DeckVie
           <section key={slotName} className="slot-section">
             <h3>{SLOT_LABELS[slotName] ?? slotName} ({cards.length})</h3>
             <ul>
-              {cards.map(card => (
-                <li key={card.name} className={`card-item${card.ownedInCollection ? '' : ' card-unowned'}`}>
+              {cards.map((card, i) => (
+                <li
+                  // Basic lands repeat, so the name alone is not a key.
+                  key={`${card.name}-${i}`}
+                  className={`card-item${card.ownedInCollection ? '' : ' card-unowned'}`}
+                  title={card.reasons.join(' · ')}
+                >
                   <span className="card-name">
                     {!card.ownedInCollection && <span className="unowned-dot" title="Not in collection">○</span>}
                     {card.name}
@@ -155,14 +176,19 @@ export function DeckView({ result, onExplain, explaining, explanation }: DeckVie
         ))}
       </div>
 
-      {gaps.missingStaples.length > 0 && (
+      {gaps.missingCards.length > 0 && (
         <section className="gaps-section">
-          <h3>📋 Missing Staples ({gaps.missingStaples.length})</h3>
+          <h3>📋 Cards to Get ({gaps.missingCards.length})</h3>
           <ul>
-            {gaps.missingStaples.slice(0, 10).map(card => (
+            {gaps.missingCards.slice(0, 10).map(card => (
               <li key={card.name}>
-                <span className="card-name">{card.name}</span>
-                <span className="card-meta">{card.edhrec_inclusion}% inclusion · {card.wouldFillSlot}</span>
+                <span className="card-name">
+                  {card.name}
+                  {card.reasons[0] && <small className="card-reason">{card.reasons[0]}</small>}
+                </span>
+                <span className="card-meta">
+                  <span title={POPULARITY_TOOLTIP}>{popularityLabel(card.popularity)}</span> · {card.wouldFillSlot}
+                </span>
                 {card.usdPrice != null && (
                   <span className="card-price">${card.usdPrice.toFixed(2)}</span>
                 )}
@@ -187,6 +213,8 @@ export function DeckView({ result, onExplain, explaining, explanation }: DeckVie
           </div>
         )}
       </div>
+
+      <DataCredit />
     </div>
   );
 }

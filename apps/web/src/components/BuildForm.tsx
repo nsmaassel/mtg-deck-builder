@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { api } from '../api';
 import type { BuildDeckResult, BuildMode, Bracket } from '../api';
+import { DataCredit } from './DataCredit';
 
 interface BuildFormProps {
   onResult: (result: BuildDeckResult) => void;
@@ -93,8 +94,8 @@ export function BuildForm({ onResult, onError }: BuildFormProps) {
         <h2>How it works</h2>
         <ol className="guide-steps">
           <li><strong>Choose your commander</strong> — any legendary creature. Not sure? Search and pick from suggestions.</li>
-          <li><strong>Tell us what you own</strong> — paste your MTG Arena collection export. <em>Or</em> check <em>"I'm new to Commander"</em> and we'll build from the best community recommendations, no collection needed.</li>
-          <li><strong>Get a full 100-card deck</strong> — with a power level score (Bracket 1–5), missing-staple shopping list, and optional AI walkthrough.</li>
+          <li><strong>Tell us what you own</strong> — paste your MTG Arena collection export. <em>Or</em> check <em>"I'm new to Commander"</em> and we'll build from the cards that fit your commander best, no collection needed.</li>
+          <li><strong>Get a full 100-card deck</strong> — with a power level score (Bracket 1–5), a shopping list of the cards you are missing, and optional AI walkthrough.</li>
         </ol>
       </section>
 
@@ -107,7 +108,7 @@ export function BuildForm({ onResult, onError }: BuildFormProps) {
           />
           <span>I'm new to Commander / Skip collection</span>
         </label>
-        <small className="form-hint">Build a deck purely from EDHRec recommendations — no MTG Arena export needed.</small>
+        <small className="form-hint">Build a deck purely from our recommendations for your commander — no MTG Arena export needed.</small>
       </div>
 
       {!skipCollection && (
@@ -203,6 +204,8 @@ export function BuildForm({ onResult, onError }: BuildFormProps) {
       <button type="submit" disabled={building} className="build-btn">
         {building ? 'Building deck...' : '⚔️ Build Deck'}
       </button>
+
+      <DataCredit />
     </form>
   );
 }

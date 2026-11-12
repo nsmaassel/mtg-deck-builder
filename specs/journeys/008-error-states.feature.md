@@ -33,13 +33,21 @@ Feature: Input validation and error handling
     And the UI should display the error message
     And the deck view should NOT appear
 
-  Scenario: Commander not found in Scryfall returns graceful error
+  Scenario: Commander not found returns graceful error
     Given I paste a valid collection
     And I enter "Totally Fake Commander XYZ123" as commander
     When I click "⚔️ Build Deck"
     Then the API returns a not-found error
     And the UI should display a meaningful error message
+    # The commander is looked up in the local card index; a name it does not know as typed
+    # is passed to Scryfall's fuzzy search once, for its spelling
     # No stack traces or raw JSON shown to user
+
+  Scenario: Card data not generated on the server
+    Given the server was started without a card index
+    When I search for a commander or build a deck
+    Then the API returns 503 with a message telling the operator to run `pnpm data:cards`
+    And the rest of the app keeps working
 ```
 
 ---
@@ -50,11 +58,17 @@ Feature: Input validation and error handling
 // 400 - Bad collection
 { error: 'Invalid collection format', message: 'Could not parse collection. Use MTG Arena export format.' }
 
-// 404 / 422 - Commander not found  
-{ error: 'Commander not found', message: 'No card named "..." found in Scryfall.' }
+// 404 - Commander not found
+{ error: 'Commander not found', commanderName: '...' }
 
-// 503 - External API down (graceful degradation)
-{ error: 'Service unavailable', message: '...' }
+// 422 - Not legal in Commander
+{ error: 'Commander not legal', message: '... is not legal in Commander format' }
+
+// 502 - Scryfall unreachable while spelling a commander name
+{ error: 'Deck data service temporarily unavailable', message: '...' }
+
+// 503 - Card index not generated on this server
+{ error: 'Commander Builder data not built', message: 'The card index is missing on this server. Run `pnpm data:cards`, then restart.' }
 ```
 
 ---

@@ -10,7 +10,6 @@ import type { ChatBudget } from './chat-budget';
 import { resolve } from 'path';
 import { existsSync, readFileSync, statSync } from 'fs';
 import { ScryfallError } from '@mtg/scryfall';
-import { EDHRecError } from '@mtg/edhrec';
 
 // In production, the Fastify server also serves the built web SPA. The Docker
 // runner lays out output as <cwd>/dist/... (WORKDIR is the repo root), so the
@@ -72,7 +71,10 @@ async function serveStatic(url: string, reply: FastifyReply): Promise<boolean> {
 }
 
 export interface AppOptions {
-  /** Generated card and meta data for the deck advisor. Without it the advisor routes answer 503. */
+  /**
+   * Generated card and meta data. The deck advisor uses all of it and the
+   * Commander Builder its card index; without it both answer 503.
+   */
   advisor?: AdvisorData | null;
   /** The advisor's conversational agent, when a model is configured. */
   chat?: AdvisorChat | null;
@@ -99,21 +101,22 @@ export function buildApp(options: AppOptions = {}) {
 
   app.get('/health', async () => ({ status: 'ok', version: '1.0.0' }));
 
+  const index = options.advisor?.index ?? null;
   app.register(collectionRoutes);
-  app.register(commanderRoutes);
-  app.register(deckRoutes);
-  app.register(themeRoutes);
+  app.register(commanderRoutes, { index });
+  app.register(deckRoutes, { index });
+  app.register(themeRoutes, { index });
   app.register(advisorRoutes, {
     advisor: options.advisor ?? null,
     chat: options.chat ?? null,
     chatBudget: options.chatBudget ?? null,
   });
 
-  // External data-source failures (Scryfall/EDHRec) are already retried inside
-  // their clients; if one still fails, surface a friendly 502 instead of a raw
-  // internal-error page. Commander-not-found cases are handled in the routes.
+  // A Scryfall failure is already retried inside its client; if it still
+  // fails, surface a friendly 502 instead of a raw internal-error page.
+  // Commander-not-found cases are handled in the routes.
   app.setErrorHandler((err, _request, reply) => {
-    if (err instanceof ScryfallError || err instanceof EDHRecError) {
+    if (err instanceof ScryfallError) {
       const isTransient = err.status === 429 || err.status === 403 || (err.status !== undefined && err.status >= 500 && err.status < 600);
       return reply.status(isTransient ? 502 : 500).send({
         error: isTransient ? 'Deck data service temporarily unavailable' : 'Deck data service error',

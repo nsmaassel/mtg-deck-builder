@@ -16,6 +16,8 @@ Feature: Owned-only deck build mode
     When I build a deck for "Krenko, Mob Boss"
     Then every non-land card in the deck should appear in my collection export
     And basic lands (Plains, Island, Swamp, Mountain, Forest) are always allowed
+    And every owned card that can go in the deck is scored for this commander, not only cards on a top list
+    # The card index knows every card, so the result is the best deck the collection allows
     # The deck may be under 100 cards if collection is too small — that is acceptable
 
 Scenario: Unowned indicator not shown in owned-only mode
@@ -38,7 +40,7 @@ Scenario: Unowned indicator not shown in owned-only mode
     And I select "🃏 Prefer Owned — fill gaps with top recommendations" mode
     When I build a deck
     Then owned cards should appear in the deck
-    And the remaining slots should be filled with EDHRec recommendations
+    And the remaining slots should be filled with the recommendations for the commander
     And unowned fill cards should show the ○ unowned indicator
 ```
 
@@ -48,7 +50,7 @@ Scenario: Unowned indicator not shown in owned-only mode
 
 | Mode | Collection cards used | Unowned cards | Notes |
 |------|----------------------|---------------|-------|
-| `prefer-owned` (default) | Boosted in scoring | Added from EDHRec top picks | Deck always reaches 100 |
+| `prefer-owned` (default) | Boosted in scoring | Added from the top recommendations | Deck always reaches 100 |
 | `owned-only` | Only source | Never used | Deck may be <100 if collection too small |
 | `budget` | Boosted in scoring | Added if price ≤ budgetMaxPrice | Deck targets 100 |
 

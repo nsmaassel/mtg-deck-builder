@@ -66,7 +66,7 @@ textarea { resize: vertical; }
 /* Deck view */
 .deck-header { margin-bottom: 1.5rem; }
 .deck-header h2 { font-size: 1.6rem; color: #c9a227; }
-.deck-stats { color: #aaa; margin: 0.25rem 0; }
+.deck-stats, .deck-themes { color: #aaa; margin: 0.25rem 0; }
 .color-pip { font-size: 1.2rem; margin-right: 0.25rem; }
 
 .deck-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
@@ -82,6 +82,9 @@ textarea { resize: vertical; }
 .gaps-section h3 { color: #e08f20; margin-bottom: 0.75rem; }
 .gaps-section ul { list-style: none; }
 .gaps-section li { display: flex; justify-content: space-between; padding: 0.3rem 0; font-size: 0.85rem; border-bottom: 1px solid #2a2a4a; }
+.card-reason { display: block; color: #888; font-size: 0.75rem; }
+.data-credit { margin-top: 1.5rem; color: #888; font-size: 0.8rem; }
+.data-credit a { color: #aaa; }
 
 .ai-section { margin-top: 1.5rem; }
 .explain-btn { background: #2d4a7a; color: #e0e0e0; }

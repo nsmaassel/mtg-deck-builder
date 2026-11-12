@@ -1,19 +1,24 @@
-import type { ScryfallCard } from '@mtg/scryfall';
-import type { EDHRecCard } from '@mtg/edhrec';
-import type { CollectionMap } from '@mtg/collection';
+import type { CommanderProfile, Recommendation } from '@mtg/commander-recs';
 import type { PowerLevelResult, Bracket } from '@mtg/power-level';
 
 export interface DeckCard {
   name: string;
   quantity: 1;
   ownedInCollection: boolean;
-  edhrec_inclusion: number;
-  edhrec_synergy: number;
+  /**
+   * 0..1, from Scryfall's EDHREC rank: how widely the card is played across
+   * Commander as a whole. It says nothing about this commander.
+   */
+  popularity: number;
+  /** 0..1: how well the card works with what this commander does. */
+  synergy: number;
   score: number;
   slot: SlotName;
   cmc: number;
   type_line: string;
   usdPrice?: number | null;
+  /** Why the card is in the deck: one or two short statements that are true of the card. */
+  reasons: string[];
 }
 
 export type SlotName = 'ramp' | 'draw' | 'interaction' | 'winConditions' | 'synergy' | 'lands' | 'flex';
@@ -24,31 +29,50 @@ export interface DeckList {
   totalCards: number;
 }
 
+/** A theme the deck was built around, and what on the commander pointed at it. */
+export interface DeckTheme {
+  slug: string;
+  name: string;
+  /** Completes "a commander that …". */
+  because: string;
+}
+
 export interface DeckAnalysis {
   commanderName: string;
   manaCurve: Record<number, number>;
+  /** Cards per colour, by colour identity. */
   colorDistribution: Record<string, number>;
   averageCmc: number;
-  staplesCoveragePercent: number;
+  /**
+   * Of the cards we would pick for this commander with every card available,
+   * the share that is in this deck, 0..100. A build with no collection and no
+   * budget scores 100; one held back by either scores lower. It measures
+   * closeness to our own picks, not how many decks play a card.
+   */
+  topPicksCoveragePercent: number;
+  themes: DeckTheme[];
 }
 
 export interface MissingCard {
   name: string;
-  edhrec_inclusion: number;
+  popularity: number;
+  synergy: number;
+  reasons: string[];
   usdPrice: number | null;
   wouldFillSlot: string;
 }
 
 export interface GapReport {
-  missingStaples: MissingCard[];
+  /** Cards in the deck that the collection lacks, the ones the deck leans on most first. */
+  missingCards: MissingCard[];
   budgetUpgrades: MissingCard[];
   premiumUpgrades: MissingCard[];
 }
 
 /**
- * prefer-owned  — all EDHRec recommendations eligible; owned cards get a score boost
+ * prefer-owned  — every recommendation is eligible; owned cards get a score boost
  * owned-only    — only cards already in the collection are used; nothing is recommended to buy
- * budget        — owned cards always in; unowned cards filtered to those at or below budgetMaxPrice
+ * budget        — owned cards always eligible; unowned cards only at or below budgetMaxPrice
  */
 export type BuildMode = 'prefer-owned' | 'owned-only' | 'budget';
 
@@ -64,10 +88,12 @@ export interface BuildDeckOptions {
 }
 
 export interface BuildDeckInput {
-  commanderCard: ScryfallCard;
-  edhrecCards: EDHRecCard[];
-  collection: CollectionMap;
-  collectionScryfallData: Map<string, ScryfallCard>;
+  /** The commander and what it is about. */
+  profile: CommanderProfile;
+  /** Every card that may go in the 99, owned or not. See `candidatesFor`. */
+  recommendations: Recommendation[];
+  /** Oracle ids of the cards in the collection. */
+  owned: ReadonlySet<string>;
   options?: BuildDeckOptions;
 }
 

@@ -3,13 +3,17 @@
  * Runs a battery of test commanders against the live API and scores results
  * against community-accepted Commander deck quality thresholds.
  *
+ * It checks the shape of each deck (slot counts, curve, size). To read what
+ * the builder recommends and why, use scripts/eval-commander-recs.ts.
+ *
  * Usage: npx tsx --tsconfig tsconfig.json scripts/eval-decks.ts
  *        npx tsx --tsconfig tsconfig.json scripts/eval-decks.ts --json  (machine-readable output)
+ *        API_URL=http://localhost:3001 npx tsx ...                      (a server on another port)
  */
 
-const API = 'http://localhost:3000';
+const API = process.env['API_URL'] ?? 'http://localhost:3000';
 
-// ── Rubric thresholds (community consensus from EDHRec / TappedOut research) ──
+// ── Rubric thresholds (common Commander deck-building templates) ──
 const RUBRIC = {
   totalCards:        { target: 100, min: 100, max: 100 },
   ramp:              { target: 10,  min: 8,   max: 14  },
@@ -19,7 +23,8 @@ const RUBRIC = {
   synergy:           { target: 25,  min: 18,  max: 30  },
   lands:             { target: 36,  min: 33,  max: 40  },
   avgCmc:            { target: 3.0, min: 2.2, max: 4.0 },
-  staplesCoverage:   { target: 60,  min: 40,  max: 100 },
+  // Share of the deck we would build with every card available; a small collection lowers it.
+  topPicksCoverage:  { target: 90,  min: 40,  max: 100 },
 };
 
 // ── Test suite: diverse commanders across colors, strategies, popularity ──
@@ -31,7 +36,7 @@ const TEST_COMMANDERS = [
   { name: "The Ur-Dragon",               note: '5-color dragon tribal' },
   { name: "Muldrotha, the Gravetide",    note: 'sultai graveyard value' },
   { name: "Edgar Markov",               note: 'mardu vampire tribal (eminence)' },
-  { name: "Heroes in a Half Shell",      note: 'new TMNT 5-color (sparse EDHRec data)' },
+  { name: "Heroes in a Half Shell",      note: 'new TMNT 5-color (few Tagger tags yet)' },
   { name: "Rhys the Redeemed",          note: 'selesnya token go-wide' },
 ];
 
@@ -60,8 +65,8 @@ interface EvalResult {
   totalCards: number;
   slots: SlotCounts;
   avgCmc: number;
-  staplesCoverage: number;
-  missingStaples: number;
+  topPicksCoverage: number;
+  missingCards: number;
   flags: string[];
   score: number; // 0–100
   bracket: number; // Official Commander Bracket 1-5
@@ -89,7 +94,7 @@ function score(result: Omit<EvalResult, 'flags' | 'score'>): { flags: string[]; 
     ['synergy',        result.slots.synergy,        RUBRIC.synergy],
     ['lands',          result.slots.lands,          RUBRIC.lands],
     ['avg CMC',        result.avgCmc,               RUBRIC.avgCmc],
-    ['staples coverage %', result.staplesCoverage,  RUBRIC.staplesCoverage],
+    ['top picks coverage %', result.topPicksCoverage, RUBRIC.topPicksCoverage],
   ];
 
   for (const [label, value, thresholds] of checks) {
@@ -109,7 +114,7 @@ async function evalCommander(name: string, note: string): Promise<EvalResult> {
   const base: Omit<EvalResult, 'flags' | 'score'> = {
     commander: name, note, ok: false,
     totalCards: 0, slots: { ramp:0, draw:0, interaction:0, winConditions:0, synergy:0, lands:0, flex:0 },
-    avgCmc: 0, staplesCoverage: 0, missingStaples: 0,
+    avgCmc: 0, topPicksCoverage: 0, missingCards: 0,
     bracket: 0, bracketLabel: '—', gameChangers: 0, combos: 0,
   };
 
@@ -127,8 +132,8 @@ async function evalCommander(name: string, note: string): Promise<EvalResult> {
 
     const data = await res.json() as {
       deck: { totalCards: number; slots: Record<string, unknown[]> };
-      analysis: { averageCmc: number; staplesCoveragePercent: number };
-      gaps: { missingStaples: unknown[] };
+      analysis: { averageCmc: number; topPicksCoveragePercent: number };
+      gaps: { missingCards: unknown[] };
       powerLevel?: { bracket: number; label: string; signals: { gameChangers: string[]; twoCardComboCount: number } };
     };
 
@@ -146,8 +151,8 @@ async function evalCommander(name: string, note: string): Promise<EvalResult> {
         flex:          data.deck.slots['flex']?.length          ?? 0,
       },
       avgCmc: data.analysis.averageCmc,
-      staplesCoverage: data.analysis.staplesCoveragePercent,
-      missingStaples: data.gaps.missingStaples.length,
+      topPicksCoverage: data.analysis.topPicksCoveragePercent,
+      missingCards: data.gaps.missingCards.length,
       bracket: data.powerLevel?.bracket ?? 0,
       bracketLabel: data.powerLevel?.label ?? '—',
       gameChangers: data.powerLevel?.signals.gameChangers.length ?? 0,
@@ -161,7 +166,7 @@ async function evalCommander(name: string, note: string): Promise<EvalResult> {
 }
 
 function renderTable(results: EvalResult[]) {
-  const cols = ['Commander', 'Bracket', 'Score', 'Cards', 'Ramp', 'Draw', 'Interact', 'Win', 'Syn', 'Lands', 'CMC', 'Staples%', 'GC', 'Combos', 'Flags'];
+  const cols = ['Commander', 'Bracket', 'Score', 'Cards', 'Ramp', 'Draw', 'Interact', 'Win', 'Syn', 'Lands', 'CMC', 'TopPicks%', 'GC', 'Combos', 'Flags'];
   const rows = results.map(r => [
     r.commander.substring(0, 26),
     r.ok ? `${r.bracket} ${r.bracketLabel}` : '—',
@@ -174,7 +179,7 @@ function renderTable(results: EvalResult[]) {
     String(r.slots.synergy),
     String(r.slots.lands),
     String(r.avgCmc),
-    String(r.staplesCoverage) + '%',
+    String(r.topPicksCoverage) + '%',
     String(r.gameChangers),
     String(r.combos),
     r.error ? `❌ ${r.error}` : r.flags.length ? r.flags.join(' | ') : '✓',

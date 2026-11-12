@@ -30,7 +30,8 @@ Scenario: Build targeting a lower bracket shows named swap suggestions
   And at least one swap suggestion should be shown
   And each suggestion should name a specific card to remove (e.g. "Rhystic Study")
   And each suggestion should give a reason (e.g. "WotC Game Changer")
-  And each suggestion should offer 1–3 EDHRec alternatives with inclusion percentages
+  And each suggestion should offer 1–3 alternatives from the recommendations for this commander
+  And each alternative should say how widely it is played across Commander ("widely played", "often played", "rarely played")
 ```
 
 ---
@@ -56,21 +57,21 @@ Scenario: Build targeting a higher bracket shows add suggestions
   And my deck builds to Bracket 1 or 2
   And I select "Target Bracket 3"
   When the deck builds successfully
-  Then the suggestions panel should recommend Game Changers from EDHRec to add
-  And the alternatives should show EDHRec inclusion % and synergy score where available
+  Then the suggestions panel should recommend Game Changers to add, from the recommendations for this commander
+  And the alternatives should show how widely each is played and its synergy with the commander where there is some
 ```
 
 ---
 
-## Scenario 4: No Actionable Swaps (Staple-Only Bracket)
+## Scenario 4: No Actionable Swaps (Top-Picks-Only Bracket)
 
 ```gherkin
-Scenario: Targeting lower bracket with staple-driven deck shows explanatory hint
-  Given my deck reaches Bracket 3 only via high staple coverage (no Game Changers, no tutors)
+Scenario: Targeting lower bracket with a deck that is simply close to the top picks shows explanatory hint
+  Given my deck reaches Bracket 3 only by playing most of the top picks for its commander (no Game Changers, no tutors)
   And I select "Target Bracket 2"
   When the deck builds successfully
   Then the suggestions area should show an explanatory message
-  # e.g. "no specific swaps needed — deck reaches bracket via staples coverage"
+  # e.g. "no specific swaps needed — this deck reaches Bracket 3 by playing most of the top picks for its commander"
   And the message should NOT be silently empty
 ```
 
@@ -80,11 +81,13 @@ Scenario: Targeting lower bracket with staple-driven deck shows explanatory hint
 
 | Condition | Expected Bracket | Test Commander |
 |-----------|-----------------|----------------|
-| 0 Game Changers, 0 tutors, <40% staples | 1 | Any with minimal collection |
-| 1+ Tier-B tutor OR 40%+ staples | 2 | Most collections |
+| 0 Game Changers, 0 tutors, <40% top picks | 1 | Any with minimal collection in owned-only mode |
+| 1+ Tier-B tutor OR 40%+ top picks | 2 | Most collections |
 | 1+ Game Changer OR 2+ Tier-A tutors | 3 | Collection with Rhystic Study |
 | 4+ Game Changers OR 2-card combo + GC | 4 | Collection with Jeweled Lotus + combos |
 | 6+ GC + 2 Tier-A + avg CMC <2.0 | 5 | cEDH collection |
+
+"Top picks" is the share of the deck we would build with every card available that is in this deck. A build with no collection and no budget is that deck, so it scores 100%; a small collection in owned-only mode scores low.
 
 ---
 
@@ -94,7 +97,7 @@ Scenario: Targeting lower bracket with staple-driven deck shows explanatory hint
 |-----------|-----------|
 | Suggestions panel appears when targetBracket !== actualBracket | E2E bracket-targeting.spec.ts |
 | Shows swap cards when Game Changers/tutors exist | `.swap-remove strong` not empty |
-| Shows explanatory hint when no swaps possible (staple-only bracket) | `.no-suggestions-hint` visible |
-| Alternatives include inclusion % | `.swap-alt-chip em` shows number |
+| Shows explanatory hint when no swaps possible (top-picks-only bracket) | `.no-suggestions-hint` visible |
+| Alternatives say how widely played | `.swap-alt-chip em` shows a word, with a tooltip naming Scryfall's EDHREC rank |
 | High-synergy alternatives show ⚡ badge | `.swap-alt-synergy` visible when synergy > 0.1 |
-| Alternatives are commander-specific | Sourced from EDHRec for that commander — color-legal by construction |
+| Alternatives are commander-specific | The recommendations computed for that commander — color-legal by construction |

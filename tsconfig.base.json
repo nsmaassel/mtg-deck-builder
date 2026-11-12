@@ -18,7 +18,6 @@
     "paths": {
       "@mtg/collection": ["libs/collection/src/index.ts"],
       "@mtg/scryfall": ["libs/scryfall/src/index.ts"],
-      "@mtg/edhrec": ["libs/edhrec/src/index.ts"],
       "@mtg/deck-builder": ["libs/deck-builder/src/index.ts"],
       "@mtg/ai-advisor": ["libs/ai-advisor/src/index.ts"],
       "@mtg/power-level": ["libs/power-level/src/index.ts"],
@@ -34,7 +33,9 @@
       "@mtg/meta-decks": ["libs/meta-decks/src/index.ts"],
       "@mtg/meta-decks/types": ["libs/meta-decks/src/lib/types.ts"],
       "@mtg/combos": ["libs/combos/src/index.ts"],
-      "@mtg/combos/node": ["libs/combos/src/node.ts"]
+      "@mtg/combos/node": ["libs/combos/src/node.ts"],
+      "@mtg/commander-recs": ["libs/commander-recs/src/index.ts"],
+      "@mtg/commander-recs/testing": ["libs/commander-recs/src/testing.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

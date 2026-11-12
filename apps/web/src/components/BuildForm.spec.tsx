@@ -54,6 +54,17 @@ describe('BuildForm', () => {
     expect(screen.getByText(/full 100-card deck/i)).toBeInTheDocument();
   });
 
+  // 1b'. Says where the recommendations come from
+  it('credits Scryfall for the card data and says the recommendations are its own', () => {
+    renderForm();
+    const credit = document.querySelector('.data-credit')!;
+    expect(credit).toHaveTextContent('Card data and tags: Scryfall');
+    expect(credit).toHaveTextContent('they are not play statistics for your commander');
+    expect(
+      screen.getByText('Build a deck purely from our recommendations for your commander — no MTG Arena export needed.'),
+    ).toBeInTheDocument();
+  });
+
   // 1c. Owned-only mode is available by default
   it('shows the owned-only mode option by default', () => {
     renderForm();
@@ -149,9 +160,9 @@ describe('BuildForm', () => {
   it('calls api.buildDeck with collectionText when not skipping collection', async () => {
     mockBuildDeck.mockResolvedValue({
       deck: { commander: { name: 'Krenko, Mob Boss' }, slots: {}, totalCards: 100 },
-      analysis: { averageCmc: 2.5, staplesCoveragePercent: 40, colorDistribution: {}, commanderName: 'Krenko', manaCurve: {} },
-      gaps: { missingStaples: [], budgetUpgrades: [], premiumUpgrades: [] },
-      powerLevel: { bracket: 2, score: 4, label: 'Core', signals: { gameChangers: [], tierATutors: [], tierBTutors: [], avgCmc: 2.5, interactionCount: 8, staplesCoverage: 40, fastManaRatio: 0.05, twoCardComboCount: 0 }, explanation: [], targetSuggestions: [] },
+      analysis: { averageCmc: 2.5, topPicksCoveragePercent: 40, themes: [], colorDistribution: {}, commanderName: 'Krenko', manaCurve: {} },
+      gaps: { missingCards: [], budgetUpgrades: [], premiumUpgrades: [] },
+      powerLevel: { bracket: 2, score: 4, label: 'Core', signals: { gameChangers: [], tierATutors: [], tierBTutors: [], avgCmc: 2.5, interactionCount: 8, topPicksCoverage: 40, fastManaRatio: 0.05, twoCardComboCount: 0 }, explanation: [], targetSuggestions: [] },
     });
 
     const onResult = vi.fn();
@@ -180,9 +191,9 @@ describe('BuildForm', () => {
   it('calls api.buildDeck with empty string when skipping collection', async () => {
     mockBuildDeck.mockResolvedValue({
       deck: { commander: { name: 'Krenko, Mob Boss' }, slots: {}, totalCards: 100 },
-      analysis: { averageCmc: 2.5, staplesCoveragePercent: 0, colorDistribution: {}, commanderName: 'Krenko', manaCurve: {} },
-      gaps: { missingStaples: [], budgetUpgrades: [], premiumUpgrades: [] },
-      powerLevel: { bracket: 2, score: 4, label: 'Core', signals: { gameChangers: [], tierATutors: [], tierBTutors: [], avgCmc: 2.5, interactionCount: 8, staplesCoverage: 0, fastManaRatio: 0.05, twoCardComboCount: 0 }, explanation: [], targetSuggestions: [] },
+      analysis: { averageCmc: 2.5, topPicksCoveragePercent: 0, themes: [], colorDistribution: {}, commanderName: 'Krenko', manaCurve: {} },
+      gaps: { missingCards: [], budgetUpgrades: [], premiumUpgrades: [] },
+      powerLevel: { bracket: 2, score: 4, label: 'Core', signals: { gameChangers: [], tierATutors: [], tierBTutors: [], avgCmc: 2.5, interactionCount: 8, topPicksCoverage: 0, fastManaRatio: 0.05, twoCardComboCount: 0 }, explanation: [], targetSuggestions: [] },
     });
 
     const onResult = vi.fn();

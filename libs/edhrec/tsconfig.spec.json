@@ -1,5 +1,0 @@
-{
-  "extends": "./tsconfig.json",
-  "compilerOptions": { "outDir": "../../dist/libs/edhrec", "types": ["vitest/globals", "node"] },
-  "include": ["src/**/*.spec.ts"]
-}

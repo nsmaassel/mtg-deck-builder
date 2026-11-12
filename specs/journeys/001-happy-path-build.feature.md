@@ -10,7 +10,9 @@
 
 ## Background
 
-> The user has exported their MTG Arena collection and wants to build an optimized 100-card Commander deck using their owned cards plus EDHRec recommendations.
+> The user has exported their MTG Arena collection and wants to build an optimized 100-card Commander deck using their owned cards plus recommendations for their commander.
+>
+> Recommendations are computed on the server from the local card index (Scryfall card data and Tagger tags): what the commander is about, which cards serve that, and how widely each card is played across Commander (Scryfall's EDHREC rank). No play statistics per commander are used. The only outside requests a build can make are a Scryfall name lookup when the commander's name is not recognised as typed, and the combo lookup behind the power level.
 
 ```gherkin
 Background:
@@ -42,7 +44,8 @@ Scenario: Atraxa deck contains only WUBG cards
   Given I build a deck for "Atraxa, Praetors' Voice"
   When the deck is displayed
   Then no card in the deck should violate White/Blue/Black/Green color identity
-  # Enforced by the deck builder's isColorLegal() filter applied to all EDHRec candidates
+  # Cards outside the colour identity are never recommended (scoreFor() returns null for them),
+  # and the deck builder's isColorLegal() filter is applied to every candidate again
 ```
 
 ---
@@ -66,7 +69,8 @@ Scenario: Small collection triggers gap analysis
   Given I have a minimal collection of only 10 cards
   When I build a deck for "Krenko, Mob Boss"
   Then the gap analysis section should be visible
-  And it should list cards I don't own with EDHRec inclusion percentages
+  And it should list cards I don't own, each with the reason it is in the deck
+  And each should say how widely it is played across Commander in words, not as a share of decks
 ```
 
 ---
@@ -80,4 +84,6 @@ Scenario: Small collection triggers gap analysis
 | Power level always shown | `.power-level-badge` visible after every successful build |
 | Slots grouped correctly | At least 6 `.slot-section` elements |
 | Owned vs unowned distinguished | `.card-item.card-unowned` shown with ○ dot |
-| Gap analysis when applicable | `.gaps-section` visible when missingStaples.length > 0 |
+| Gap analysis when applicable | `.gaps-section` visible when missingCards.length > 0 |
+| Data source credited | `.data-credit` reads "Card data and tags: Scryfall" |
+| Deck says what it is built around | `.deck-themes` lists the themes detected on the commander |

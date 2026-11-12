@@ -1,9 +1,9 @@
-import type { ScryfallCard } from '@mtg/scryfall';
-import type { EDHRecCard } from '@mtg/edhrec';
-import type { CollectionMap } from '@mtg/collection';
+import { byScore, cardName } from '@mtg/commander-recs';
+import type { Recommendation } from '@mtg/commander-recs';
 import type {
   BuildDeckInput,
   BuildDeckResult,
+  BuildMode,
   DeckCard,
   DeckList,
   DeckAnalysis,
@@ -12,262 +12,249 @@ import type {
   SlotName,
 } from './types';
 import { SLOT_TARGETS, TOTAL_DECK_SIZE } from './types';
-import { scoreCard, labelToSlot, isColorLegal, basicLandForColor } from './scoring';
+import { OWNED_BOOST, scoreCard, isColorLegal, basicLandForColor, nonbasicLandLimit } from './scoring';
 import { assessPowerLevel } from '@mtg/power-level';
 
-const BASIC_LANDS = new Set(['plains', 'island', 'swamp', 'mountain', 'forest', 'wastes',
-  'snow-covered plains', 'snow-covered island', 'snow-covered swamp',
-  'snow-covered mountain', 'snow-covered forest']);
+/** The slots a card is placed in for the job it does, filled before the rest. */
+const STAPLE_SLOTS = ['ramp', 'draw', 'interaction', 'winConditions'] as const;
 
-export function buildDeck(input: BuildDeckInput): BuildDeckResult {
-  const { commanderCard, edhrecCards, collection, collectionScryfallData } = input;
-  const mode = input.options?.mode ?? 'prefer-owned';
-  const budgetMaxPrice = input.options?.budgetMaxPrice ?? 5;
+const COLORS = ['W', 'U', 'B', 'R', 'G'];
 
-  const commanderColorIdentity = commanderCard.color_identity;
-  const usedNames = new Set<string>([commanderCard.name.toLowerCase()]);
+interface Candidate {
+  card: Recommendation;
+  owned: boolean;
+  /** Whether owning the card counts for it. */
+  boosted: boolean;
+  /** Score for the card's own slot, owned boost included. */
+  score: number;
+}
 
-  // Score all EDHRec recommendations and apply mode-specific filtering
-  const scoredCards = edhrecCards
+interface Filled {
+  slots: Record<SlotName, DeckCard[]>;
+  /** Oracle ids of the cards placed. Basic lands are not among them. */
+  used: Set<string>;
+}
+
+function toDeckCard({ card, owned }: Candidate, slot: SlotName, score: number): DeckCard {
+  return {
+    name: card.name,
+    quantity: 1,
+    ownedInCollection: owned,
+    popularity: card.popularity,
+    synergy: card.synergy,
+    score,
+    slot,
+    cmc: card.cmc,
+    type_line: card.typeLine,
+    usdPrice: card.usd ?? null,
+    reasons: card.reasons,
+  };
+}
+
+/** The cards a build may use, best first. An empty `owned` and mode `prefer-owned` give the unconstrained pool. */
+function eligible(
+  recommendations: Recommendation[],
+  commanderId: string,
+  identity: readonly string[],
+  owned: ReadonlySet<string>,
+  mode: BuildMode,
+  budgetMaxPrice: number,
+): Candidate[] {
+  return recommendations
+    .filter(card => card.oracleId !== commanderId && isColorLegal(card.colorIdentity, identity))
     .map(card => {
-      const owned = collection.has(card.name.toLowerCase());
-      return {
-        edhrecCard: card,
-        // In owned-only mode, no boost needed (all cards are owned anyway); skip boost to keep scores clean
-        score: scoreCard(card, owned && mode !== 'owned-only'),
-        slot: labelToSlot(card.label),
-        owned,
-      };
+      const isOwned = owned.has(card.oracleId);
+      // In owned-only mode every candidate is owned, so the boost would only inflate the scores.
+      const boosted = isOwned && mode !== 'owned-only';
+      return { card, owned: isOwned, boosted, score: scoreCard(card, boosted) };
     })
-    .filter(({ edhrecCard, owned }) => {
-      const normalizedName = edhrecCard.name.toLowerCase();
-
-      if (mode === 'owned-only') {
-        // Strict: only cards in the collection (basics added separately)
-        if (!owned && !BASIC_LANDS.has(normalizedName)) return false;
-      } else if (mode === 'budget' && !owned) {
-        // Budget: unowned cards must have a known price at or below the ceiling
-        const sf = collectionScryfallData.get(normalizedName);
-        if (sf) {
-          const price = sf.prices.usd ? parseFloat(sf.prices.usd) : null;
-          if (price === null || price > budgetMaxPrice) return false;
-        }
-        // No Scryfall data → include speculatively (price unknown)
-      }
-
-      // Color-identity check (skip basics; they're added in fillUnderfilled)
-      const scryfallData = collectionScryfallData.get(normalizedName);
-      if (scryfallData) {
-        return isColorLegal(scryfallData.color_identity, commanderColorIdentity);
-      }
+    .filter(({ card, owned: isOwned }) => {
+      if (isOwned) return true;
+      if (mode === 'owned-only') return false;
+      // Budget: a card to buy needs a known price at or below the ceiling.
+      if (mode === 'budget') return card.usd !== undefined && card.usd <= budgetMaxPrice;
       return true;
     })
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => b.score - a.score || byScore(a.card, b.card));
+}
 
-  // Fill slots in priority order
+/** Fill the slots from candidates sorted best first. */
+function fillSlots(candidates: Candidate[], identity: readonly string[]): Filled {
   const slots: Record<SlotName, DeckCard[]> = {
     ramp: [], draw: [], interaction: [], winConditions: [], synergy: [], lands: [], flex: [],
   };
+  const used = new Set<string>();
+  let nonlands = 0;
+  const place = (candidate: Candidate, slot: SlotName, score = candidate.score) => {
+    slots[slot].push(toDeckCard(candidate, slot, score));
+    used.add(candidate.card.oracleId);
+    if (slot !== 'lands') nonlands++;
+  };
+  const unplacedNonlands = () => candidates.filter(({ card }) => card.slot !== 'lands' && !used.has(card.oracleId));
 
-  for (const { edhrecCard, score, slot } of scoredCards) {
-    const normalizedName = edhrecCard.name.toLowerCase();
-    if (usedNames.has(normalizedName)) continue;
-
-    const target = SLOT_TARGETS[slot];
-    if (slots[slot].length >= target) continue;
-
-    const scryfallData = collectionScryfallData.get(normalizedName);
-    const deckCard: DeckCard = {
-      name: edhrecCard.name,
-      quantity: 1,
-      ownedInCollection: collection.has(normalizedName),
-      edhrec_inclusion: edhrecCard.inclusion,
-      edhrec_synergy: edhrecCard.synergy,
-      score,
-      slot,
-      // Prefer Scryfall CMC (EDHRec cardviews don't include it)
-      cmc: scryfallData?.cmc ?? edhrecCard.cmc,
-      type_line: scryfallData?.type_line ?? '',
-      usdPrice: scryfallData?.prices.usd ? parseFloat(scryfallData.prices.usd) : null,
-    };
-
-    slots[slot].push(deckCard);
-    usedNames.add(normalizedName);
+  // Staples first: each of these slots takes the best cards that do its job.
+  for (const slot of STAPLE_SLOTS) {
+    for (const candidate of candidates) {
+      if (slots[slot].length >= SLOT_TARGETS[slot]) break;
+      if (candidate.card.slot === slot) place(candidate, slot);
+    }
   }
 
-  // Fill any underfilled slots from 'synergy' overflow, then basics
-  fillUnderfilled(slots, scoredCards, usedNames, collectionScryfallData, commanderColorIdentity, collection);
+  // Synergy is open to every nonland card still unplaced, scored for how well
+  // it fits the commander rather than for the job that lost it its own slot.
+  const forSynergy = unplacedNonlands()
+    .map(candidate => ({ candidate, score: scoreCard(candidate.card, candidate.boosted, 'synergy') }))
+    .sort((a, b) => b.score - a.score || byScore(a.candidate.card, b.candidate.card));
+  for (const { candidate, score } of forSynergy.slice(0, SLOT_TARGETS.synergy)) place(candidate, 'synergy', score);
+
+  // Lands: nonbasics up to what the colours can carry, basics for the rest.
+  // Basics are exempt from the singleton rule, and everyone has them.
+  const nonbasicLands = Math.min(SLOT_TARGETS.lands, nonbasicLandLimit(identity.length));
+  for (const candidate of candidates) {
+    if (slots.lands.length >= nonbasicLands) break;
+    if (candidate.card.slot === 'lands') place(candidate, 'lands');
+  }
+  const basics = identity.length > 0 ? identity : ['C'];
+  for (let i = 0; slots.lands.length < SLOT_TARGETS.lands; i++) {
+    slots.lands.push({
+      name: basicLandForColor(basics[i % basics.length]!),
+      quantity: 1,
+      ownedInCollection: true,
+      popularity: 0,
+      synergy: 0,
+      score: 0,
+      slot: 'lands',
+      cmc: 0,
+      type_line: 'Basic Land',
+      usdPrice: 0,
+      reasons: ['Basic land'],
+    });
+  }
+
+  // Flex takes the most widely played cards that fit nowhere else, and grows
+  // to cover any slot the candidates could not fill.
+  const nonlandTarget = TOTAL_DECK_SIZE - 1 - SLOT_TARGETS.lands;
+  const played = (candidate: Candidate) => candidate.card.popularity + (candidate.boosted ? OWNED_BOOST : 0);
+  const leftovers = unplacedNonlands().sort((a, b) => played(b) - played(a) || byScore(a.card, b.card));
+  for (const candidate of leftovers) {
+    if (nonlands >= nonlandTarget) break;
+    place(candidate, 'flex');
+  }
+
+  return { slots, used };
+}
+
+export function buildDeck(input: BuildDeckInput): BuildDeckResult {
+  const { profile, recommendations, owned } = input;
+  const { commander, identity } = profile;
+  const mode = input.options?.mode ?? 'prefer-owned';
+  const budgetMaxPrice = input.options?.budgetMaxPrice ?? 5;
+
+  const candidates = eligible(recommendations, commander.oracleId, identity, owned, mode, budgetMaxPrice);
+  const { slots, used } = fillSlots(candidates, identity);
 
   const commanderDeckCard: DeckCard = {
-    name: commanderCard.name,
+    name: cardName(commander),
     quantity: 1,
     ownedInCollection: true,
-    edhrec_inclusion: 0,
-    edhrec_synergy: 0,
+    popularity: 0,
+    synergy: 0,
     score: 1,
     slot: 'synergy',
-    cmc: commanderCard.cmc,
-    type_line: commanderCard.type_line,
-    usdPrice: commanderCard.prices.usd ? parseFloat(commanderCard.prices.usd) : null,
+    cmc: commander.cmc,
+    type_line: commander.typeLine,
+    usdPrice: commander.usd ?? null,
+    reasons: ['The commander'],
   };
 
   const totalCards = 1 + Object.values(slots).reduce((sum, s) => sum + s.length, 0);
 
+  // The yardstick for `topPicksCoveragePercent`: the same build with every card available.
+  const constrained = mode !== 'prefer-owned' || candidates.some(candidate => candidate.owned);
+  const topPicks = constrained
+    ? fillSlots(eligible(recommendations, commander.oracleId, identity, new Set(), 'prefer-owned', budgetMaxPrice), identity).used
+    : used;
+
   const deck: DeckList = { commander: commanderDeckCard, slots, totalCards };
-  const analysis = analyzeDeck(deck, commanderCard.name, edhrecCards);
-  const gaps = buildGapReport(edhrecCards, usedNames, collection, collectionScryfallData, commanderColorIdentity);
+  const analysis: DeckAnalysis = {
+    ...analyzeCurve(deck),
+    commanderName: commanderDeckCard.name,
+    colorDistribution: countColors(identity, recommendations, used, slots.lands),
+    topPicksCoveragePercent: coverage(topPicks, used),
+    themes: profile.themes.map(({ slug, name, because }) => ({ slug, name, because })),
+  };
+  const gaps = buildGapReport(deck);
   const powerLevel = assessPowerLevel(deck, analysis, input.options?.targetBracket);
 
   return { deck, analysis, gaps, powerLevel };
 }
 
-function fillUnderfilled(
-  slots: Record<SlotName, DeckCard[]>,
-  scoredCards: Array<{ edhrecCard: EDHRecCard; score: number; slot: SlotName }>,
-  usedNames: Set<string>,
-  collectionScryfallData: Map<string, ScryfallCard>,
-  commanderColorIdentity: string[],
-  collection: CollectionMap,
-): void {
-  const slotOrder: SlotName[] = ['ramp', 'draw', 'interaction', 'winConditions', 'synergy', 'lands', 'flex'];
-
-  // Try to fill from remaining scored cards (any slot)
-  for (const slotName of slotOrder) {
-    const target = SLOT_TARGETS[slotName];
-    if (slots[slotName].length >= target) continue;
-
-    for (const { edhrecCard, score } of scoredCards) {
-      if (slots[slotName].length >= target) break;
-      const normalizedName = edhrecCard.name.toLowerCase();
-      if (usedNames.has(normalizedName)) continue;
-
-      const scryfallData = collectionScryfallData.get(normalizedName);
-      if (scryfallData && !isColorLegal(scryfallData.color_identity, commanderColorIdentity)) continue;
-
-      const deckCard: DeckCard = {
-        name: edhrecCard.name,
-        quantity: 1,
-        ownedInCollection: collection.has(normalizedName),
-        edhrec_inclusion: edhrecCard.inclusion,
-        edhrec_synergy: edhrecCard.synergy,
-        score,
-        slot: slotName,
-        cmc: scryfallData?.cmc ?? edhrecCard.cmc,
-        type_line: scryfallData?.type_line ?? '',
-        usdPrice: scryfallData?.prices.usd ? parseFloat(scryfallData.prices.usd) : null,
-      };
-
-      slots[slotName].push(deckCard);
-      usedNames.add(normalizedName);
-    }
-  }
-
-  // Fill lands with basics if still underfilled
-  // Basics are exempt from the singleton rule — multiple copies are legal in Commander
-  const landsNeeded = SLOT_TARGETS.lands - slots.lands.length;
-  if (landsNeeded > 0) {
-    const basicsToAdd = commanderColorIdentity.length > 0
-      ? commanderColorIdentity
-      : ['W', 'U', 'B', 'R', 'G'];
-
-    let added = 0;
-    let colorIndex = 0;
-    while (added < landsNeeded) {
-      const color = basicsToAdd[colorIndex % basicsToAdd.length]!;
-      const basicName = basicLandForColor(color);
-
-      slots.lands.push({
-        name: basicName,
-        quantity: 1,
-        ownedInCollection: true,
-        edhrec_inclusion: 0,
-        edhrec_synergy: 0,
-        score: 0,
-        slot: 'lands',
-        cmc: 0,
-        type_line: 'Basic Land',
-        usdPrice: 0,
-      });
-      added++;
-      colorIndex++;
-    }
-  }
-}
-
-function analyzeDeck(deck: DeckList, commanderName: string, edhrecTop50: EDHRecCard[]): DeckAnalysis {
-  const allCards = [deck.commander, ...Object.values(deck.slots).flat()];
-
+function analyzeCurve(deck: DeckList): Pick<DeckAnalysis, 'manaCurve' | 'averageCmc'> {
   const manaCurve: Record<number, number> = {};
-  const colorDistribution: Record<string, number> = {};
   let totalCmc = 0;
-  let knownCmcCount = 0; // only cards with Scryfall-sourced CMC (excludes EDHRec-only 0-defaults)
+  let spells = 0;
 
-  for (const card of allCards) {
-    if (card.slot !== 'lands') {
-      // R-001: exclude CMC=0 non-land cards from the average — they are almost
-      // certainly unowned EDHRec recommendations whose CMC defaulted to 0 because
-      // EDHRec's cardview JSON doesn't include the cmc field. Including them would
-      // pull the average to near-zero regardless of the actual deck curve.
-      const hasCmc = card.cmc > 0;
-      if (hasCmc) {
-        manaCurve[card.cmc] = (manaCurve[card.cmc] ?? 0) + 1;
-        totalCmc += card.cmc;
-        knownCmcCount++;
-      }
-    }
-    for (const char of card.type_line) {
-      if (['W', 'U', 'B', 'R', 'G'].includes(char)) {
-        colorDistribution[char] = (colorDistribution[char] ?? 0) + 1;
-      }
-    }
+  for (const card of [deck.commander, ...Object.values(deck.slots).flat()]) {
+    if (card.slot === 'lands') continue;
+    manaCurve[card.cmc] = (manaCurve[card.cmc] ?? 0) + 1;
+    totalCmc += card.cmc;
+    spells++;
   }
 
-  const deckNames = new Set(allCards.map(c => c.name.toLowerCase()));
-  const top50 = edhrecTop50.slice(0, 50);
-  const owned = top50.filter(c => deckNames.has(c.name.toLowerCase())).length;
-  const staplesCoveragePercent = top50.length > 0 ? Math.round((owned / top50.length) * 100) : 0;
-
-  return {
-    commanderName,
-    manaCurve,
-    colorDistribution,
-    averageCmc: knownCmcCount > 0 ? Math.round((totalCmc / knownCmcCount) * 100) / 100 : 0,
-    staplesCoveragePercent,
-  };
+  return { manaCurve, averageCmc: spells > 0 ? Math.round((totalCmc / spells) * 100) / 100 : 0 };
 }
 
-function buildGapReport(
-  edhrecCards: EDHRecCard[],
-  usedNames: Set<string>,
-  collection: CollectionMap,
-  collectionScryfallData: Map<string, ScryfallCard>,
-  commanderColorIdentity: string[],
-): GapReport {
-  // missingStaples = highly-recommended cards IN the deck that the player doesn't own (acquisition list)
-  const missing: MissingCard[] = edhrecCards
-    .filter(card => {
-      const norm = card.name.toLowerCase();
-      if (!usedNames.has(norm)) return false; // only cards that made it into the deck
-      if (collection.has(norm)) return false; // player already owns it
-      const sf = collectionScryfallData.get(norm);
-      if (sf && !isColorLegal(sf.color_identity, commanderColorIdentity)) return false;
-      return true;
-    })
-    .sort((a, b) => b.inclusion - a.inclusion)
+/** Cards per colour, by colour identity: the commander, every card placed and the basics. */
+function countColors(
+  identity: readonly string[],
+  recommendations: Recommendation[],
+  used: ReadonlySet<string>,
+  lands: DeckCard[],
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  const add = (color: string) => {
+    counts[color] = (counts[color] ?? 0) + 1;
+  };
+  identity.forEach(add);
+  for (const card of recommendations) {
+    if (used.has(card.oracleId)) card.colorIdentity.forEach(add);
+  }
+  for (const land of lands) {
+    const color = COLORS.find(c => basicLandForColor(c) === land.name);
+    if (color && land.type_line === 'Basic Land') add(color);
+  }
+  return counts;
+}
+
+/**
+ * Of the nonbasic cards we would pick with every card available, the share
+ * that is in this deck, 0..100.
+ */
+function coverage(topPicks: ReadonlySet<string>, used: ReadonlySet<string>): number {
+  if (topPicks.size === 0) return 0;
+  let inDeck = 0;
+  for (const id of topPicks) if (used.has(id)) inDeck++;
+  return Math.round((inDeck / topPicks.size) * 100);
+}
+
+function buildGapReport(deck: DeckList): GapReport {
+  // The acquisition list: cards in the deck that the collection lacks, the ones the deck leans on most first.
+  const missing: MissingCard[] = Object.values(deck.slots)
+    .flat()
+    .filter(card => !card.ownedInCollection)
+    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
     .slice(0, 10)
-    .map(card => {
-      const sf = collectionScryfallData.get(card.name.toLowerCase());
-      const price = sf?.prices.usd ? parseFloat(sf.prices.usd) : null;
-      return {
-        name: card.name,
-        edhrec_inclusion: card.inclusion,
-        usdPrice: price,
-        wouldFillSlot: labelToSlot(card.label),
-      };
-    });
+    .map(card => ({
+      name: card.name,
+      popularity: card.popularity,
+      synergy: card.synergy,
+      reasons: card.reasons,
+      usdPrice: card.usdPrice ?? null,
+      wouldFillSlot: card.slot,
+    }));
 
   return {
-    missingStaples: missing,
+    missingCards: missing,
     budgetUpgrades: missing.filter(c => c.usdPrice !== null && c.usdPrice < 5),
     premiumUpgrades: missing.filter(c => c.usdPrice !== null && c.usdPrice >= 5),
   };

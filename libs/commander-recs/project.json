@@ -1,0 +1,19 @@
+{
+  "name": "commander-recs",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/commander-recs/src",
+  "projectType": "library",
+  "tags": ["type:lib", "scope:commander-recs"],
+  "targets": {
+    "test": {
+      "executor": "@nx/vitest:test",
+      "options": { "config": "libs/commander-recs/vite.config.ts" }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit -p libs/commander-recs/tsconfig.lib.json && tsc --noEmit -p libs/commander-recs/tsconfig.spec.json"
+      }
+    }
+  }
+}

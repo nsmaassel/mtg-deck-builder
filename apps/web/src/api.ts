@@ -39,10 +39,35 @@ export type BuildMode = 'prefer-owned' | 'owned-only' | 'budget';
 export type Bracket = 1 | 2 | 3 | 4 | 5;
 export type BracketLabel = 'Exhibition' | 'Core' | 'Enhanced' | 'Optimized' | 'cEDH';
 
+export type DeckCard = {
+  name: string;
+  slot: string;
+  cmc: number;
+  type_line: string;
+  score: number;
+  usdPrice: number | null;
+  ownedInCollection: boolean;
+  /** 0..1, from Scryfall's EDHREC rank: how widely played across Commander, not with this commander. */
+  popularity: number;
+  /** 0..1: how well the card works with this commander. */
+  synergy: number;
+  /** Why the card is in the deck. */
+  reasons: string[];
+};
+
+export type MissingCard = {
+  name: string;
+  popularity: number;
+  synergy: number;
+  reasons: string[];
+  usdPrice: number | null;
+  wouldFillSlot: string;
+};
+
 export type BuildDeckResult = {
   deck: {
-    commander: { name: string; slot: string; cmc: number; type_line: string; usdPrice: number | null; ownedInCollection: boolean };
-    slots: Record<string, Array<{ name: string; slot: string; cmc: number; type_line: string; score: number; usdPrice: number | null; ownedInCollection: boolean }>>;
+    commander: DeckCard;
+    slots: Record<string, DeckCard[]>;
     totalCards: number;
   };
   analysis: {
@@ -50,12 +75,15 @@ export type BuildDeckResult = {
     manaCurve: Record<number, number>;
     colorDistribution: Record<string, number>;
     averageCmc: number;
-    staplesCoveragePercent: number;
+    /** Of the cards we would pick with every card available, the share in this deck, 0..100. */
+    topPicksCoveragePercent: number;
+    /** What the deck was built around; `because` completes "a commander that …". */
+    themes: Array<{ slug: string; name: string; because: string }>;
   };
   gaps: {
-    missingStaples: Array<{ name: string; edhrec_inclusion: number; usdPrice: number | null; wouldFillSlot: string }>;
-    budgetUpgrades: Array<{ name: string; edhrec_inclusion: number; usdPrice: number | null; wouldFillSlot: string }>;
-    premiumUpgrades: Array<{ name: string; edhrec_inclusion: number; usdPrice: number | null; wouldFillSlot: string }>;
+    missingCards: MissingCard[];
+    budgetUpgrades: MissingCard[];
+    premiumUpgrades: MissingCard[];
   };
   powerLevel: {
     bracket: Bracket;
@@ -67,7 +95,7 @@ export type BuildDeckResult = {
       tierBTutors: string[];
       avgCmc: number;
       interactionCount: number;
-      staplesCoverage: number;
+      topPicksCoverage: number;
       fastManaRatio: number;
       twoCardComboCount: number;
     };
@@ -77,7 +105,7 @@ export type BuildDeckResult = {
       remove: string;
       removeReason: string;
       removeSlot: string;
-      alternatives: Array<{ name: string; inclusion: number; synergy?: number; slot: string }>;
+      alternatives: Array<{ name: string; popularity: number; synergy?: number; slot: string }>;
     }>;
   };
 };

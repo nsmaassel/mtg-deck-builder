@@ -1,13 +1,18 @@
 export { buildDeck } from './lib/builder';
-export { scoreCard, labelToSlot, isColorLegal, basicLandForColor } from './lib/scoring';
+export { candidatesFor, buildDeckForCommander } from './lib/candidates';
+export type { Candidates } from './lib/candidates';
+export { OWNED_BOOST, scoreCard, isColorLegal, basicLandForColor, nonbasicLandLimit } from './lib/scoring';
 export type {
   DeckCard,
   DeckList,
   DeckAnalysis,
+  DeckTheme,
   GapReport,
   MissingCard,
   BuildDeckInput,
+  BuildDeckOptions,
   BuildDeckResult,
+  BuildMode,
   SlotName,
 } from './lib/types';
 export { SLOT_TARGETS, TOTAL_DECK_SIZE } from './lib/types';

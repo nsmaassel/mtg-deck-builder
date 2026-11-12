@@ -1,13 +1,32 @@
 import type { FastifyInstance } from 'fastify';
+import type { CardIndex, IndexedCard } from '@mtg/card-index';
 import { parseArenaCollection } from '@mtg/collection';
+import { profileCommander } from '@mtg/commander-recs';
 import { getCardByName, ScryfallNotFoundError } from '@mtg/scryfall';
-import { getCommanderData, EDHRecNotFoundError } from '@mtg/edhrec';
-import { buildDeck } from '@mtg/deck-builder';
+import { buildDeck, candidatesFor } from '@mtg/deck-builder';
 import type { Bracket } from '@mtg/power-level';
 import { assessPowerLevelWithCombos } from '@mtg/power-level';
 import { explainDeck } from '@mtg/ai-advisor';
+import { unavailable } from './commander-data';
+import type { CommanderRouteOptions } from './commander-data';
 
-export async function deckRoutes(app: FastifyInstance): Promise<void> {
+/**
+ * The commander as the index knows it. A name the index does not have as
+ * typed ("krenko mob boss") goes to Scryfall's fuzzy search for its proper
+ * spelling; that is the only request a build makes.
+ */
+async function findCommander(index: CardIndex, name: string): Promise<IndexedCard | undefined> {
+  const exact = index.byName(name);
+  if (exact) return exact;
+  try {
+    return index.byName((await getCardByName(name)).name);
+  } catch (err) {
+    if (err instanceof ScryfallNotFoundError) return undefined;
+    throw err;
+  }
+}
+
+export async function deckRoutes(app: FastifyInstance, { index }: CommanderRouteOptions): Promise<void> {
   app.post<{
     Body: {
       collectionText?: string;
@@ -38,6 +57,7 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
       },
     },
     handler: async (request, reply) => {
+      if (!index) return unavailable(reply);
       const { collectionText, commanderName, options } = request.body;
       const mode = options?.mode ?? 'prefer-owned';
       const budgetMaxPrice = options?.budgetMaxPrice ?? 5;
@@ -73,91 +93,39 @@ export async function deckRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      // Validate commander exists in Scryfall
-      let commanderCard;
-      try {
-        commanderCard = await getCardByName(commanderName);
-      } catch (err) {
-        if (err instanceof ScryfallNotFoundError) {
-          return reply.status(404).send({ error: 'Commander not found', commanderName });
-        }
-        throw err;
+      const commander = await findCommander(index, commanderName);
+      if (!commander) {
+        return reply.status(404).send({ error: 'Commander not found', commanderName });
       }
 
       // Validate commander is legal in Commander format
-      if (commanderCard.legalities.commander !== 'legal') {
+      if (!commander.legal.includes('commander')) {
         return reply.status(422).send({
           error: 'Commander not legal',
           message: `${commanderName} is not legal in Commander format`,
         });
       }
 
-      // Fetch EDHRec recommendations
-      let edhrecCards;
-      try {
-        const edhrecData = await getCommanderData(commanderName);
-        edhrecCards = edhrecData.cardlist;
-      } catch (err) {
-        if (err instanceof EDHRecNotFoundError) {
-          return reply.status(404).send({ error: 'Commander not found on EDHRec', commanderName });
-        }
-        throw err;
-      }
+      // Recommendations come from the local card index: what this commander
+      // is about, the best cards for it, and every owned card scored on its merits.
+      const profile = profileCommander(index, commander);
+      const { recommendations, owned } = candidatesFor(index, profile, parseResult.collection, { mode, budgetMaxPrice });
 
-      // Resolve Scryfall data for owned collection cards
-      const collectionScryfallData = new Map<string, typeof commanderCard>();
-      const ownedNames = Array.from(parseResult.collection.keys());
-      await Promise.allSettled(
-        ownedNames.map(async name => {
-          try {
-            const card = await getCardByName(name);
-            collectionScryfallData.set(name.toLowerCase(), card);
-          } catch {
-            // Skip cards not found on Scryfall
-          }
-        }),
-      );
-
-      // For budget mode: also fetch Scryfall data for top unowned recommendations
-      // so the builder can price-filter them before placing.
-      // For all modes: fetch top 30 unowned cards to populate gap analysis prices.
-      const ownedSet = new Set(ownedNames.map(n => n.toLowerCase()));
-      const unownedFetchLimit = mode === 'budget' ? 80 : 30;
-      const topUnowned = edhrecCards
-        .filter(c => !ownedSet.has(c.name.toLowerCase()))
-        .slice(0, unownedFetchLimit);
-      await Promise.allSettled(
-        topUnowned.map(async card => {
-          const norm = card.name.toLowerCase();
-          if (collectionScryfallData.has(norm)) return;
-          try {
-            const sf = await getCardByName(card.name);
-            collectionScryfallData.set(norm, sf);
-          } catch {
-            // Not found — builder will include speculatively
-          }
-        }),
-      );
-
-      // Build the deck
       const result = buildDeck({
-        commanderCard,
-        edhrecCards,
-        collection: parseResult.collection,
-        collectionScryfallData,
+        profile,
+        recommendations,
+        owned,
         options: { mode, budgetMaxPrice, targetBracket },
       });
 
-      // Build candidate pool for swap suggestions: EDHRec cards not in the final deck
+      // Candidate pool for swap suggestions: recommendations not in the final deck
       const deckNames = new Set(
-        [result.deck.commander, ...Object.values(result.deck.slots).flat()].map(c => c.name.toLowerCase())
+        [result.deck.commander, ...Object.values(result.deck.slots).flat()].map(c => c.name)
       );
-      const edhrecCandidates = edhrecCards
-        .filter(c => !deckNames.has(c.name.toLowerCase()))
-        .map(c => ({ name: c.name, inclusion: c.inclusion, synergy: c.synergy, label: c.label }));
+      const swapCandidates = recommendations.filter(r => !deckNames.has(r.name));
 
       // Enhance power level with Commander Spellbook combo detection (async, best-effort)
-      const powerLevel = await assessPowerLevelWithCombos(result.deck, result.analysis, targetBracket, edhrecCandidates);
+      const powerLevel = await assessPowerLevelWithCombos(result.deck, result.analysis, targetBracket, swapCandidates);
 
       return reply.send({ ...result, powerLevel });
     },

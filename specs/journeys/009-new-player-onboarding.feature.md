@@ -4,7 +4,7 @@
 
 ## Background
 
-A new or returning MTG player wants to get into Commander but doesn't have an MTG Arena collection export — they might have no digital collection, or just want to explore deck ideas before committing. The app should let them pick a commander and immediately build a full 100-card deck using EDHRec's top recommendations, with optional budget constraints.
+A new or returning MTG player wants to get into Commander but doesn't have an MTG Arena collection export — they might have no digital collection, or just want to explore deck ideas before committing. The app should let them pick a commander and immediately build a full 100-card deck from the cards that fit that commander best, with optional budget constraints. The recommendations are computed from Scryfall's card data and Tagger tags; they are not play statistics for the commander, and the page says so.
 
 ---
 
@@ -16,8 +16,9 @@ A new or returning MTG player wants to get into Commander but doesn't have an MT
 **And** I enter "Krenko, Mob Boss" as the commander
 **And** I click "Build Deck"
 **Then** I should see a complete 100-card Commander deck
-**And** The deck should be built from EDHRec top recommendations for Krenko
-**And** All cards should be marked as unowned (since I provided no collection)
+**And** The deck should be built from the top recommendations for Krenko, and say it is built around Goblins
+**And** All cards except basic lands should be marked as unowned (since I provided no collection)
+**And** The page should credit Scryfall for the card data and tags
 **And** No error should be shown
 
 ---
@@ -33,7 +34,7 @@ A new or returning MTG player wants to get into Commander but doesn't have an MT
 **Then** I should see a complete 100-card Commander deck
 **And** The deck should prioritize owned cards (none) and budget unowned cards under $3
 **And** Unowned cards above $3 should be excluded from the deck
-**And** Gaps analysis should show missing staples with their prices
+**And** Gaps analysis should show the cards to get with their prices
 
 ---
 

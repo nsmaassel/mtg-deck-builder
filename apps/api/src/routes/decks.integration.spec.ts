@@ -1,4 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { TextModel } from '@mtg/deck-advisor';
+import type { AdvisorData } from '@mtg/deck-advisor';
+// Fixtures live with the library that defines what they exercise; there is no path alias for them yet.
+import { buildCommanderTestIndex } from '@mtg/commander-recs/testing';
 import { buildApp } from '../app.js';
 
 // ---------------------------------------------------------------------------
@@ -7,11 +11,11 @@ import { buildApp } from '../app.js';
 // ---------------------------------------------------------------------------
 const mocks = vi.hoisted(() => ({
   getCardByName: vi.fn(),
-  getCommanderData: vi.fn(),
   assessPowerLevel: vi.fn(),
   assessPowerLevelWithCombos: vi.fn(),
 }));
 
+// Scryfall is only asked to spell a commander name the index does not know.
 vi.mock('@mtg/scryfall', () => ({
   getCardByName: mocks.getCardByName,
   ScryfallError: class ScryfallError extends Error {
@@ -22,16 +26,7 @@ vi.mock('@mtg/scryfall', () => ({
   },
 }));
 
-vi.mock('@mtg/edhrec', () => ({
-  getCommanderData: mocks.getCommanderData,
-  EDHRecError: class EDHRecError extends Error {
-    constructor(msg?: string, public readonly status?: number) { super(msg ?? 'EDHRec error'); this.name = 'EDHRecError'; }
-  },
-  EDHRecNotFoundError: class EDHRecNotFoundError extends Error {
-    constructor(msg?: string) { super(msg ?? 'Not found'); this.name = 'EDHRecNotFoundError'; }
-  },
-}));
-
+// Power level looks combos up on Commander Spellbook; the build itself runs for real.
 vi.mock('@mtg/power-level', () => ({
   assessPowerLevel: mocks.assessPowerLevel,
   assessPowerLevelWithCombos: mocks.assessPowerLevelWithCombos,
@@ -45,57 +40,8 @@ vi.mock('@mtg/ai-advisor', () => ({
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeScryfallCard(name: string, overrides: Record<string, unknown> = {}) {
-  return {
-    name,
-    cmc: 2,
-    type_line: 'Creature — Goblin Warrior',
-    color_identity: ['R'],
-    colors: ['R'],
-    oracle_text: '',
-    legalities: { commander: 'legal', standard: 'not_legal' },
-    prices: { usd: '1.00', usd_foil: null },
-    image_uris: { small: 'https://example.com/img.jpg', normal: 'https://example.com/img.jpg' },
-    ...overrides,
-  };
-}
-
-/** Returns minimal EDHRec data with enough cards to fill all deck slots. */
-function makeEdhrecData(commanderName: string) {
-  // Need enough cards for: ramp(10), interaction(10), draw(10), winCon(5), synergy(25), lands(36), flex(3) = 99
-  // TAG_TO_LABEL: manaartifacts→ramp, instants→interaction, sorceries→synergy,
-  //               creatures→synergy, enchantments→synergy, gamechangers→winConditions, lands→lands
-  const slotDefs: Array<{ label: string; count: number }> = [
-    { label: 'manaartifacts', count: 15 },   // → ramp slot (need ≥10)
-    { label: 'instants', count: 15 },         // → interaction slot (need ≥10)
-    { label: 'sorceries', count: 15 },        // → synergy (draw cards etc.)
-    { label: 'creatures', count: 30 },        // → synergy slot (need ≥25)
-    { label: 'enchantments', count: 15 },     // → synergy slot
-    { label: 'gamechangers', count: 10 },     // → winConditions slot (need ≥5)
-    { label: 'lands', count: 40 },            // → lands slot (need ≥36)
-  ];
-
-  const cards: Array<{
-    name: string; label: string; inclusion: number;
-    synergy: number; type_line: string; color_identity: string[];
-  }> = [];
-
-  let i = 0;
-  for (const { label, count } of slotDefs) {
-    for (let j = 0; j < count; j++) {
-      cards.push({
-        name: `${label} Card ${i++}`,
-        label,
-        inclusion: 50 + (i % 30),
-        synergy: 0.1,
-        type_line: label === 'lands' ? 'Land' : label === 'creatures' ? 'Creature' : 'Instant',
-        color_identity: ['R'],
-      });
-    }
-  }
-
-  return { commander: commanderName, cardlist: cards };
-}
+const index = buildCommanderTestIndex();
+const advisor: AdvisorData = { index, text: new TextModel(index), meta: new Map() };
 
 function makePowerLevelResult(bracket: 1 | 2 | 3 | 4 | 5 = 2, targetSuggestions?: unknown[]) {
   const labels = { 1: 'Exhibition', 2: 'Core', 3: 'Enhanced', 4: 'Optimized', 5: 'cEDH' } as const;
@@ -109,7 +55,7 @@ function makePowerLevelResult(bracket: 1 | 2 | 3 | 4 | 5 = 2, targetSuggestions?
       tierBTutors: [],
       avgCmc: 2.5,
       interactionCount: 8,
-      staplesCoverage: 40,
+      topPicksCoverage: 40,
       fastManaRatio: 0.05,
       twoCardComboCount: 0,
     },
@@ -123,12 +69,9 @@ const SAMPLE_COLLECTION = [
   '1 Arcane Signet',
   '1 Command Tower',
   '1 Lightning Bolt',
+  '1 Goblin Chieftain',
   '1 Counterspell',
-  '1 Swords to Plowshares',
-  '1 Cultivate',
-  '1 Kodama\'s Reach',
-  '1 Rampant Growth',
-  '1 Rhystic Study',
+  '1 Hill Ogre 60',
   '4 Plains',
   '4 Island',
   '4 Swamp',
@@ -137,6 +80,23 @@ const SAMPLE_COLLECTION = [
 ].join('\n');
 
 const COMMANDER_NAME = 'Krenko, Mob Boss';
+
+interface DeckCardBody {
+  name: string;
+  ownedInCollection: boolean;
+  popularity: number;
+  synergy: number;
+  reasons: string[];
+  type_line: string;
+  usdPrice: number | null;
+}
+
+interface BuildBody {
+  deck: { commander: DeckCardBody; slots: Record<string, DeckCardBody[]>; totalCards: number };
+  analysis: { averageCmc: number; topPicksCoveragePercent: number; themes: Array<{ slug: string; name: string }> };
+  gaps: { missingCards: Array<{ name: string; popularity: number; reasons: string[]; wouldFillSlot: string }> };
+  powerLevel: { targetSuggestions: Array<{ remove: string }> };
+}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -147,28 +107,25 @@ describe('POST /api/decks/build-from-commander', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    app = buildApp();
+    app = buildApp({ advisor });
     await app.ready();
 
-    mocks.getCardByName.mockImplementation((name: string) =>
-      Promise.resolve(makeScryfallCard(name)),
-    );
-    mocks.getCommanderData.mockResolvedValue(makeEdhrecData(COMMANDER_NAME));
+    const { ScryfallNotFoundError } = await import('@mtg/scryfall');
+    mocks.getCardByName.mockRejectedValue(new ScryfallNotFoundError('not found'));
     // buildDeck (in deck-builder lib) calls assessPowerLevel synchronously
     mocks.assessPowerLevel.mockReturnValue(makePowerLevelResult());
     // The route then enhances with combo detection via assessPowerLevelWithCombos
     mocks.assessPowerLevelWithCombos.mockResolvedValue(makePowerLevelResult());
   });
 
+  const build = (payload: Record<string, unknown>) =>
+    app.inject({ method: 'POST', url: '/api/decks/build-from-commander', payload });
+
   it('returns 200 with a 100-card deck for a valid request', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/decks/build-from-commander',
-      payload: { collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME },
-    });
+    const res = await build({ collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME });
 
     expect(res.statusCode).toBe(200);
-    const body = res.json<{ deck: { totalCards: number }; analysis: unknown; gaps: unknown; powerLevel: unknown }>();
+    const body = res.json<BuildBody>();
     expect(body.deck).toBeDefined();
     expect(body.deck.totalCards).toBe(100);
     expect(body.analysis).toBeDefined();
@@ -176,156 +133,200 @@ describe('POST /api/decks/build-from-commander', () => {
     expect(body.powerLevel).toBeDefined();
   });
 
-  it('returns correct deck shape: commander + slots + analysis fields', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/decks/build-from-commander',
-      payload: { collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME },
-    });
+  it('builds from the local card index without asking anyone else', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const res = await build({ collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME });
 
     expect(res.statusCode).toBe(200);
-    const body = res.json<{
-      deck: { commander: { name: string }; slots: Record<string, unknown[]>; totalCards: number };
-      analysis: { averageCmc: number; staplesCoveragePercent: number };
-    }>();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mocks.getCardByName).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it('returns correct deck shape: commander + slots + analysis fields', async () => {
+    const res = await build({ collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<BuildBody>();
     expect(body.deck.commander.name).toBe(COMMANDER_NAME);
-    expect(typeof body.deck.slots).toBe('object');
+    expect(Object.keys(body.deck.slots).sort()).toEqual(['draw', 'flex', 'interaction', 'lands', 'ramp', 'synergy', 'winConditions']);
     expect(body.analysis.averageCmc).toBeTypeOf('number');
-    expect(body.analysis.staplesCoveragePercent).toBeTypeOf('number');
+    expect(body.analysis.topPicksCoveragePercent).toBeTypeOf('number');
+    expect(body.analysis.themes.map(theme => theme.slug)).toEqual(['typal', 'tokens']);
+  });
+
+  it('says for every card how widely it is played, how well it fits and why it is there', async () => {
+    const res = await build({ collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME });
+    const body = res.json<BuildBody>();
+    const cards = Object.values(body.deck.slots).flat();
+
+    for (const card of cards) {
+      expect(card.popularity).toBeGreaterThanOrEqual(0);
+      expect(card.popularity).toBeLessThanOrEqual(1);
+      expect(card.synergy).toBeGreaterThanOrEqual(0);
+      expect(card.reasons.length).toBeGreaterThanOrEqual(1);
+      // No per-commander inclusion figure exists any more, so none may be claimed.
+      expect(Object.keys(card).filter(key => /inclusion/i.test(key))).toEqual([]);
+    }
+    const solRing = cards.find(card => card.name === 'Sol Ring')!;
+    expect(solRing).toMatchObject({ popularity: 1, synergy: 0, reasons: ['Mana rock'], ownedInCollection: true });
+    const matron = cards.find(card => card.name === 'Goblin Matron')!;
+    expect(matron.synergy).toBeGreaterThan(0.8);
+    expect(matron.ownedInCollection).toBe(false);
+    expect(matron.usdPrice).toBe(1);
+  });
+
+  it('uses the owned cards that fit and leaves out the ones that cannot go in the deck', async () => {
+    const res = await build({ collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME });
+    const names = Object.values(res.json<BuildBody>().deck.slots).flat().map(card => card.name);
+
+    expect(names).toEqual(expect.arrayContaining(['Sol Ring', 'Arcane Signet', 'Lightning Bolt', 'Goblin Chieftain', 'Command Tower']));
+    // Blue, so outside Krenko's colour identity however many copies are owned.
+    expect(names).not.toContain('Counterspell');
+  });
+
+  it('builds only from the collection in owned-only mode, scoring cards no top list reaches', async () => {
+    const res = await build({ collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME, options: { mode: 'owned-only' } });
+
+    expect(res.statusCode).toBe(200);
+    const cards = Object.values(res.json<BuildBody>().deck.slots).flat();
+    expect(cards.filter(card => !card.ownedInCollection)).toEqual([]);
+    expect(cards.map(card => card.name)).toEqual(expect.arrayContaining(['Hill Ogre 60', 'Goblin Chieftain', 'Sol Ring']));
+  });
+
+  it('lists the cards to get with a reason each, not an inclusion figure', async () => {
+    const res = await build({ collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME });
+    const { gaps } = res.json<BuildBody>();
+
+    expect(gaps.missingCards.length).toBeGreaterThan(0);
+    for (const card of gaps.missingCards) {
+      expect(card.reasons.length).toBeGreaterThanOrEqual(1);
+      expect(card.popularity).toBeTypeOf('number');
+      expect(Object.keys(card).filter(key => /inclusion/i.test(key))).toEqual([]);
+    }
+    expect(gaps.missingCards.map(card => card.name)).not.toContain('Sol Ring');
+  });
+
+  it('offers recommendations that are not in the deck as swap candidates', async () => {
+    const res = await build({ collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME, options: { targetBracket: 1 } });
+    expect(res.statusCode).toBe(200);
+
+    const [deck, , targetBracket, candidates] = mocks.assessPowerLevelWithCombos.mock.calls[0] as [
+      BuildBody['deck'], unknown, number, Array<{ name: string; popularity: number; synergy: number; slot: string }>,
+    ];
+    expect(targetBracket).toBe(1);
+    const inDeck = new Set(Object.values(deck.slots).flat().map(card => card.name));
+    expect(candidates.length).toBeGreaterThan(0);
+    for (const candidate of candidates) {
+      expect(inDeck.has(candidate.name)).toBe(false);
+      expect(candidate.popularity).toBeTypeOf('number');
+      expect(candidate.slot).toBeTypeOf('string');
+    }
   });
 
   it('includes powerLevel.targetSuggestions when targetBracket is specified', async () => {
     const suggestions = [
       {
-        remove: 'Rhystic Study',
+        remove: 'Underworld Breach',
         removeReason: 'Game changer — too strong for Bracket 1',
-        removeSlot: 'draw',
-        alternatives: [{ name: 'Harmonize', inclusion: 40, synergy: 0.1, slot: 'draw' }],
+        removeSlot: 'winConditions',
+        alternatives: [{ name: 'Mob Rule 5', popularity: 0.19, synergy: 0, slot: 'winConditions' }],
       },
     ];
     mocks.assessPowerLevelWithCombos.mockResolvedValue(makePowerLevelResult(3, suggestions));
 
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/decks/build-from-commander',
-      payload: {
-        collectionText: SAMPLE_COLLECTION,
-        commanderName: COMMANDER_NAME,
-        options: { targetBracket: 1 },
-      },
-    });
+    const res = await build({ collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME, options: { targetBracket: 1 } });
 
     expect(res.statusCode).toBe(200);
-    const body = res.json<{ powerLevel: { targetSuggestions: Array<{ remove: string }> } }>();
+    const body = res.json<BuildBody>();
     expect(body.powerLevel.targetSuggestions).toHaveLength(1);
-    expect(body.powerLevel.targetSuggestions[0]?.remove).toBe('Rhystic Study');
+    expect(body.powerLevel.targetSuggestions[0]?.remove).toBe('Underworld Breach');
   });
 
   it('responds 200 with a 100-card deck when collectionText is omitted (new player path)', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/decks/build-from-commander',
-      payload: { commanderName: COMMANDER_NAME },
-    });
+    const res = await build({ commanderName: COMMANDER_NAME });
 
     expect(res.statusCode).toBe(200);
-    const body = res.json<{ deck: { totalCards: number }; analysis: unknown; gaps: unknown; powerLevel: unknown }>();
+    const body = res.json<BuildBody>();
     expect(body.deck).toBeDefined();
     expect(body.deck.totalCards).toBe(100);
     expect(body.analysis).toBeDefined();
     expect(body.gaps).toBeDefined();
     expect(body.powerLevel).toBeDefined();
+    // Nothing holds the build back, so it is exactly the deck we would pick.
+    expect(body.analysis.topPicksCoveragePercent).toBe(100);
   });
 
   it('responds 200 with a 100-card deck when collectionText is empty string (new player path)', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/decks/build-from-commander',
-      payload: { collectionText: '', commanderName: COMMANDER_NAME },
-    });
+    const res = await build({ collectionText: '', commanderName: COMMANDER_NAME });
 
     expect(res.statusCode).toBe(200);
-    const body = res.json<{ deck: { totalCards: number } }>();
+    const body = res.json<BuildBody>();
     expect(body.deck.totalCards).toBe(100);
   });
 
+  it('builds a different deck for another commander in the same colours', async () => {
+    const synergyOf = async (commanderName: string) =>
+      (await build({ commanderName })).json<BuildBody>().deck.slots['synergy']!.map(card => card.name);
+    const krenko = await synergyOf(COMMANDER_NAME);
+    const zada = await synergyOf('Zada, Hedron Grinder');
+
+    expect(krenko.filter(name => zada.includes(name)).length).toBeLessThanOrEqual(3);
+  });
+
   it('responds 400 when collection text is completely unparseable', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/decks/build-from-commander',
-      payload: { collectionText: 'this is not a valid collection at all!!!', commanderName: COMMANDER_NAME },
-    });
+    const res = await build({ collectionText: 'this is not a valid collection at all!!!', commanderName: COMMANDER_NAME });
 
     expect(res.statusCode).toBe(400);
   });
 
   it('responds 400 when collection has no non-basic-land cards', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/decks/build-from-commander',
-      payload: { collectionText: '4 Plains\n4 Island\n4 Forest', commanderName: COMMANDER_NAME },
-    });
+    const res = await build({ collectionText: '4 Plains\n4 Island\n4 Forest', commanderName: COMMANDER_NAME });
 
     expect(res.statusCode).toBe(400);
     const body = res.json<{ error: string }>();
     expect(body.error).toMatch(/Invalid collection/i);
   });
 
-  it('returns 404 when commander is not found on Scryfall', async () => {
-    const { ScryfallNotFoundError } = await import('@mtg/scryfall');
-    mocks.getCardByName.mockRejectedValueOnce(new ScryfallNotFoundError('not found'));
-
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/decks/build-from-commander',
-      payload: { collectionText: SAMPLE_COLLECTION, commanderName: 'Totally Fake Commander' },
-    });
+  it('returns 404 when the commander is in neither the card index nor Scryfall', async () => {
+    const res = await build({ collectionText: SAMPLE_COLLECTION, commanderName: 'Totally Fake Commander' });
 
     expect(res.statusCode).toBe(404);
     const body = res.json<{ error: string }>();
     expect(body.error).toMatch(/Commander not found/i);
+    expect(mocks.getCardByName).toHaveBeenCalledWith('Totally Fake Commander');
   });
 
-  it('returns 404 when commander is not found on EDHRec', async () => {
-    const { EDHRecNotFoundError } = await import('@mtg/edhrec');
-    mocks.getCommanderData.mockRejectedValueOnce(new EDHRecNotFoundError('not on edhrec'));
+  it('asks Scryfall for the spelling of a commander name the index does not know as typed', async () => {
+    mocks.getCardByName.mockResolvedValueOnce({ name: COMMANDER_NAME });
 
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/decks/build-from-commander',
-      payload: { collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME },
-    });
+    const res = await build({ collectionText: SAMPLE_COLLECTION, commanderName: 'krenko mob boss' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json<BuildBody>().deck.commander.name).toBe(COMMANDER_NAME);
+  });
+
+  it('returns 404 when Scryfall knows a commander that the card index does not have yet', async () => {
+    mocks.getCardByName.mockResolvedValueOnce({ name: 'Printed Last Week, the Newest' });
+
+    const res = await build({ collectionText: SAMPLE_COLLECTION, commanderName: 'printed last week' });
 
     expect(res.statusCode).toBe(404);
-    const body = res.json<{ error: string }>();
-    expect(body.error).toMatch(/EDHRec/i);
   });
 
   it('returns 422 when commander is not legal in Commander format', async () => {
-    mocks.getCardByName.mockResolvedValueOnce(
-      makeScryfallCard(COMMANDER_NAME, { legalities: { commander: 'banned', standard: 'not_legal' } }),
-    );
-
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/decks/build-from-commander',
-      payload: { collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME },
-    });
+    const res = await build({ collectionText: SAMPLE_COLLECTION, commanderName: 'Black Lotus' });
 
     expect(res.statusCode).toBe(422);
     const body = res.json<{ error: string }>();
     expect(body.error).toMatch(/not legal/i);
   });
 
-  it('returns a friendly 502 when EDHRec is rate-limited (429) after retries', async () => {
-    const { EDHRecError } = await import('@mtg/edhrec');
-    mocks.getCommanderData.mockRejectedValueOnce(new EDHRecError('EDHRec API error: Too Many Requests', 429));
+  it('returns a friendly 502 when Scryfall is down (5xx) during commander lookup', async () => {
+    const { ScryfallError } = await import('@mtg/scryfall');
+    mocks.getCardByName.mockRejectedValueOnce(new ScryfallError('Scryfall API error: Service Unavailable', 503));
 
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/decks/build-from-commander',
-      payload: { collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME },
-    });
+    const res = await build({ collectionText: SAMPLE_COLLECTION, commanderName: 'krenko mob boss' });
 
     expect(res.statusCode).toBe(502);
     const body = res.json<{ error: string; message: string }>();
@@ -333,63 +334,136 @@ describe('POST /api/decks/build-from-commander', () => {
     expect(body.message).toBeTruthy();
   });
 
-  it('returns a friendly 502 when EDHRec returns 403 (anti-bot block) after retries', async () => {
-    const { EDHRecError } = await import('@mtg/edhrec');
-    mocks.getCommanderData.mockRejectedValueOnce(new EDHRecError('EDHRec API error: Forbidden', 403));
-
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/decks/build-from-commander',
-      payload: { collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME },
-    });
-
-    expect(res.statusCode).toBe(502);
-  });
-
-  it('returns a friendly 502 when Scryfall is down (5xx) during commander lookup', async () => {
-    const { ScryfallError } = await import('@mtg/scryfall');
-    mocks.getCardByName.mockRejectedValueOnce(new ScryfallError('Scryfall API error: Service Unavailable', 503));
-
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/decks/build-from-commander',
-      payload: { collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME },
-    });
-
-    expect(res.statusCode).toBe(502);
-    const body = res.json<{ error: string }>();
-    expect(body.error).toMatch(/temporarily unavailable/i);
-  });
-
   it('succeeds with budget mode and budgetMaxPrice', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/decks/build-from-commander',
-      payload: {
-        collectionText: SAMPLE_COLLECTION,
-        commanderName: COMMANDER_NAME,
-        options: { mode: 'budget', budgetMaxPrice: 2 },
-      },
+    const res = await build({
+      collectionText: SAMPLE_COLLECTION,
+      commanderName: COMMANDER_NAME,
+      options: { mode: 'budget', budgetMaxPrice: 2 },
     });
 
     expect(res.statusCode).toBe(200);
-    const body = res.json<{ deck: { totalCards: number } }>();
+    const body = res.json<BuildBody>();
     expect(body.deck.totalCards).toBe(100);
+    const bought = Object.values(body.deck.slots).flat().filter(card => !card.ownedInCollection && card.type_line !== 'Basic Land');
+    for (const card of bought) expect(card.usdPrice).toBeLessThanOrEqual(2);
+    // Owned, so in the deck whatever it costs.
+    expect(Object.values(body.deck.slots).flat().map(card => card.name)).toContain('Goblin Chieftain');
   });
 
   it('responds 400 when owned-only mode is used without a collection', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/decks/build-from-commander',
-      payload: {
-        collectionText: '',
-        commanderName: COMMANDER_NAME,
-        options: { mode: 'owned-only' },
-      },
-    });
+    const res = await build({ collectionText: '', commanderName: COMMANDER_NAME, options: { mode: 'owned-only' } });
 
     expect(res.statusCode).toBe(400);
     const body = res.json<{ error: string }>();
     expect(body.error).toMatch(/owned only/i);
+  });
+});
+
+describe('Commander Builder without a card index', () => {
+  const bare = () => buildApp();
+
+  it('answers 503 and says how to build the data', async () => {
+    const app = bare();
+    const responses = await Promise.all([
+      app.inject({ method: 'POST', url: '/api/decks/build-from-commander', payload: { commanderName: COMMANDER_NAME } }),
+      app.inject({ method: 'POST', url: '/api/decks/build-from-theme', payload: { collectionText: '', theme: 'typal' } }),
+      app.inject({ method: 'GET', url: '/api/commanders/search?q=krenko' }),
+    ]);
+
+    for (const res of responses) {
+      expect(res.statusCode).toBe(503);
+      const body = res.json<{ error: string; message: string }>();
+      expect(body.error).toMatch(/not built/i);
+      expect(body.message).toMatch(/pnpm data:cards/);
+    }
+    expect(mocks.getCardByName).not.toHaveBeenCalled();
+  });
+
+  it('leaves the rest of the server working', async () => {
+    const app = bare();
+    expect((await app.inject({ method: 'GET', url: '/health' })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/api/themes' })).statusCode).toBe(200);
+    const parsed = await app.inject({ method: 'POST', url: '/api/collection/parse', payload: { collectionText: SAMPLE_COLLECTION } });
+    expect(parsed.statusCode).toBe(200);
+  });
+});
+
+describe('GET /api/themes', () => {
+  it('lists the themes a commander can be profiled with', async () => {
+    const res = await buildApp({ advisor }).inject({ method: 'GET', url: '/api/themes' });
+
+    expect(res.statusCode).toBe(200);
+    const { themes } = res.json<{ themes: Array<{ slug: string; displayName: string; description: string }> }>();
+    expect(themes.map(theme => theme.slug)).toEqual(
+      expect.arrayContaining(['typal', 'tokens', 'voltron', 'control', 'combo', 'stompy', 'reanimator', 'aristocrats', 'spellslinger', 'artifacts', 'enchantress']),
+    );
+    for (const theme of themes) {
+      expect(theme.displayName).toBeTruthy();
+      expect(theme.description).toBeTruthy();
+    }
+  });
+});
+
+describe('POST /api/decks/build-from-theme', () => {
+  const suggest = (theme: string) =>
+    buildApp({ advisor }).inject({ method: 'POST', url: '/api/decks/build-from-theme', payload: { collectionText: '', theme } });
+
+  it('suggests commanders whose profile has the theme, most played first', async () => {
+    const res = await suggest('typal');
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ suggestedCommanders: Array<{ name: string; edhrec_rank: number | null; colorIdentity: string[] }> }>();
+    expect(body.suggestedCommanders.map(commander => commander.name)).toEqual([
+      'Krenko, Mob Boss',
+      'Ezuri, Renegade Leader',
+      "Kykar, Wind's Fury",
+    ]);
+    expect(body.suggestedCommanders[0]).toEqual({ name: 'Krenko, Mob Boss', edhrec_rank: 1090, colorIdentity: ['R'] });
+  });
+
+  it('accepts a theme by its display name', async () => {
+    const res = await suggest('Spellslinger');
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ theme: { slug: string }; suggestedCommanders: Array<{ name: string }> }>();
+    expect(body.theme.slug).toBe('spellslinger');
+    expect(body.suggestedCommanders.map(commander => commander.name)).toContain('Zada, Hedron Grinder');
+  });
+
+  it('returns 404 for a theme that does not exist', async () => {
+    const res = await suggest('no-such-theme');
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json<{ error: string }>().error).toMatch(/Theme not found/i);
+  });
+});
+
+describe('GET /api/commanders/search', () => {
+  const search = (q: string) =>
+    buildApp({ advisor }).inject({ method: 'GET', url: `/api/commanders/search?q=${encodeURIComponent(q)}` });
+
+  it('finds commanders in the card index by part of their name', async () => {
+    const res = await search('krenko');
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      commanders: [{ name: 'Krenko, Mob Boss', slug: 'krenko-mob-boss', colorIdentity: ['R'] }],
+    });
+    expect(mocks.getCardByName).not.toHaveBeenCalled();
+  });
+
+  it('returns only cards that can be a commander', async () => {
+    const res = await search('goblin');
+
+    expect(res.json<{ commanders: Array<{ name: string }> }>().commanders.map(commander => commander.name)).toEqual([
+      'Squee, Goblin Nabob',
+    ]);
+  });
+
+  it('returns an empty list when nothing matches', async () => {
+    const res = await search('zzzz');
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ commanders: [] });
   });
 });

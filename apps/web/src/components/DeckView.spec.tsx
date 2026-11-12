@@ -1,46 +1,56 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { DeckView } from './DeckView';
-import type { BuildDeckResult } from '../api';
+import type { BuildDeckResult, DeckCard } from '../api';
 
 // ---------------------------------------------------------------------------
 // Fixture: realistic BuildDeckResult with all fields populated
 // ---------------------------------------------------------------------------
 
+/** A deck card; popularity, synergy and reasons default to an unremarkable staple. */
+function card(parts: Pick<DeckCard, 'name' | 'slot' | 'cmc' | 'type_line' | 'usdPrice' | 'ownedInCollection'> & Partial<DeckCard>): DeckCard {
+  return { score: 0.5, popularity: 0.5, synergy: 0, reasons: ['Card draw'], ...parts };
+}
+
 function makeResult(overrides: Partial<BuildDeckResult> = {}): BuildDeckResult {
   return {
     deck: {
-      commander: {
+      commander: card({
         name: 'Atraxa, Praetors\' Voice',
         slot: 'commander',
         cmc: 4,
         type_line: 'Legendary Creature — Phyrexian Angel Horror',
         usdPrice: 12.50,
         ownedInCollection: true,
-      },
+        reasons: ['The commander'],
+      }),
       slots: {
         ramp: [
-          { name: 'Sol Ring', slot: 'ramp', cmc: 1, type_line: 'Artifact', score: 90, usdPrice: 1.50, ownedInCollection: true },
-          { name: 'Arcane Signet', slot: 'ramp', cmc: 2, type_line: 'Artifact', score: 85, usdPrice: 0.50, ownedInCollection: true },
-          { name: 'Cultivate', slot: 'ramp', cmc: 3, type_line: 'Sorcery', score: 80, usdPrice: 0.25, ownedInCollection: false },
+          card({ name: 'Sol Ring', slot: 'ramp', cmc: 1, type_line: 'Artifact', usdPrice: 1.50, ownedInCollection: true, popularity: 1, reasons: ['Mana rock'] }),
+          card({ name: 'Arcane Signet', slot: 'ramp', cmc: 2, type_line: 'Artifact', usdPrice: 0.50, ownedInCollection: true }),
+          card({ name: 'Cultivate', slot: 'ramp', cmc: 3, type_line: 'Sorcery', usdPrice: 0.25, ownedInCollection: false }),
         ],
         draw: [
-          { name: 'Rhystic Study', slot: 'draw', cmc: 3, type_line: 'Enchantment', score: 92, usdPrice: 8.00, ownedInCollection: true },
-          { name: 'Phyrexian Arena', slot: 'draw', cmc: 3, type_line: 'Enchantment', score: 78, usdPrice: 3.00, ownedInCollection: true },
+          card({ name: 'Rhystic Study', slot: 'draw', cmc: 3, type_line: 'Enchantment', usdPrice: 8.00, ownedInCollection: true }),
+          card({ name: 'Phyrexian Arena', slot: 'draw', cmc: 3, type_line: 'Enchantment', usdPrice: 3.00, ownedInCollection: true }),
         ],
         interaction: [
-          { name: 'Counterspell', slot: 'interaction', cmc: 2, type_line: 'Instant', score: 88, usdPrice: 1.00, ownedInCollection: true },
-          { name: 'Swords to Plowshares', slot: 'interaction', cmc: 1, type_line: 'Instant', score: 91, usdPrice: 2.00, ownedInCollection: false },
+          card({ name: 'Counterspell', slot: 'interaction', cmc: 2, type_line: 'Instant', usdPrice: 1.00, ownedInCollection: true }),
+          card({ name: 'Swords to Plowshares', slot: 'interaction', cmc: 1, type_line: 'Instant', usdPrice: 2.00, ownedInCollection: false }),
         ],
-        lands: Array.from({ length: 36 }, (_, i) => ({
+        lands: Array.from({ length: 36 }, (_, i) => card({
           name: i < 4 ? 'Plains' : i < 8 ? 'Island' : i < 12 ? 'Forest' : i < 16 ? 'Swamp' : `Land ${i}`,
-          slot: 'lands', cmc: 0, type_line: 'Land', score: 50, usdPrice: 0.10, ownedInCollection: i < 20,
+          slot: 'lands', cmc: 0, type_line: 'Land', usdPrice: 0.10, ownedInCollection: i < 20,
         })),
         winConditions: [
-          { name: 'Doubling Season', slot: 'winConditions', cmc: 5, type_line: 'Enchantment', score: 95, usdPrice: 25.00, ownedInCollection: true },
+          card({ name: 'Doubling Season', slot: 'winConditions', cmc: 5, type_line: 'Enchantment', usdPrice: 25.00, ownedInCollection: true }),
         ],
         synergy: [
-          { name: 'Seedborn Muse', slot: 'synergy', cmc: 5, type_line: 'Creature', score: 82, usdPrice: 5.00, ownedInCollection: true },
+          card({
+            name: 'Evolution Sage', slot: 'synergy', cmc: 3, type_line: 'Creature — Elf Druid', usdPrice: 1.00, ownedInCollection: true,
+            popularity: 0.42, synergy: 0.93,
+            reasons: ['Proliferates repeatedly for a commander that proliferates', 'Landfall'],
+          }),
         ],
       },
       totalCards: 100,
@@ -50,13 +60,14 @@ function makeResult(overrides: Partial<BuildDeckResult> = {}): BuildDeckResult {
       manaCurve: { 0: 36, 1: 4, 2: 8, 3: 12, 4: 16, 5: 16, 6: 8 },
       colorDistribution: { W: 20, U: 20, B: 20, G: 20 },
       averageCmc: 2.8,
-      staplesCoveragePercent: 62,
+      topPicksCoveragePercent: 62,
+      themes: [{ slug: 'proliferate', name: 'Proliferate', because: 'proliferates' }],
     },
     gaps: {
-      missingStaples: [
-        { name: 'Cyclonic Rift', edhrec_inclusion: 72, usdPrice: 15.00, wouldFillSlot: 'interaction' },
-        { name: 'Demonic Tutor', edhrec_inclusion: 68, usdPrice: 30.00, wouldFillSlot: 'interaction' },
-        { name: 'Vampiric Tutor', edhrec_inclusion: 65, usdPrice: 25.00, wouldFillSlot: 'interaction' },
+      missingCards: [
+        { name: 'Cyclonic Rift', popularity: 0.61, synergy: 0, reasons: ['Board wipe'], usdPrice: 15.00, wouldFillSlot: 'interaction' },
+        { name: 'Inexorable Tide', popularity: 0.3, synergy: 0.93, reasons: ['Proliferates repeatedly for a commander that proliferates'], usdPrice: 3.00, wouldFillSlot: 'synergy' },
+        { name: 'Clockspinning', popularity: 0.19, synergy: 0.93, reasons: ['Proliferates repeatedly for a commander that proliferates'], usdPrice: 1.00, wouldFillSlot: 'synergy' },
       ],
       budgetUpgrades: [],
       premiumUpgrades: [],
@@ -72,7 +83,7 @@ function makeResult(overrides: Partial<BuildDeckResult> = {}): BuildDeckResult {
         tierBTutors: ['Mystical Tutor'],
         avgCmc: 2.8,
         interactionCount: 12,
-        staplesCoverage: 62,
+        topPicksCoverage: 62,
         fastManaRatio: 0.08,
         twoCardComboCount: 0,
       },
@@ -83,8 +94,8 @@ function makeResult(overrides: Partial<BuildDeckResult> = {}): BuildDeckResult {
           removeReason: 'Game changer — too strong for Bracket 2',
           removeSlot: 'draw',
           alternatives: [
-            { name: 'Harmonize', inclusion: 42, synergy: 0.05, slot: 'draw' },
-            { name: 'Read the Bones', inclusion: 38, synergy: 0.03, slot: 'draw' },
+            { name: 'Harmonize', popularity: 0.5, synergy: 0.05, slot: 'draw' },
+            { name: 'Inexorable Tide', popularity: 0.3, synergy: 0.93, slot: 'draw' },
           ],
         },
       ],
@@ -148,29 +159,94 @@ describe('DeckView', () => {
     expect(document.querySelector('.target-suggestions')).toBeNull();
   });
 
-  // 7. Swap alternative chips with inclusion and synergy
-  it('shows swap alternative chips with card names and inclusion %', () => {
+  // 7. Swap alternative chips say how widely played and how well fitting, in words
+  it('shows swap alternative chips with card names and how widely each is played', () => {
     render(<DeckView result={makeResult()} />);
-    const altChips = document.querySelectorAll('.swap-alt-chip');
+    const altChips = Array.from(document.querySelectorAll('.swap-alt-chip'));
     expect(altChips.length).toBeGreaterThanOrEqual(2);
-    const chipTexts = Array.from(altChips).map(c => c.textContent ?? '');
-    expect(chipTexts.some(t => t.includes('Harmonize'))).toBe(true);
-    expect(chipTexts.some(t => t.includes('42'))).toBe(true); // inclusion %
+    const harmonize = altChips.find(c => c.textContent?.includes('Harmonize'))!;
+    expect(harmonize.textContent).toContain('widely played');
+    expect(harmonize.querySelector('em')).toHaveAttribute('title', expect.stringMatching(/not with this commander/));
+    // Synergy is shown only where there is some.
+    expect(harmonize.querySelector('.swap-alt-synergy')).toBeNull();
+    const tide = altChips.find(c => c.textContent?.includes('Inexorable Tide'))!;
+    expect(tide.textContent).toContain('often played');
+    expect(tide.querySelector('.swap-alt-synergy')).toHaveTextContent('93%');
   });
 
-  // 8. Gaps section shown when missingStaples is non-empty
-  it('shows gaps section when missingStaples are present', () => {
+  // 8. Gaps section shown when missingCards is non-empty
+  it('shows the cards to get when some of the deck is not owned', () => {
     render(<DeckView result={makeResult()} />);
-    expect(document.querySelector('.gaps-section')).not.toBeNull();
-    expect(screen.getByText(/Cyclonic Rift/)).toBeInTheDocument();
+    const gaps = document.querySelector('.gaps-section')!;
+    expect(gaps).not.toBeNull();
+    expect(gaps).toHaveTextContent('Cards to Get (3)');
+    expect(gaps).toHaveTextContent('Cyclonic Rift');
   });
 
-  // 9. No gaps section when missingStaples empty
-  it('does NOT show gaps section when missingStaples is empty', () => {
+  it('gives each card to get its reason, and its popularity as what it is', () => {
+    render(<DeckView result={makeResult()} />);
+    const rows = Array.from(document.querySelectorAll('.gaps-section li'));
+    const rift = rows.find(row => row.textContent?.includes('Cyclonic Rift'))!;
+    expect(rift.querySelector('.card-reason')).toHaveTextContent('Board wipe');
+    expect(rift).toHaveTextContent('widely played · interaction');
+    expect(rift.querySelector('[title]')).toHaveAttribute(
+      'title',
+      "Scryfall's EDHREC rank: how widely played across Commander, not with this commander",
+    );
+    const clockspinning = rows.find(row => row.textContent?.includes('Clockspinning'))!;
+    expect(clockspinning).toHaveTextContent('rarely played · synergy');
+    expect(clockspinning.querySelector('.card-reason')).toHaveTextContent('Proliferates repeatedly for a commander that proliferates');
+  });
+
+  // 9. No gaps section when missingCards empty
+  it('does NOT show the cards to get when every card is owned', () => {
     const result = makeResult();
-    result.gaps.missingStaples = [];
+    result.gaps.missingCards = [];
     render(<DeckView result={result} />);
     expect(document.querySelector('.gaps-section')).toBeNull();
+  });
+
+  it('never claims a share of decks: no inclusion figure and no "staples" percentage', () => {
+    render(<DeckView result={makeResult()} />);
+    const text = document.querySelector('.deck-view')!.textContent ?? '';
+    expect(text).not.toMatch(/inclusion/i);
+    expect(text).not.toMatch(/staples/i);
+    expect(text).not.toMatch(/% of decks/i);
+  });
+
+  it('labels the top-picks figure and says what it measures', () => {
+    render(<DeckView result={makeResult()} />);
+    const stat = screen.getByText('Top picks: 62%');
+    expect(stat).toHaveAttribute('title', expect.stringMatching(/with every card available/));
+    const chip = Array.from(document.querySelectorAll('.signal-chip')).find(c => c.textContent?.includes('top picks'))!;
+    expect(chip).toHaveTextContent('62% top picks');
+    expect(chip).toHaveAttribute('title', expect.stringMatching(/with every card available/));
+  });
+
+  it('says what the deck was built around', () => {
+    render(<DeckView result={makeResult()} />);
+    expect(screen.getByText(/Built around:/)).toHaveTextContent('Built around: Proliferate');
+    expect(screen.getByText('Proliferate')).toHaveAttribute('title', 'A commander that proliferates');
+  });
+
+  it('leaves the themes line out for a commander with no theme', () => {
+    const result = makeResult();
+    result.analysis.themes = [];
+    render(<DeckView result={result} />);
+    expect(screen.queryByText(/Built around:/)).toBeNull();
+  });
+
+  it('gives every card in the deck its reasons on hover', () => {
+    render(<DeckView result={makeResult()} />);
+    const sage = Array.from(document.querySelectorAll('.card-item')).find(el => el.textContent?.includes('Evolution Sage'))!;
+    expect(sage).toHaveAttribute('title', 'Proliferates repeatedly for a commander that proliferates · Landfall');
+  });
+
+  it('credits Scryfall for the card data and tags', () => {
+    render(<DeckView result={makeResult()} />);
+    const credit = document.querySelector('.data-credit')!;
+    expect(credit).toHaveTextContent('Card data and tags: Scryfall');
+    expect(credit.querySelector('a')).toHaveAttribute('href', 'https://scryfall.com');
   });
 
   // 10. AI explain button visible

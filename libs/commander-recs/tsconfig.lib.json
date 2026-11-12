@@ -1,6 +1,6 @@
 {
   "extends": "./tsconfig.json",
-  "compilerOptions": { "outDir": "../../dist/libs/edhrec" },
+  "compilerOptions": { "outDir": "../../dist/libs/commander-recs" },
   "include": ["src/**/*.ts"],
   "exclude": ["**/*.spec.ts"]
 }

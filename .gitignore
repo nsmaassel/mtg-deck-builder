@@ -9,6 +9,10 @@ coverage
 .DS_Store
 .gitnexus
 
+# Playwright output
+test-results/
+playwright-report/
+
 # Generated data (built by scripts/data/*, never committed)
 data/generated
 .cache

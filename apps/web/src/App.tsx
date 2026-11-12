@@ -43,7 +43,7 @@ function CommanderBuilder() {
 
   return (
     <>
-      <p className="view-lede">Build an optimized Commander deck from your collection using EDHRec data</p>
+      <p className="view-lede">Build a Commander deck around your commander, from the cards you own first</p>
       {!result ? (
         <BuildForm onResult={handleResult} onError={setError} />
       ) : (

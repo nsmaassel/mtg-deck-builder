@@ -19,9 +19,9 @@ const positiveNumber = (value: string | undefined, fallback: number): number => 
 };
 
 async function main(): Promise<void> {
-  // The Commander builder works without generated data, so whatever is wrong
-  // with it (not built, cut short, from another version) only switches the
-  // advisor off instead of stopping the server.
+  // Both the advisor and the Commander builder read the card index. Whatever is
+  // wrong with it (not built, cut short, from another version) switches them
+  // off with a 503 that says how to build it, instead of stopping the server.
   let advisor: AdvisorData | null = null;
   let advisorProblem: string | undefined;
   let advisorWarnings: string[] = [];
@@ -71,7 +71,7 @@ async function main(): Promise<void> {
         : `Advisor chat off: ${access.configured ? 'no advisor data' : access.reason}`,
     );
   } else {
-    app.log.warn(`Deck advisor disabled: ${advisorProblem ?? 'no data'}`);
+    app.log.warn(`Deck advisor and Commander builder disabled: ${advisorProblem ?? 'no data'}`);
   }
 
   app.listen({ port: PORT, host: HOST }, (err, address) => {

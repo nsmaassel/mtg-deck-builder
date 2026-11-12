@@ -8,13 +8,14 @@ function makeDeck(cardNames: string[], rampCmcs: number[] = []): DeckList {
       name,
       quantity: 1 as const,
       ownedInCollection: true,
-      edhrec_inclusion: 50,
-      edhrec_synergy: 0.1,
+      popularity: 0.5,
+      synergy: 0.1,
       score: 0.5,
       slot,
       cmc,
       type_line: 'Sorcery',
       usdPrice: null,
+      reasons: [],
     } as import('@mtg/deck-builder').DeckCard);
 
   const rampCards = rampCmcs.map((cmc, i) => makeCard(`Ramp Card ${i}`, 'ramp', cmc));
@@ -37,18 +38,19 @@ function makeDeck(cardNames: string[], rampCmcs: number[] = []): DeckList {
   };
 }
 
-function makeAnalysis(avgCmc = 3.0, staples = 50): DeckAnalysis {
+function makeAnalysis(avgCmc = 3.0, topPicks = 50): DeckAnalysis {
   return {
     commanderName: 'Test Commander',
     manaCurve: { 2: 20, 3: 30, 4: 10 },
     colorDistribution: { G: 40 },
     averageCmc: avgCmc,
-    staplesCoveragePercent: staples,
+    topPicksCoveragePercent: topPicks,
+    themes: [],
   };
 }
 
 describe('assessPowerLevel', () => {
-  it('returns Bracket 1 for a deck with no game changers, no tutors, low staples', () => {
+  it('returns Bracket 1 for a deck with no game changers, no tutors, few top picks', () => {
     const deck = makeDeck(['Llanowar Elves', 'Rampant Growth', 'Farseek']);
     const analysis = makeAnalysis(3.0, 20);
     const result = assessPowerLevel(deck, analysis);
@@ -57,7 +59,7 @@ describe('assessPowerLevel', () => {
     expect(result.score).toBe(2);
   });
 
-  it('returns Bracket 2 for a deck with moderate staple coverage', () => {
+  it('returns Bracket 2 for a deck with a moderate share of the top picks', () => {
     const deck = makeDeck(['Sol Ring', 'Arcane Signet', 'Command Tower']);
     const analysis = makeAnalysis(3.0, 45);
     const result = assessPowerLevel(deck, analysis);
@@ -132,8 +134,8 @@ describe('assessPowerLevel', () => {
     const analysis = makeAnalysis(3.0, 20);
     // Supply a candidate pool including a Game Changer
     const candidates = [
-      { name: 'Rhystic Study', inclusion: 72, label: 'draw' },
-      { name: 'Cyclonic Rift', inclusion: 65, label: 'interaction' },
+      { name: 'Rhystic Study', popularity: 0.63, slot: 'draw' },
+      { name: 'Cyclonic Rift', popularity: 0.61, slot: 'interaction' },
     ];
     const result = assessPowerLevel(deck, analysis, 3, candidates);
     expect(result.targetSuggestions).toBeDefined();

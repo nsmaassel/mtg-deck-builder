@@ -26,11 +26,14 @@ test.describe('Journey 9: New Player Onboarding — Build Without a Collection',
 
     await expect(builder.deckHeader()).toContainText('Krenko');
     await expect(builder.deckStats()).toContainText('100 cards');
+    // The deck says what it was built around and where its data comes from.
+    await expect(page.locator('.deck-themes')).toContainText('Goblin');
+    await expect(page.locator('.data-credit')).toContainText('Scryfall');
 
-    // Everything is unowned since no collection was provided
-    const total = await builder.cardItems().count();
-    const unowned = await builder.unownedCards().count();
-    expect(unowned).toBe(total);
+    // Nothing is owned since no collection was provided, apart from the basic lands everyone has
+    const ownedNames = await page.locator('.card-item:not(.card-unowned) .card-name').allTextContents();
+    expect(ownedNames.every(name => name.trim() === 'Mountain')).toBe(true);
+    expect(await builder.unownedCards().count()).toBeGreaterThan(60);
   });
 
   test('@regression @onboarding validates commander is required when skipping collection', async ({ page }) => {

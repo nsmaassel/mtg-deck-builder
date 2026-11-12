@@ -15,9 +15,7 @@ test.describe('Journey 3: Owned Cards Only Mode', () => {
     await builder.submitBuild();
     await builder.waitForDeck();
 
-    // No cards should have the card-unowned class (excluding basics which are always available)
-    // Basic lands may appear as unowned depending on collection; non-basics should not
-    const unownedCount = await builder.unownedCards().count();
-    expect(unownedCount).toBeLessThan(20);
+    // Every card comes from the collection; basic lands count as owned
+    await expect(builder.unownedCards()).toHaveCount(0);
   });
 });

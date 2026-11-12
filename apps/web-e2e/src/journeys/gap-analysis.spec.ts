@@ -10,11 +10,15 @@ test.describe('Journey 5: Gap Analysis', () => {
     await page.goto('/#/commander');
   });
 
-  test('@regression shows the missing-staples section for a small collection', async ({ page }) => {
+  test('@regression shows the cards to get for a small collection', async ({ page }) => {
     const builder = new DeckBuilderPage(page);
     await builder.buildDeck(minimalCollection, 'Krenko, Mob Boss');
 
     await expect(builder.gapsSection()).toBeVisible();
-    await expect(builder.gapsSection()).toContainText('Missing Staples');
+    await expect(builder.gapsSection()).toContainText('Cards to Get');
+    // Each card says why it is in the deck and how widely it is played, never a share of decks.
+    await expect(builder.gapsSection().locator('.card-reason').first()).not.toBeEmpty();
+    await expect(builder.gapsSection()).toContainText(/played/);
+    await expect(builder.gapsSection()).not.toContainText('inclusion');
   });
 });
