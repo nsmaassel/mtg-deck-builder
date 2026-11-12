@@ -25,9 +25,13 @@ if [ -z "${IMAGE:-}" ]; then
     --substitutions="_IMAGE=${IMAGE},_DATA_DATE=$(date -u +%F)"
 fi
 
-# Said outright for a new service rather than left to gcloud's prompt default.
+# A new service is created private, said outright rather than left to gcloud's prompt default.
+# Listing tells "not there" (no output) from "could not ask" (the command fails and the script stops):
+# a failed lookup must not be taken for a new service, or the deploy would close an open one.
+EXISTING="$(gcloud run services list --region "$REGION" --project "$PROJECT" \
+  --filter="metadata.name=${SERVICE}" --format='value(metadata.name)')"
 ACCESS=()
-exists service_url || ACCESS=(--no-allow-unauthenticated)
+[ -n "$EXISTING" ] || ACCESS=(--no-allow-unauthenticated)
 
 # One instance at most: the in-app spending ceilings are kept in that instance's memory.
 # --update-env-vars leaves variables set by hand (ADVISOR_AGENT_MODEL, ADVISOR_AGENT_DAILY_USD) in place.
@@ -41,4 +45,8 @@ run gcloud run deploy "$SERVICE" --image "$IMAGE" --region "$REGION" --project "
 
 echo
 echo "Deployed: $(service_url)"
-echo "Public access is unchanged. First deploy: check it (deploy/README.md), then: deploy/3-open.sh open"
+if [ -n "$EXISTING" ]; then
+  echo "Public access is unchanged."
+else
+  echo "Created private. Check it (deploy/README.md), then: deploy/3-open.sh open"
+fi
