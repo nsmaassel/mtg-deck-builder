@@ -384,21 +384,15 @@ The API keeps nothing between requests. The collection lives in the browser and 
 
 ## Deployment
 
-### Render (Free Tier)
+### Cloud Run
 
-This project includes a `Dockerfile` and `render.yaml` for one-click deployment to Render's free tier.
+The app is one container. [`deploy/README.md`](./deploy/README.md) has the scripts and the guide for Google Cloud Run: a keyless identity that may call Gemini through Vertex AI and nothing else, one instance at most, a first deploy that stays private until it has been checked, and the spending limits, of which Google's spend cap budgets are the hard stop.
 
-1. **Push to GitHub** (or connect your repo to Render)
-2. **Create a new Web Service** on Render, select "Docker" as runtime
-3. **Configure**:
-   - Build Command: (handled by Dockerfile)
-   - Start Command: (handled by Dockerfile `CMD`)
-   - Port: 3000
-4. **Add Environment Variables** in Render dashboard:
-   - `ANTHROPIC_API_KEY` — optional, for AI deck explanations
-   - `LOG_LEVEL=info`
-   - `CORS_ORIGIN=*` (or your specific domain)
-5. **Deploy** — Render will build the Docker image and start the service
+### Render
+
+`render.yaml` describes the same container on Render. It has no model access, so the advisor's chat is off there and everything else works. Nothing on that route limits spend, because nothing on it costs money per request.
+
+### The image
 
 The Dockerfile uses a multi-stage build:
 - **Builder stage**: Installs all dependencies, runs `pnpm build` to compile TypeScript and build the React SPA
@@ -411,7 +405,7 @@ The data is a snapshot taken when the data stage last ran. To refresh cards and 
 docker build --build-arg DATA_DATE=$(date +%F) -t mtg-deck-builder .
 ```
 
-The process holds about 300 MB with the card index loaded.
+The process holds about 330 MB with the card index and the combos loaded; give it 1 GB.
 
 **Local Docker test:**
 ```bash
