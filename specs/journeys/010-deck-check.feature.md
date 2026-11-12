@@ -62,6 +62,22 @@ Feature: Deck check with stand-ins for missing cards
     Given the list contains a card that is not legal in the format, or not on Arena
     Then the card is flagged with the reason and counts as missing
     And it is replaced like any other missing card
+
+  Scenario: A list that is not a legal deck
+    Given the list is short, over a copy limit, or holds banned or off-colour cards
+    Then I am told each problem in a sentence, with the cards it is about
+    And a line that matches no card is shown with the nearest real name
+
+  Scenario: How my list differs from the tournament lists
+    Given the format has a meta and my pasted list resembles one of its archetypes
+    Then I see which archetype it resembles and how closely
+    And the cards most of that archetype's lists play that mine lacks, with what I own of them
+    And the spells mine plays that few of those lists do
+    And the sideboard cards most of them bring that I have nowhere
+
+  Scenario: A list picked from the meta
+    Given I picked a list from the meta
+    Then it is compared with all the lists of its own archetype in the same way
 ```
 
 ---
@@ -83,6 +99,18 @@ Lands are scored on the mana they make (40%, marked down when the mana is restri
 
 A stand-in scoring 0.65 or more is a **close match**, 0.45 or more a **partial match** (0.35 when it does one of the original's primary jobs), anything lower a **stopgap**. A card that shares none of the original's primary roles is a stopgap whatever its score.
 
+## How a list is compared with tournament lists
+
+A pasted list is matched to the archetype whose usual spells it shares most: for every non-land card, the copies in the list against the copies the archetype's lists run on average, as shared copies over the union. Lands are left out, since mana bases differ more than plans do, and an archetype in colours the list does not play is not considered. Below 0.4 nothing is close enough and no comparison is shown. Archetypes with fewer than 10 lists are not compared against.
+
+| Shown | Rule |
+|-------|------|
+| Most lists play these, this one does not | In the main deck of 60% or more of the lists, and absent here or at least 1.5 copies short of the usual number. A land counts only when absent. |
+| This one plays these, few lists do | A main-deck spell in fewer than 10% of the lists. |
+| Sideboard cards most lists bring | In the sideboard of 60% or more of the lists, and nowhere in this list. |
+
+It reports what other players settled on. It is not a verdict on a card.
+
 ## Acceptance Criteria
 
 | Criterion | How Tested |
@@ -93,3 +121,8 @@ A stand-in scoring 0.65 or more is a **close match**, 0.45 or more a **partial m
 | The same spare copy is never handed to two missing cards | `plan.spec.ts` |
 | Wildcards spent never exceed the inventory | `plan.spec.ts` |
 | The response carries display fields only, not full card records | `advisor.integration.spec.ts` |
+| Rule problems: size, sideboard, copy limits (and cards that set their own), legality, Arena, commander rules | `issues.spec.ts` |
+| A mono-coloured list is not read as the two-colour archetype with the same spells; lands do not change the match | `tune.spec.ts` |
+| A staple land counts as missing only when absent; basic lands never | `tune.spec.ts` |
+| Archetypes with fewer than 10 lists are not compared against | `tune.spec.ts` |
+| A pasted list's stand-ins use the resembled archetype's card usage | `service.spec.ts` |

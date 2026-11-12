@@ -5,12 +5,14 @@ import {
   Runner,
   createRunConfig,
   getFunctionCalls,
+  getFunctionResponses,
   isFinalResponse,
   stringifyContent,
 } from '@google/adk';
 import type { BaseLlm } from '@google/adk';
 import type { AdvisorData, Collection } from '@mtg/deck-advisor';
 import { ADVISOR_INSTRUCTION } from './instruction';
+import type { ThinkingLevel } from './thinking';
 import { createAdvisorTools } from './tools';
 
 const APP_NAME = 'deck-advisor';
@@ -21,14 +23,32 @@ export interface AdvisorChatOptions {
   data: AdvisorData;
   /** A model name the ADK resolves (a Gemini model id), or a model object. */
   model: string | BaseLlm;
-  /** Model calls allowed in one turn, tool round-trips included. Default 8. */
+  /**
+   * How hard the model thinks before it answers or picks a tool. Thinking is
+   * billed as output and is most of the wait; the tools do the reasoning that
+   * matters here. Left unset, the model's own default applies.
+   */
+  thinkingLevel?: ThinkingLevel;
+  /** Model calls allowed in one turn, tool round-trips included. Default 6. */
   maxLlmCallsPerTurn?: number;
+  /** Tool runs allowed in one turn; each result is carried in every later model call. Default 6. */
+  maxToolCallsPerTurn?: number;
   /** Turns allowed in one conversation. Default 30. */
   maxTurnsPerSession?: number;
+  /**
+   * A conversation ends once the history sent to the model has grown past this
+   * many tokens: every further message would pay for all of it again. Default 40,000.
+   */
+  maxContextTokens?: number;
   /** A conversation idle for this long is forgotten. Default one hour. */
   sessionTtlMs?: number;
   /** Conversations kept at once; the longest idle go first. Default 500. */
   maxSessions?: number;
+  /**
+   * Told about every answered turn: what the tools returned and what the model
+   * calls cost. For the server's log and for evals; none of it goes to the browser.
+   */
+  onTurn?: (trace: TurnTrace) => void;
   now?: () => number;
 }
 
@@ -42,11 +62,39 @@ export interface ChatTurn {
   sessionId: string;
   reply: string;
   steps: ChatStep[];
+  /** What the turn cost at the model: for the server's budget, not for the browser. */
+  usage: ChatUsage;
   /**
    * True when the caller named a conversation the server no longer has (it
    * expired, or the server restarted) and this answer starts a new one.
    */
   restarted?: boolean;
+}
+
+/** What one turn cost at the model. Thinking tokens are billed as output. */
+export interface ChatUsage {
+  /** Model calls, tool round-trips included. */
+  llmCalls: number;
+  promptTokens: number;
+  outputTokens: number;
+  thinkingTokens: number;
+}
+
+export interface ToolRun {
+  tool: string;
+  args: Record<string, unknown>;
+  /** What the tool returned to the model. */
+  result: unknown;
+}
+
+export interface TurnTrace {
+  sessionId: string;
+  message: string;
+  reply: string;
+  tools: ToolRun[];
+  usage: ChatUsage;
+  /** Wall-clock time for the whole turn. */
+  ms: number;
 }
 
 export class AdvisorChatError extends Error {
@@ -57,6 +105,8 @@ export class AdvisorChatError extends Error {
      * answering the previous message. `model`: the model call failed.
      */
     public readonly kind: 'limit' | 'busy' | 'model',
+    /** Tokens a failed turn used before it failed. They are billed all the same. */
+    public readonly usage?: ChatUsage,
   ) {
     super(message);
     this.name = 'AdvisorChatError';
@@ -86,6 +136,8 @@ interface SessionRecord {
   lastUsed: number;
   /** Turns that produced an answer. */
   turns: number;
+  /** Size of the largest prompt of the latest turn: what the conversation now costs to continue. */
+  contextTokens: number;
   /** A turn is running; the conversation must not be evicted or entered a second time. */
   busy: boolean;
 }
@@ -100,12 +152,15 @@ type SessionEvents = NonNullable<Awaited<ReturnType<InMemorySessionService['getS
 export class AdvisorChat {
   private readonly sessions = new Map<string, SessionRecord>();
   private readonly sessionService = new InMemorySessionService();
-  private readonly options: Required<Omit<AdvisorChatOptions, 'data' | 'model'>> & Pick<AdvisorChatOptions, 'data' | 'model'>;
+  private readonly options: Required<Omit<AdvisorChatOptions, 'data' | 'model' | 'onTurn' | 'thinkingLevel'>> &
+    Pick<AdvisorChatOptions, 'data' | 'model' | 'onTurn' | 'thinkingLevel'>;
 
   constructor(options: AdvisorChatOptions) {
     this.options = {
-      maxLlmCallsPerTurn: 8,
+      maxLlmCallsPerTurn: 6,
+      maxToolCallsPerTurn: 6,
       maxTurnsPerSession: 30,
+      maxContextTokens: 40_000,
       sessionTtlMs: 60 * 60 * 1000,
       maxSessions: 500,
       now: Date.now,
@@ -124,40 +179,56 @@ export class AdvisorChat {
     if (record.busy) {
       throw new AdvisorChatError('The advisor is still answering your previous question.', 'busy');
     }
-    if (record.turns >= this.options.maxTurnsPerSession) {
+    if (record.turns >= this.options.maxTurnsPerSession || record.contextTokens > this.options.maxContextTokens) {
       throw new AdvisorChatError('This conversation has reached its length limit. Start a new one to keep going.', 'limit');
     }
 
     record.busy = true;
     const before = await this.events(sessionId);
+    const usage: ChatUsage = { llmCalls: 0, promptTokens: 0, outputTokens: 0, thinkingTokens: 0 };
     try {
-      const turn = await this.run(sessionId, input.message, input.collection);
+      const turn = await this.run(sessionId, input.message, input.collection, usage, record);
       record.turns += 1;
       return restarted ? { ...turn, restarted } : turn;
     } catch (err) {
       // The runner has already written the question, and any tool calls, into the session.
       // Put the history back as it was, so a retry is not the same question asked twice.
       await this.restore(sessionId, before);
-      if (err instanceof AdvisorChatError) throw err;
-      throw new AdvisorChatError(err instanceof Error ? err.message : String(err), 'model');
+      const kind = err instanceof AdvisorChatError ? err.kind : 'model';
+      throw new AdvisorChatError(err instanceof Error ? err.message : String(err), kind, usage);
     } finally {
       record.busy = false;
       record.lastUsed = this.options.now();
     }
   }
 
-  private async run(sessionId: string, message: string, collection: Collection | null): Promise<ChatTurn> {
+  private async run(
+    sessionId: string,
+    message: string,
+    collection: Collection | null,
+    usage: ChatUsage,
+    record: SessionRecord,
+  ): Promise<ChatTurn> {
     // The tools close over this turn's collection, so the agent is built per turn. It is cheap.
     const agent = new LlmAgent({
       name: 'deck_advisor',
       description: 'Advises MTG Arena players on which deck to build with the cards they own.',
       model: this.options.model,
       instruction: ADVISOR_INSTRUCTION,
-      tools: createAdvisorTools(this.options.data, { collection }),
+      tools: createAdvisorTools(this.options.data, { collection }, { maxCalls: this.options.maxToolCallsPerTurn }),
+      ...(this.options.thinkingLevel && {
+        // The API's own spelling of the level; typed as a string enum in the SDK the ADK wraps.
+        generateContentConfig: { thinkingConfig: { thinkingLevel: this.options.thinkingLevel.toUpperCase() as never } },
+      }),
     });
     const runner = new Runner({ appName: APP_NAME, agent, sessionService: this.sessionService });
 
+    const started = this.options.now();
     const steps: ChatStep[] = [];
+    const tools: ToolRun[] = [];
+    // A tool's result arrives in a later event than its call; the call id pairs them.
+    const pending = new Map<string, ToolRun>();
+    let context = 0;
     let reply = '';
     const events = runner.runAsync({
       userId: USER_ID,
@@ -169,8 +240,24 @@ export class AdvisorChat {
       if (event.errorCode || event.errorMessage) {
         throw new AdvisorChatError(event.errorMessage ?? `Model error ${event.errorCode}`, 'model');
       }
+      if (event.usageMetadata) {
+        usage.llmCalls += 1;
+        context = Math.max(context, event.usageMetadata.promptTokenCount ?? 0);
+        usage.promptTokens += event.usageMetadata.promptTokenCount ?? 0;
+        usage.outputTokens += event.usageMetadata.candidatesTokenCount ?? 0;
+        usage.thinkingTokens += event.usageMetadata.thoughtsTokenCount ?? 0;
+      }
       for (const call of getFunctionCalls(event)) {
-        steps.push(describeStep(call.name ?? 'tool', (call.args ?? {}) as Record<string, unknown>, collection !== null));
+        const name = call.name ?? 'tool';
+        const args = (call.args ?? {}) as Record<string, unknown>;
+        steps.push(describeStep(name, args, collection !== null));
+        const run: ToolRun = { tool: name, args, result: undefined };
+        tools.push(run);
+        if (call.id) pending.set(call.id, run);
+      }
+      for (const response of getFunctionResponses(event)) {
+        const run = (response.id && pending.get(response.id)) || tools.find(t => t.tool === response.name && t.result === undefined);
+        if (run) run.result = response.response;
       }
       if (isFinalResponse(event)) {
         const text = stringifyContent(event).trim();
@@ -179,7 +266,9 @@ export class AdvisorChat {
     }
 
     if (!reply) throw new AdvisorChatError('The model returned no answer.', 'model');
-    return { sessionId, reply, steps };
+    record.contextTokens = context;
+    this.options.onTurn?.({ sessionId, message, reply, tools, usage, ms: this.options.now() - started });
+    return { sessionId, reply, steps, usage };
   }
 
   private async events(sessionId: string): Promise<SessionEvents> {
@@ -220,7 +309,7 @@ export class AdvisorChat {
 
     const sessionId = randomUUID();
     await this.sessionService.createSession({ appName: APP_NAME, userId: USER_ID, sessionId });
-    this.sessions.set(sessionId, { lastUsed: now, turns: 0, busy: false });
+    this.sessions.set(sessionId, { lastUsed: now, turns: 0, contextTokens: 0, busy: false });
     return { sessionId, restarted: requested !== undefined };
   }
 

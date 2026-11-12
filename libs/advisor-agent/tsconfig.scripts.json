@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "outDir": "../../dist/libs/advisor-agent", "types": ["node"] },
+  "include": ["../../scripts/evals/advisor-agent.ts"]
+}

@@ -3,7 +3,27 @@ export interface ChatBudgetOptions {
   perDay: number;
   /** Chat messages answered per minute, across all visitors. */
   perMinute: number;
+  /**
+   * Model spend allowed per UTC day, in USD, at `price`. Chat stops for the day
+   * once the turns so far have cost this much; the turn that crosses the line
+   * is still answered, so a day can end one turn over.
+   */
+  usdPerDay?: number;
+  /** The model's list price in USD per million tokens. Thinking is billed as output. */
+  price?: TokenPrice;
   now?: () => number;
+}
+
+export interface TokenPrice {
+  input: number;
+  output: number;
+}
+
+/** What a turn used, as the chat reports it. */
+export interface TokenUsage {
+  promptTokens: number;
+  outputTokens: number;
+  thinkingTokens: number;
 }
 
 export type BudgetDecision = { allowed: true } | { allowed: false; reason: 'minute' | 'day' };
@@ -13,14 +33,21 @@ const MINUTE_MS = 60_000;
 /**
  * A spending ceiling for the one part of the app that costs money per request.
  *
+ * Two ceilings per day: messages, and what the model calls behind them cost.
+ * Messages differ in cost by an order of magnitude (a question that runs six
+ * deck checks against one that runs none), so the dollar ceiling is the one
+ * that tracks the bill.
+ *
  * The counts are global, not per visitor: the point is to bound the bill, and
  * a per-address limit behind a proxy is only as good as the forwarded header.
  * They live in memory, which is enough for a single instance; a restart
- * forgets the day's count.
+ * forgets the day's count, so this is not the last line of defence (the
+ * project's billing cut-off is).
  */
 export class ChatBudget {
   private day = '';
   private usedToday = 0;
+  private usdToday = 0;
   private recent: number[] = [];
   private readonly now: () => number;
 
@@ -31,14 +58,11 @@ export class ChatBudget {
   /** Count one message against the budget, or refuse it. */
   spend(): BudgetDecision {
     const now = this.now();
-    const today = new Date(now).toISOString().slice(0, 10);
-    if (today !== this.day) {
-      this.day = today;
-      this.usedToday = 0;
-    }
+    this.startDay(now);
     this.recent = this.recent.filter(at => now - at < MINUTE_MS);
 
     if (this.usedToday >= this.options.perDay) return { allowed: false, reason: 'day' };
+    if (this.options.usdPerDay !== undefined && this.usdToday >= this.options.usdPerDay) return { allowed: false, reason: 'day' };
     if (this.recent.length >= this.options.perMinute) return { allowed: false, reason: 'minute' };
 
     this.usedToday += 1;
@@ -54,8 +78,36 @@ export class ChatBudget {
     if (this.usedToday > 0) this.usedToday -= 1;
   }
 
+  /**
+   * Add what a turn's model calls cost to the day, and return that cost in USD.
+   * Called for every turn that reached the model, answered or not: tokens a
+   * failed turn used are billed like any others.
+   */
+  charge(usage: TokenUsage): number {
+    const price = this.options.price;
+    if (!price) return 0;
+    const cost = (usage.promptTokens * price.input + (usage.outputTokens + usage.thinkingTokens) * price.output) / 1_000_000;
+    this.startDay(this.now());
+    this.usdToday += cost;
+    return cost;
+  }
+
   get remainingToday(): number {
     const today = new Date(this.now()).toISOString().slice(0, 10);
     return today === this.day ? Math.max(0, this.options.perDay - this.usedToday) : this.options.perDay;
+  }
+
+  /** Model spend so far this UTC day, in USD. */
+  get spentToday(): number {
+    const today = new Date(this.now()).toISOString().slice(0, 10);
+    return today === this.day ? this.usdToday : 0;
+  }
+
+  private startDay(now: number): void {
+    const today = new Date(now).toISOString().slice(0, 10);
+    if (today === this.day) return;
+    this.day = today;
+    this.usedToday = 0;
+    this.usdToday = 0;
   }
 }

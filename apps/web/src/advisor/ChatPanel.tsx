@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { advisorApi, describeError } from './api';
 import type { ChatStep, StoredCollection } from './api';
+import { RichText } from './RichText';
 
 interface Props {
   collection: StoredCollection | null;
@@ -116,7 +117,9 @@ export function ChatPanel({ collection, available }: Props) {
                       {message.steps.map((step, j) => <li key={j}>{step.summary}</li>)}
                     </ul>
                   )}
-                  <p className="chat-text">{message.text}</p>
+                  {message.from === 'advisor'
+                    ? <RichText className="chat-text chat-rich" text={message.text} />
+                    : <p className="chat-text">{message.text}</p>}
                 </div>
               ))}
               {busy && <p className="chat-thinking">Checking…</p>}

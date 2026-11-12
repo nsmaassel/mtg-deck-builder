@@ -18,6 +18,7 @@ Deck sites tell an Arena player which cards they are missing and stop there. The
 | **Any decklist** | Paste a list in any Arena format (Standard, Alchemy, Historic, Timeless, Pioneer, Brawl, Standard Brawl) or paper Commander. |
 | **Stand-ins for missing cards** | For each card you lack: cards you own that do the same job, and cheaper crafts, each with its reasons and what it fails to cover. Always legal in the format and castable in the deck's colours. |
 | **A list you can build today** | Wildcards go to the cards that are hardest to replace, everything else is swapped, and the result copies straight into Arena's deck import. |
+| **What is wrong with a list, and how it differs** | Rule problems (size, copy limits, legality, colour identity), and for Standard and Pioneer a comparison with the tournament lists of the archetype the list resembles: what most of them play that yours lacks, and what yours plays that few of them do. |
 | **Ask the advisor** | A Google ADK agent whose tools are the checks above. Ask which deck to build or where your wildcards should go; it runs the checks and explains them. Needs a Gemini key or Vertex AI on the server; the rest works without. |
 
 Every recommendation is computed, not generated: stand-ins are scored on Scryfall Tagger's functional tags, rules text, card type, mana value, colour, and how often the deck's archetype actually plays the card. See [J-010](./specs/journeys/010-deck-check.feature.md) for the scoring table. The agent only chooses which checks to run and puts the results into words ([J-013](./specs/journeys/013-advisor-chat.feature.md)).
@@ -172,9 +173,15 @@ GOOGLE_API_KEY=...             # Gemini API key
 # GOOGLE_CLOUD_LOCATION=us-central1
 
 ADVISOR_AGENT_MODEL=gemini-3.8-flash   # default
-ADVISOR_AGENT_DAILY_LIMIT=300          # chat messages per UTC day, all visitors
-ADVISOR_AGENT_PER_MINUTE=20
+ADVISOR_AGENT_THINKING=low             # default; minimal, low, medium or high
+ADVISOR_AGENT_DAILY_USD=0.30           # model spend per UTC day, all visitors, at the prices below
+ADVISOR_AGENT_PRICE_IN=1.50            # USD per million prompt tokens (default: gemini-3.8-flash from 2027-01-01)
+ADVISOR_AGENT_PRICE_OUT=7.50           # USD per million output tokens
+ADVISOR_AGENT_DAILY_LIMIT=100          # chat messages per UTC day, all visitors
+ADVISOR_AGENT_PER_MINUTE=10
 ```
+
+`pnpm eval:agent` puts 15 questions to the configured model and checks every answer against the tool results it was given; see [docs/evals/advisor-agent.md](./docs/evals/advisor-agent.md).
 
 ---
 

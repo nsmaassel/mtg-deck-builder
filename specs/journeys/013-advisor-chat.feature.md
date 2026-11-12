@@ -42,11 +42,30 @@ Feature: Conversational deck advice
     Then I am told chat is back tomorrow, and that the deck check still works
     And the model is not called
 
-  Scenario: A question that gets no answer costs nothing
+  Scenario: A question that gets no answer is not counted
     Given the model fails, or my conversation is at its length limit
     When I ask a question
-    Then the day's budget is not charged
+    Then the message does not count against the day's messages
+    But the tokens a failed turn used before it failed still count against the day's spend
     And my conversation is left exactly as it was, so asking again is not asking twice
+
+  Scenario: A question that asks for too much at once
+    When my question would take more tool runs than one message allows
+    Then the tools past the limit answer that it is too many
+    And the advisor answers from what it has and asks me to narrow it down
+
+  Scenario: A conversation that has grown long
+    Given the history sent to the model has grown past the context limit
+    When I ask another question
+    Then I am asked to start a new conversation
+
+  Scenario: A card name that matches nothing
+    When I ask about a card that does not exist or is misspelt
+    Then the advisor says so, and offers only the nearest real names the lookup returned
+
+  Scenario: Answers are formatted, never rendered as markup
+    When the advisor answers with bold names and a list
+    Then I see bold text and a list, and nothing in the answer becomes HTML or a link
 
   Scenario: The server has forgotten my conversation
     Given my conversation expired or the server restarted
@@ -80,14 +99,21 @@ The instruction forbids stating card text, legality, ownership, costs or meta nu
 
 | Limit | Default | Setting |
 |-------|---------|---------|
-| Chat messages per UTC day, all visitors | 300 | `ADVISOR_AGENT_DAILY_LIMIT` |
-| Chat messages per minute, all visitors | 20 | `ADVISOR_AGENT_PER_MINUTE` |
-| Model calls per message, tool round-trips included | 8 | code |
+| Model spend per UTC day, all visitors | $0.30 | `ADVISOR_AGENT_DAILY_USD`, priced by `ADVISOR_AGENT_PRICE_IN` / `ADVISOR_AGENT_PRICE_OUT` |
+| Chat messages per UTC day, all visitors | 100 | `ADVISOR_AGENT_DAILY_LIMIT` |
+| Chat messages per minute, all visitors | 10 | `ADVISOR_AGENT_PER_MINUTE` |
+| Model calls per message, tool round-trips included | 6 | code |
+| Tool runs per message | 6 | code |
+| Conversation history | 40,000 tokens, then a new conversation | code |
 | Messages per conversation | 30 | code |
 | Message length | 2,000 characters | code |
 
-Counts are kept in memory, which fits a single instance. The collection travels with each message; conversations are kept in memory for an hour and nowhere else.
+Messages differ in cost by an order of magnitude, so the dollar ceiling is the one sized to the bill: every turn's tokens are priced and added to the day, including the tokens of a turn that failed part-way. The turn that crosses the ceiling is still answered, so a day can end one turn over. $0.30 a day is at most $9.30 a month. The default prices are gemini-3.8-flash's list prices from 2027-01-01, twice what it costs until then, so the ceiling errs towards stopping early.
 
-## Not covered by a test yet
+An answer costs about half a cent on the default model (measured: 5,400 prompt and 220 output tokens on average), so the default ceiling is roughly 30 answers a day by the server's own conservative pricing.
 
-The scenarios above are tested with a scripted model, which proves the wiring: tools run, results reach the model, limits hold. Whether a real model follows the instruction is a question for an eval run against one, which needs a model key.
+Counts are kept in memory, which fits a single instance and is lost on a restart: the project's billing cut-off, not this, is the last line of defence. The collection travels with each message; conversations are kept in memory for an hour and nowhere else.
+
+## Evaluated against a real model
+
+The scenarios above are tested with a scripted model, which proves the wiring: tools run, results reach the model, limits hold. Whether a real model follows the instruction is checked by `pnpm eval:agent`: 15 questions, each answer checked against the tool results of its conversation for tool choice, cards and percentages no tool returned, and the wording the instruction promises. Results and what they changed are in [docs/evals/advisor-agent.md](../../docs/evals/advisor-agent.md). It needs a model key and is not part of CI.

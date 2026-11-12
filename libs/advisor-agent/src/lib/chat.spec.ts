@@ -3,7 +3,9 @@ import { TextModel } from '@mtg/deck-advisor';
 import type { AdvisorData } from '@mtg/deck-advisor';
 import { buildTestIndex, collectionOf } from '@mtg/deck-advisor/testing';
 import type { MetaArchetype, MetaSnapshot, TournamentDeck } from '@mtg/meta-decks/types';
+import type { LlmResponse } from '@google/adk';
 import { AdvisorChat, AdvisorChatError } from './chat';
+import type { TurnTrace } from './chat';
 import { ScriptedLlm, callTool, lastToolResult, say } from './testing';
 
 const index = buildTestIndex();
@@ -69,6 +71,42 @@ describe('AdvisorChat', () => {
     ]);
     expect(turn.sessionId).toMatch(/^[0-9a-f-]{36}$/);
     expect(model.requests).toHaveLength(3);
+  });
+
+  it('reports each answered turn with what the tools returned and what the model calls cost', async () => {
+    const traces: TurnTrace[] = [];
+    const costing = (response: LlmResponse, prompt: number, output: number, thinking = 0): LlmResponse => ({
+      ...response,
+      usageMetadata: { promptTokenCount: prompt, candidatesTokenCount: output, thoughtsTokenCount: thinking },
+    });
+    const model = new ScriptedLlm([
+      costing(callTool('list_meta_decks', { format: 'standard' }), 100, 10, 5),
+      costing(say('Izzet Prowess.'), 300, 20),
+    ]);
+    const chat = new AdvisorChat({ data, model, onTurn: trace => traces.push(trace) });
+
+    const turn = await chat.send({ message: 'Which deck am I closest to?', collection: owned });
+
+    expect(traces).toHaveLength(1);
+    expect(traces[0]).toMatchObject({
+      sessionId: turn.sessionId,
+      message: 'Which deck am I closest to?',
+      reply: 'Izzet Prowess.',
+      usage: { llmCalls: 2, promptTokens: 400, outputTokens: 30, thinkingTokens: 5 },
+    });
+    expect(traces[0]!.tools).toHaveLength(1);
+    expect(traces[0]!.tools[0]).toMatchObject({ tool: 'list_meta_decks', args: { format: 'standard' } });
+    const result = traces[0]!.tools[0]!.result as { decks: { archetype: string }[] };
+    expect(result.decks.map(deck => deck.archetype)).toContain('izzet-prowess');
+  });
+
+  it('does not report a turn that got no answer', async () => {
+    const traces: TurnTrace[] = [];
+    const chat = new AdvisorChat({ data, model: new ScriptedLlm([say('')]), onTurn: trace => traces.push(trace) });
+
+    await expect(chat.send({ message: 'hello', collection: null })).rejects.toBeInstanceOf(AdvisorChatError);
+
+    expect(traces).toEqual([]);
   });
 
   it('gives the model the instruction and every tool', async () => {
@@ -190,6 +228,72 @@ describe('AdvisorChat', () => {
       .rejects.toMatchObject({ name: 'AdvisorChatError', kind: 'limit' });
   });
 
+  it('ends a conversation whose history has grown past the context limit', async () => {
+    const model = new ScriptedLlm([
+      { ...say('a long answer'), usageMetadata: { promptTokenCount: 5_000, candidatesTokenCount: 10 } },
+      say('never reached'),
+    ]);
+    const chat = new AdvisorChat({ data, model, maxContextTokens: 4_000 });
+    const first = await chat.send({ message: 'one', collection: null });
+
+    await expect(chat.send({ sessionId: first.sessionId, message: 'two', collection: null }))
+      .rejects.toMatchObject({ kind: 'limit' });
+    // A new conversation starts small again.
+    model.requests.length = 0;
+    await expect(chat.send({ message: 'fresh', collection: null })).resolves.toMatchObject({ reply: 'never reached' });
+  });
+
+  it('stops running tools past the per-turn limit and tells the model why', async () => {
+    let third: Record<string, unknown> = {};
+    const model = new ScriptedLlm([
+      callTool('lookup_cards', { names: ['Opt'] }),
+      callTool('lookup_cards', { names: ['Shock'] }),
+      callTool('lookup_cards', { names: ['Duress'] }),
+      request => {
+        third = lastToolResult(request);
+        return say('That is all I can check at once.');
+      },
+    ]);
+    const traces: TurnTrace[] = [];
+    const chat = new AdvisorChat({ data, model, maxToolCallsPerTurn: 2, onTurn: trace => traces.push(trace) });
+
+    await chat.send({ message: 'look up everything', collection: null });
+
+    expect(third['error']).toMatch(/too many checks/i);
+    expect(traces[0]!.tools.map(run => 'cards' in (run.result as object))).toEqual([true, true, false]);
+  });
+
+  it('gives each turn its own allowance of tool runs', async () => {
+    const model = new ScriptedLlm([
+      callTool('lookup_cards', { names: ['Opt'] }),
+      say('first'),
+      callTool('lookup_cards', { names: ['Shock'] }),
+      request => say('cards' in lastToolResult(request) ? 'looked up' : 'refused'),
+    ]);
+    const chat = new AdvisorChat({ data, model, maxToolCallsPerTurn: 1 });
+    const first = await chat.send({ message: 'one', collection: null });
+
+    await expect(chat.send({ sessionId: first.sessionId, message: 'two', collection: null }))
+      .resolves.toMatchObject({ reply: 'looked up' });
+  });
+
+  it('says what a turn cost, also when the turn failed part-way', async () => {
+    const usage = (prompt: number, output: number) => ({ usageMetadata: { promptTokenCount: prompt, candidatesTokenCount: output } });
+    const answered = new ScriptedLlm([
+      { ...callTool('collection_summary'), ...usage(1_000, 20) },
+      { ...say('done'), ...usage(1_200, 30) },
+    ]);
+    await expect(new AdvisorChat({ data, model: answered }).send({ message: 'hi', collection: null }))
+      .resolves.toMatchObject({ usage: { llmCalls: 2, promptTokens: 2_200, outputTokens: 50, thinkingTokens: 0 } });
+
+    const failing = new ScriptedLlm([
+      { ...callTool('collection_summary'), ...usage(1_000, 20) },
+      { errorCode: '503', errorMessage: 'overloaded' },
+    ]);
+    await expect(new AdvisorChat({ data, model: failing }).send({ message: 'hi', collection: null }))
+      .rejects.toMatchObject({ kind: 'model', usage: { llmCalls: 1, promptTokens: 1_000, outputTokens: 20 } });
+  });
+
   it('reports a failing model as a model error', async () => {
     const failing = new ScriptedLlm([]);
     await expect(new AdvisorChat({ data, model: failing }).send({ message: 'hi', collection: null }))
@@ -300,15 +404,50 @@ describe('advisor tools', () => {
     expect((await toolResult('check_decklist', { deckText: '4 Shock', format: 'tiny-leaders' }))['error']).toMatch(/Unknown format/);
   });
 
+  it('a deck check reports rule problems and how the list compares with its archetype\'s tournament lists', async () => {
+    const short = await toolResult('check_decklist', { deckText: '4 Shock\n4 Opt\n20 Island', format: 'standard' });
+    expect(short['problems']).toEqual(['28 cards in the main deck. Standard needs at least 60.']);
+
+    // The fixture archetypes hold too few lists to compare with; forty lists are enough.
+    const crowded: AdvisorData = {
+      ...data,
+      meta: new Map([['standard', { ...snapshot, archetypes: snapshot.archetypes.map(a => ({ ...a, deckCount: 40 })) }]]),
+    };
+    let compared: Record<string, unknown> = {};
+    const model = new ScriptedLlm([
+      callTool('check_decklist', { deckText: '4 Slickshot Show-Off\n4 Shock\n4 Consider\n48 Mountain', format: 'standard' }),
+      request => {
+        compared = lastToolResult(request)['comparedWithTournamentLists'] as Record<string, unknown>;
+        return say('done');
+      },
+    ]);
+    await new AdvisorChat({ data: crowded, model }).send({ message: 'go', collection: owned });
+
+    expect(compared).toMatchObject({ archetype: 'Izzet Prowess', tournamentLists: 40 });
+    expect(compared['mostListsPlayButThisOneLacks']).toEqual([
+      { card: 'Opt', playedByPercentOfLists: 100, usualCopies: 4, copiesInThisList: 0, copiesOwned: 4, wildcard: 'common' },
+      { card: 'Steam Vents', playedByPercentOfLists: 100, usualCopies: 4, copiesInThisList: 0, copiesOwned: 0, wildcard: 'rare' },
+    ]);
+    expect(compared['thisOnePlaysButFewListsDo']).toEqual([
+      { card: 'Consider', playedByPercentOfLists: 0, copiesInThisList: 4, copiesOwned: 0, wildcard: 'common' },
+    ]);
+  });
+
   it('lookup_cards returns rules text and ownership, and flags names it cannot find', async () => {
-    const result = await toolResult('lookup_cards', { names: ['shock', 'Not A Card'] });
-    const [shock, unknown] = result['cards'] as Array<Record<string, unknown>>;
+    const result = await toolResult('lookup_cards', { names: ['shock', 'Not A Card', 'Sheoldred the Apocolypse'] });
+    const [shock, unknown, misspelt] = result['cards'] as Array<Record<string, unknown>>;
     expect(shock).toMatchObject({
       name: 'Shock', manaCost: '{R}', type: 'Instant', craftWildcard: 'common', copiesOwned: 4,
       text: 'Shock deals 2 damage to any target.',
     });
     expect(shock?.['roles']).toContain('burn');
-    expect(unknown).toEqual({ name: 'Not A Card', error: 'No card by this name.' });
+    expect(unknown).toEqual({ name: 'Not A Card', error: 'No card named "Not A Card".' });
+    // A near miss comes back with the real name, so the model has no need to guess one.
+    expect(misspelt).toEqual({
+      name: 'Sheoldred the Apocolypse',
+      error: 'No card named "Sheoldred the Apocolypse".',
+      closestNames: ['Sheoldred, the Apocalypse'],
+    });
   });
 
   it('find_stand_ins works for a single card, in the card\'s own colours unless told otherwise', async () => {

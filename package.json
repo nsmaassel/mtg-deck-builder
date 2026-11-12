@@ -14,7 +14,8 @@
     "typecheck": "nx run-many --target=typecheck --all",
     "data": "pnpm data:cards && pnpm data:meta",
     "data:cards": "tsx --tsconfig tsconfig.json scripts/data/build-card-index.ts",
-    "data:meta": "tsx --tsconfig tsconfig.json scripts/data/build-meta.ts"
+    "data:meta": "tsx --tsconfig tsconfig.json scripts/data/build-meta.ts",
+    "eval:agent": "tsx --tsconfig tsconfig.json scripts/evals/advisor-agent.ts"
   },
   "keywords": [
     "mtg",

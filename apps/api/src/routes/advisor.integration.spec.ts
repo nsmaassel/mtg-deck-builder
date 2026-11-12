@@ -349,6 +349,41 @@ describe('POST /api/advisor/chat', () => {
     expect(model.requests).toHaveLength(1);
   });
 
+  it('charges what each turn cost to the day, keeps the cost out of the reply, and stops at the dollar ceiling', async () => {
+    const costing = (prompt: number, output: number) => ({ usageMetadata: { promptTokenCount: prompt, candidatesTokenCount: output } });
+    const model = new ScriptedLlm([
+      { ...callTool('collection_summary'), ...costing(40_000, 100) },
+      { ...say('one'), ...costing(60_000, 900) },
+      say('never asked'),
+    ]);
+    const budget = new ChatBudget({ perDay: 50, perMinute: 50, usdPerDay: 0.1, price: { input: 1, output: 10 } });
+    const instance = withChat(model, budget);
+
+    const first = await post<Record<string, unknown>>('/api/advisor/chat', { message: 'first' }, instance);
+    expect(first.status).toBe(200);
+    expect(first.body).not.toHaveProperty('usage');
+    // 100k prompt tokens at $1 a million, 1k output tokens at $10 a million.
+    expect(budget.spentToday).toBeCloseTo(0.11, 10);
+
+    const refused = await post<{ message: string }>('/api/advisor/chat', { message: 'second' }, instance);
+    expect(refused.status).toBe(429);
+    expect(refused.body.message).toMatch(/daily budget/);
+    expect(model.requests).toHaveLength(2);
+  });
+
+  it('charges the tokens a failed turn used, though the message itself is not counted', async () => {
+    const model = new ScriptedLlm([
+      { ...callTool('collection_summary'), usageMetadata: { promptTokenCount: 50_000, candidatesTokenCount: 0 } },
+      { errorCode: '503', errorMessage: 'overloaded' },
+    ]);
+    const budget = new ChatBudget({ perDay: 5, perMinute: 50, usdPerDay: 1, price: { input: 1, output: 10 } });
+
+    expect((await post('/api/advisor/chat', { message: 'hi' }, withChat(model, budget))).status).toBe(502);
+
+    expect(budget.remainingToday).toBe(5);
+    expect(budget.spentToday).toBeCloseTo(0.05, 10);
+  });
+
   it('hides the provider\'s error text when the model fails', async () => {
     const model = new ScriptedLlm([{ errorCode: '429', errorMessage: 'Quota exceeded for project secret-project-123' }]);
     const { status, body } = await post<{ error: string; message: string }>('/api/advisor/chat', { message: 'hi' }, withChat(model));

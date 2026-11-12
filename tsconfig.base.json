@@ -24,6 +24,7 @@
       "@mtg/power-level": ["libs/power-level/src/index.ts"],
       "@mtg/advisor-agent": ["libs/advisor-agent/src/index.ts"],
       "@mtg/advisor-agent/config": ["libs/advisor-agent/src/config.ts"],
+      "@mtg/advisor-agent/evals": ["libs/advisor-agent/src/evals.ts"],
       "@mtg/advisor-agent/testing": ["libs/advisor-agent/src/testing.ts"],
       "@mtg/card-index": ["libs/card-index/src/index.ts"],
       "@mtg/card-index/node": ["libs/card-index/src/node.ts"],

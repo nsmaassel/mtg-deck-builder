@@ -1,5 +1,5 @@
 import type { AdvisorChat } from '@mtg/advisor-agent';
-import { detectModelAccess } from '@mtg/advisor-agent/config';
+import { detectModelAccess, parseThinkingLevel } from '@mtg/advisor-agent/config';
 import { loadAdvisorData } from '@mtg/deck-advisor/node';
 import type { AdvisorData } from '@mtg/deck-advisor';
 import { buildApp } from './app';
@@ -10,6 +10,11 @@ const HOST = process.env['HOST'] ?? '0.0.0.0';
 
 const positiveInt = (value: string | undefined, fallback: number): number => {
   const parsed = Number.parseInt(value ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const positiveNumber = (value: string | undefined, fallback: number): number => {
+  const parsed = Number.parseFloat(value ?? '');
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
@@ -35,11 +40,25 @@ async function main(): Promise<void> {
   let chat: AdvisorChat | null = null;
   if (advisor && access.configured) {
     const { AdvisorChat } = await import('@mtg/advisor-agent');
-    chat = new AdvisorChat({ data: advisor, model: process.env['ADVISOR_AGENT_MODEL'] ?? 'gemini-3.8-flash' });
+    chat = new AdvisorChat({
+      data: advisor,
+      model: process.env['ADVISOR_AGENT_MODEL'] ?? 'gemini-3.8-flash',
+      // Evaluated on gemini-3.8-flash: at "low" every eval case passes, answers come back in about a
+      // third of the time, and a turn costs about half as much (docs/evals/advisor-agent.md).
+      thinkingLevel: parseThinkingLevel(process.env['ADVISOR_AGENT_THINKING']) ?? 'low',
+    });
   }
+  // The dollar ceiling is the one sized to the bill: $0.30 a day is at most $9.30 a month.
+  // The default prices are gemini-3.8-flash's list prices from 2027-01-01, double what it costs
+  // until then, so the ceiling errs towards stopping early. Set them when the model changes.
   const chatBudget = new ChatBudget({
-    perDay: positiveInt(process.env['ADVISOR_AGENT_DAILY_LIMIT'], 300),
-    perMinute: positiveInt(process.env['ADVISOR_AGENT_PER_MINUTE'], 20),
+    perDay: positiveInt(process.env['ADVISOR_AGENT_DAILY_LIMIT'], 100),
+    perMinute: positiveInt(process.env['ADVISOR_AGENT_PER_MINUTE'], 10),
+    usdPerDay: positiveNumber(process.env['ADVISOR_AGENT_DAILY_USD'], 0.3),
+    price: {
+      input: positiveNumber(process.env['ADVISOR_AGENT_PRICE_IN'], 1.5),
+      output: positiveNumber(process.env['ADVISOR_AGENT_PRICE_OUT'], 7.5),
+    },
   });
 
   const app = buildApp({ advisor, chat, chatBudget });

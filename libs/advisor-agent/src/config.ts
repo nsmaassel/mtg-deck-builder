@@ -4,3 +4,5 @@
  */
 export { detectModelAccess } from './lib/model-access';
 export type { ModelAccess } from './lib/model-access';
+export { THINKING_LEVELS, parseThinkingLevel } from './lib/thinking';
+export type { ThinkingLevel } from './lib/thinking';

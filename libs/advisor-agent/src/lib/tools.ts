@@ -11,7 +11,7 @@ import {
   parseDeckText,
   parseFormat,
 } from '@mtg/deck-advisor';
-import type { AdvisorData, Collection, DeckCheck } from '@mtg/deck-advisor';
+import type { AdvisorData, Collection, DeckCheck, DeckTuneView, TuneCardView } from '@mtg/deck-advisor';
 
 /** What a conversation knows about the player. The browser sends it with every message. */
 export interface PlayerContext {
@@ -23,6 +23,7 @@ const MAX_DECKS = 12;
 const MAX_STAND_INS = 3;
 const MAX_CARDS_LOOKED_UP = 8;
 const MAX_TAGS = 8;
+const MAX_TUNE_ROWS = 5;
 
 const formatParam = z.string().describe(`Format name: one of ${FORMATS.join(', ')}. Arena names such as "HistoricBrawl" also work.`);
 
@@ -57,6 +58,26 @@ function standIn(substitute: StandIn) {
 const NO_COLLECTION_NOTE =
   'No collection is loaded, so every card is counted as not owned. Say so, and suggest loading one in the "Your collection" panel.';
 
+/** The list against its archetype's tournament lists, with the field names doing the explaining. */
+function summarizeTune(tune: DeckTuneView, collectionLoaded: boolean) {
+  const row = (entry: TuneCardView) => ({
+    card: entry.card.name,
+    playedByPercentOfLists: percent(entry.share),
+    usualCopies: entry.typicalCopies || undefined,
+    copiesInThisList: entry.inDeck,
+    copiesOwned: collectionLoaded ? entry.owned : undefined,
+    wildcard: entry.craftRarity,
+  });
+  return {
+    archetype: tune.archetype,
+    tournamentLists: tune.lists,
+    resemblancePercent: tune.similarity === undefined ? undefined : percent(tune.similarity),
+    mostListsPlayButThisOneLacks: tune.missingStaples.slice(0, MAX_TUNE_ROWS).map(row),
+    thisOnePlaysButFewListsDo: tune.unusual.slice(0, MAX_TUNE_ROWS).map(row),
+    sideboardCardsMostListsBring: tune.sideboardStaples.slice(0, MAX_TUNE_ROWS).map(row),
+  };
+}
+
 /** A deck check, cut down to what the model needs to explain it. */
 function summarizeCheck(check: DeckCheck, collectionLoaded: boolean) {
   const { summary, plan } = check;
@@ -66,6 +87,7 @@ function summarizeCheck(check: DeckCheck, collectionLoaded: boolean) {
     format: check.format,
     deck: check.deckName ?? check.archetype,
     colors: check.colors.join('') || 'colourless',
+    problems: check.issues.length ? check.issues.map(issue => issue.message) : undefined,
     ownedPercent: percent(summary.completion),
     ownedCards: `${summary.ownedCards} of ${summary.totalCards}`,
     wildcardsToBuildExactly: summary.wildcardsNeeded,
@@ -80,7 +102,7 @@ function summarizeCheck(check: DeckCheck, collectionLoaded: boolean) {
       standIns: card.substitutes.slice(0, MAX_STAND_INS).map(standIn),
     })),
     buildableToday: {
-      keepsPercentOfOriginal: percent(plan.fidelity),
+      sameAsOriginalPercent: percent(plan.fidelity),
       steps: plan.steps.map(step => ({
         action: step.action,
         copies: step.count,
@@ -93,6 +115,7 @@ function summarizeCheck(check: DeckCheck, collectionLoaded: boolean) {
       wildcardsSpent: plan.wildcardsSpent,
       wildcardsLeft: plan.wildcardsLeft,
     },
+    comparedWithTournamentLists: check.tune && summarizeTune(check.tune, collectionLoaded),
     unreadableLines: check.unrecognizedLines.length || undefined,
   };
 }
@@ -113,11 +136,34 @@ function describeCard(card: IndexedCard, collection: Collection | null) {
   };
 }
 
+export interface ToolLimits {
+  /** Tool runs allowed over the lifetime of this set of tools, which the chat builds once per turn. */
+  maxCalls?: number;
+}
+
+const TOO_MANY_CALLS = {
+  error: 'Too many checks for one question. Answer from the results you already have, and ask the player to narrow the question down if that is not enough.',
+};
+
 /**
  * The advisor's tools. Each one calls the deterministic engine and returns a
  * compact summary; none of them reaches the network.
  */
-export function createAdvisorTools(data: AdvisorData, player: PlayerContext): FunctionTool[] {
+export function createAdvisorTools(data: AdvisorData, player: PlayerContext, limits: ToolLimits = {}): FunctionTool[] {
+  // Every result rides along in each later model call of the turn, so the number of runs is what bounds a turn's cost.
+  let calls = 0;
+  const limited = <Args extends unknown[], Result>(execute: (...args: Args) => Result) =>
+    (...args: Args): Result | typeof TOO_MANY_CALLS => {
+      calls += 1;
+      return limits.maxCalls !== undefined && calls > limits.maxCalls ? TOO_MANY_CALLS : execute(...args);
+    };
+
+  // A name that matches nothing comes back with the nearest real names, so the model has something true to offer.
+  const noSuchCard = (name: string) => {
+    const closestNames = data.index.closest(name).map(card => card.name);
+    return { error: `No card named "${name}".`, closestNames: closestNames.length ? closestNames : undefined };
+  };
+
   const empty: Collection = { owned: new Map() };
   const collection = () => player.collection ?? empty;
   const loaded = player.collection !== null;
@@ -140,7 +186,7 @@ export function createAdvisorTools(data: AdvisorData, player: PlayerContext): Fu
   const collectionSummary = new FunctionTool({
     name: 'collection_summary',
     description: 'Whether the player has loaded a collection, how many cards it holds, and the wildcards they can spend.',
-    execute: () => {
+    execute: limited(() => {
       if (!player.collection) return { loaded: false };
       const copies = [...player.collection.owned.values()].reduce((sum, n) => sum + n, 0);
       const byRarity: Record<string, number> = {};
@@ -155,7 +201,7 @@ export function createAdvisorTools(data: AdvisorData, player: PlayerContext): Fu
         differentCardsByRarity: byRarity,
         wildcards: player.collection.wildcards ?? 'not given',
       };
-    },
+    }),
   });
 
   const listMetaDecks = new FunctionTool({
@@ -165,7 +211,7 @@ export function createAdvisorTools(data: AdvisorData, player: PlayerContext): Fu
       'With a collection loaded, each deck also shows how much of it the player owns and the wildcards still needed, ' +
       'and the list is ordered by how close the player is to building it.',
     parameters: z.object({ format: formatParam }),
-    execute: ({ format }) => {
+    execute: limited(({ format }) => {
       const key = parseFormat(format);
       const snapshot = key ? data.meta.get(key) : undefined;
       if (!snapshot) {
@@ -191,7 +237,7 @@ export function createAdvisorTools(data: AdvisorData, player: PlayerContext): Fu
           craftableNow: deck.gap?.craftable,
         })),
       };
-    },
+    }),
   });
 
   const checkMetaDeck = new FunctionTool({
@@ -204,7 +250,7 @@ export function createAdvisorTools(data: AdvisorData, player: PlayerContext): Fu
       archetype: z.string().describe('Archetype id from list_meta_decks, e.g. "izzet-prowess".'),
       spendWildcards: z.boolean().optional().describe('False to keep every wildcard and fill gaps with swaps only. Default true.'),
     }),
-    execute: ({ format, archetype, spendWildcards }) => {
+    execute: limited(({ format, archetype, spendWildcards }) => {
       const key = parseFormat(format);
       if (!key) return unknownFormat(format);
       const found = data.meta.get(key)?.archetypes.find(a => a.id === archetype);
@@ -215,7 +261,7 @@ export function createAdvisorTools(data: AdvisorData, player: PlayerContext): Fu
       });
       const { player: pilot, result, event, date } = found.representative;
       return { list: `${pilot}, ${result}, ${event} (${date})`, ...summarizeCheck(check, loaded) };
-    },
+    }),
   });
 
   const checkDecklist = new FunctionTool({
@@ -228,7 +274,7 @@ export function createAdvisorTools(data: AdvisorData, player: PlayerContext): Fu
       format: formatParam,
       spendWildcards: z.boolean().optional().describe('False to keep every wildcard and fill gaps with swaps only. Default true.'),
     }),
-    execute: ({ deckText, format, spendWildcards }) => {
+    execute: limited(({ deckText, format, spendWildcards }) => {
       const key = parseFormat(format);
       if (!key) return unknownFormat(format);
       const deck = parseDeckText(deckText);
@@ -237,19 +283,19 @@ export function createAdvisorTools(data: AdvisorData, player: PlayerContext): Fu
       }
       const check = checkDeck(deck, key, collection(), data, { craft: spendWildcards === false ? 'none' : 'inventory' });
       return summarizeCheck(check, loaded);
-    },
+    }),
   });
 
   const lookupCards = new FunctionTool({
     name: 'lookup_cards',
     description: 'Rules text, cost, type, legality, Arena wildcard rarity and functional roles of up to 8 cards, and how many copies the player owns.',
     parameters: z.object({ names: z.array(z.string()).min(1).max(MAX_CARDS_LOOKED_UP).describe('Card names.') }),
-    execute: ({ names }) => ({
+    execute: limited(({ names }) => ({
       cards: names.map(name => {
         const card = data.index.byName(name);
-        return card ? describeCard(card, player.collection) : { name, error: 'No card by this name.' };
+        return card ? describeCard(card, player.collection) : { name, ...noSuchCard(name) };
       }),
-    }),
+    })),
   });
 
   const findStandIns = new FunctionTool({
@@ -262,11 +308,11 @@ export function createAdvisorTools(data: AdvisorData, player: PlayerContext): Fu
       format: formatParam,
       deckColors: z.string().optional().describe('Colours the deck plays, as letters from WUBRG, e.g. "UR". Defaults to the card\'s own colours.'),
     }),
-    execute: ({ card: name, format, deckColors }) => {
+    execute: limited(({ card: name, format, deckColors }) => {
       const key = parseFormat(format) as Format | undefined;
       if (!key) return unknownFormat(format);
       const card = data.index.byName(name);
-      if (!card) return { error: `No card named "${name}".` };
+      if (!card) return noSuchCard(name);
       const colors = deckColors
         ? [...deckColors.toUpperCase()].filter(c => 'WUBRG'.includes(c))
         : card.colorIdentity.length ? card.colorIdentity : frontColors(card);
@@ -278,7 +324,7 @@ export function createAdvisorTools(data: AdvisorData, player: PlayerContext): Fu
         colors: colors.join('') || 'colourless',
         standIns: finderFor(key, colors).suggest(card, { limit: 5 }).map(standIn),
       };
-    },
+    }),
   });
 
   return [collectionSummary, listMetaDecks, checkMetaDeck, checkDecklist, lookupCards, findStandIns];
