@@ -32,7 +32,9 @@
       "@mtg/deck-advisor/node": ["libs/deck-advisor/src/node.ts"],
       "@mtg/deck-advisor/testing": ["libs/deck-advisor/src/testing.ts"],
       "@mtg/meta-decks": ["libs/meta-decks/src/index.ts"],
-      "@mtg/meta-decks/types": ["libs/meta-decks/src/lib/types.ts"]
+      "@mtg/meta-decks/types": ["libs/meta-decks/src/lib/types.ts"],
+      "@mtg/combos": ["libs/combos/src/index.ts"],
+      "@mtg/combos/node": ["libs/combos/src/node.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

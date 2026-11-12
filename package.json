@@ -12,9 +12,10 @@
     "build": "nx run-many --target=build --all",
     "lint": "nx run-many --target=lint --all",
     "typecheck": "nx run-many --target=typecheck --all",
-    "data": "pnpm data:cards && pnpm data:meta",
+    "data": "pnpm data:cards && pnpm data:meta && pnpm data:combos",
     "data:cards": "tsx --tsconfig tsconfig.json scripts/data/build-card-index.ts",
     "data:meta": "tsx --tsconfig tsconfig.json scripts/data/build-meta.ts",
+    "data:combos": "tsx --tsconfig tsconfig.json scripts/data/build-combos.ts",
     "eval:agent": "tsx --tsconfig tsconfig.json scripts/evals/advisor-agent.ts"
   },
   "keywords": [
