@@ -15,7 +15,8 @@ invokers() {
   gcloud run services get-iam-policy "$SERVICE" --region "$REGION" --project "$PROJECT" \
     --flatten='bindings[].members' --filter='bindings.role:roles/run.invoker' --format='value(bindings.members)'
 }
-is_public() { grep -qx allUsers <<<"$1"; }
+# Any Google account is the public too, for a service whose every question costs money.
+is_public() { grep -qxE 'allUsers|allAuthenticatedUsers' <<<"$1"; }
 
 case "${1:-}" in
   open | close) ;;
@@ -31,8 +32,11 @@ if [ "$1" = open ]; then
   run gcloud run services add-iam-policy-binding "$SERVICE" --region "$REGION" --project "$PROJECT" \
     --member=allUsers --role=roles/run.invoker >/dev/null
 elif is_public "$before"; then
-  run gcloud run services remove-iam-policy-binding "$SERVICE" --region "$REGION" --project "$PROJECT" \
-    --member=allUsers --role=roles/run.invoker >/dev/null
+  for member in allUsers allAuthenticatedUsers; do
+    grep -qx "$member" <<<"$before" || continue
+    run gcloud run services remove-iam-policy-binding "$SERVICE" --region "$REGION" --project "$PROJECT" \
+      --member="$member" --role=roles/run.invoker >/dev/null
+  done
 else
   echo "The public was not an invoker; nothing to remove."
 fi
@@ -40,12 +44,12 @@ fi
 after="$(invokers)"
 echo "$(service_url) can be called by: ${after:-nobody but project members}"
 if [ "$1" = close ] && is_public "$after"; then
-  echo "STILL PUBLIC: allUsers is still an invoker." >&2
+  echo "STILL PUBLIC: the list above still holds allUsers or allAuthenticatedUsers." >&2
   exit 1
 fi
-if [ "$1" = open ] && ! is_public "$after"; then
+if [ "$1" = open ] && ! grep -qx allUsers <<<"$after"; then
   echo "NOT OPEN: allUsers is not an invoker." >&2
   exit 1
 fi
 echo "Access changes take a couple of minutes to apply, sometimes longer."
-[ "$1" = open ] || echo "close removes only the public: an invoker added another way, or an invoker check switched off in the console, is not undone here."
+[ "$1" = open ] || echo "close removes the public and any-Google-account invokers. A named invoker, or an invoker check switched off in the console, is not undone here."

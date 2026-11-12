@@ -22,16 +22,19 @@ Create these three in the console (Billing → Budgets & alerts → Create budge
 | Service | Suggested monthly cap | Stops |
 |---------|-----------------------|-------|
 | Gemini Enterprise Agent Platform (Vertex AI) | $6 | The chat, which is the only thing that costs money per request. The rest of the site keeps working. |
-| Cloud Run | $2 | The whole site. Normal traffic stays inside the free tier; this is for someone hammering the deck check. |
+| Cloud Run | $2 | The whole site. This is for someone hammering the deck check. A cap counts list price before the free tier and credits, so it may count usage that would have cost nothing: $2 is roughly twenty busy hours of the one instance in a month. |
 | Gemini API | $2 | The development key used for `pnpm eval:agent`. The deployed service does not use it. |
 
-That is $10 a month at most, plus the lag. A spend cap budget cannot be converted from an alerts-only one, so the existing `$10/mo` alert budget stays as it is and keeps sending its emails. Creating a cap needs Billing Account Administrator.
+The three caps add up to $10 a month. The bill is not capped at that: the lag comes on top, and so does everything no cap covers, below. A spend cap budget cannot be converted from an alerts-only one, so the existing `$10/mo` alert budget stays as it is and keeps sending its emails. Creating a cap needs Billing Account Administrator.
 
-Not covered by any cap, because caps exist for those four services only:
+Not covered by any cap, because caps exist for four services only (Gemini API, Vertex AI, Cloud Run and Cloud Run functions):
 
 - **Cloud Logging.** Cloud Run writes a line for every request, including the ones it turns away, and the app writes two more. The first 50 GiB a month are free; a flood of requests could go past that, and logging keeps going whatever the Cloud Run cap does. The `$10/mo` alert budget is what would tell you. To take the risk away, exclude the request logs (`gcloud logging sinks update _Default --add-exclusion=name=run-requests,filter='logName:"run.googleapis.com%2Frequests"'`) at the price of not having them.
 - **Image storage** in Artifact Registry (free to 0.5 GiB, then about ten cents per GiB a month), **Cloud Build** minutes (2,500 free a month; a build takes about ten), and the build's staging bucket. Cents, unless images pile up.
 - **Vertex AI beyond chat.** A cap pauses new usage; it does not stop a job already running or a resource already deployed. Nothing here creates either, but see the service's identity below.
+- **Data sent to visitors.** The container serves the web app itself. Whether Cloud Run's outbound data is billed under the Cloud Run service, and so under its cap, is not something Google's pages say; treat it as not covered.
+
+Detaching billing, the hard stop first planned, would have stopped all of these too, along with everything else in the project. That is the trade: caps are narrower and gentler, and leave these to the alert budget.
 
 ## Accounts and permissions
 
@@ -83,7 +86,7 @@ until [ "$(curl -s -o /dev/null -w '%{http_code}' "$URL/health")" = 200 ]; do sl
 |----|-----|
 | Deploy a change, or refresh the cards, the meta and the combos (the image holds a snapshot) | `deploy/2-deploy.sh` |
 | Take the site down by hand | `deploy/3-open.sh close`. It removes the public as an invoker and prints who is left |
-| Roll back | `gcloud run services update-traffic deck-advisor --region us-central1 --project maassel-mtg-advisor --to-revisions=REVISION=100` |
+| Roll back | `gcloud run services update-traffic deck-advisor --region us-central1 --project maassel-mtg-advisor --to-revisions=REVISION=100`. Cloud Run then keeps traffic pinned there; the next `deploy/2-deploy.sh` sends it to the new revision again |
 | See what chat cost | The service's log: each answered turn logs `advisor chat turn` with its tokens and price |
 | Resume after a cap paused a service | It resumes on the first of the month. Sooner: Billing → Budgets & alerts → the budget → Lift spend cap, **then raise its amount**, or the cap stays off until the 1st |
 

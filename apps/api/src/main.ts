@@ -51,7 +51,8 @@ async function main(): Promise<void> {
         : parseThinkingLevel(process.env['ADVISOR_AGENT_THINKING']) ?? 'low',
     });
   }
-  // The dollar ceiling is the one sized to the bill: $0.30 a day is at most $9.30 a month.
+  // The dollar ceiling is the one sized to the bill: $0.30 a day is about $9.30 a month, plus
+  // the turns under way on the days it is reached (see J-013 for how large one can be).
   // The default prices are gemini-3.8-flash's list prices from 2027-01-01, double what it costs
   // until then, so the ceiling errs towards stopping early. Set them when the model changes.
   const chatBudget = new ChatBudget({

@@ -45,7 +45,7 @@ const MINUTE_MS = 60_000;
  * a per-address limit behind a proxy is only as good as the forwarded header.
  * They live in memory, which is enough for a single instance; a restart
  * forgets the day's count, so this is not the last line of defence (the
- * project's billing cut-off is).
+ * deployment's spend caps are).
  */
 export class ChatBudget {
   private day = '';

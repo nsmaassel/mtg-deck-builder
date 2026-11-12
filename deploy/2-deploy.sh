@@ -13,9 +13,10 @@ cd "$(dirname "$0")/.."
 . deploy/config.sh
 
 if [ -z "${IMAGE:-}" ]; then
-  # The build takes the working tree as it is, so the tag says when that is not the commit, and which build it was.
-  TAG="$(git rev-parse --short HEAD)"
-  [ -z "$(git status --porcelain)" ] || TAG="${TAG}-dirty-$(date -u +%Y%m%dT%H%M%SZ)"
+  # The image holds the day's data as well as the commit, so the tag carries both. The build takes
+  # the working tree as it is, so the tag also says when that is not the commit, and which build it was.
+  TAG="$(git rev-parse --short HEAD)-$(date -u +%Y%m%d)"
+  [ -z "$(git status --porcelain)" ] || TAG="${TAG}-dirty-$(date -u +%H%M%SZ)"
   IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/${REPOSITORY}/app:${TAG}"
   # Cloud Build starts from nothing each time, so every build downloads Scryfall's bulk files and
   # Commander Spellbook's variants again. Both ask for about one fetch a day: do not rebuild in a loop,
@@ -26,10 +27,12 @@ if [ -z "${IMAGE:-}" ]; then
 fi
 
 # A new service is created private, said outright rather than left to gcloud's prompt default.
-# Listing tells "not there" (no output) from "could not ask" (the command fails and the script stops):
-# a failed lookup must not be taken for a new service, or the deploy would close an open one.
-EXISTING="$(gcloud run services list --region "$REGION" --project "$PROJECT" \
-  --filter="metadata.name=${SERVICE}" --format='value(metadata.name)')"
+# Listing tells "not there" (not in the output) from "could not ask" (the command fails and the script
+# stops): a failed lookup must not be taken for a new service, or the deploy would close an open one.
+# The name is compared whole, so a sibling such as deck-advisor-staging is not mistaken for it.
+SERVICES="$(gcloud run services list --region "$REGION" --project "$PROJECT" --format='value(metadata.name)')"
+EXISTING=""
+if grep -qx "$SERVICE" <<<"$SERVICES"; then EXISTING=yes; fi
 ACCESS=()
 [ -n "$EXISTING" ] || ACCESS=(--no-allow-unauthenticated)
 
@@ -42,6 +45,10 @@ run gcloud run deploy "$SERVICE" --image "$IMAGE" --region "$REGION" --project "
   --max-instances=1 --min-instances=0 --concurrency=40 --timeout=120 \
   --memory=1Gi --cpu=1 --cpu-boost \
   --update-env-vars="NODE_ENV=production,GOOGLE_GENAI_USE_ENTERPRISE=true,GOOGLE_CLOUD_PROJECT=${PROJECT},GOOGLE_CLOUD_LOCATION=${MODEL_LOCATION}"
+
+# Deploying means serving it. After a rollback Cloud Run keeps traffic pinned to the old revision,
+# and a new one would otherwise be created and serve nothing.
+run gcloud run services update-traffic "$SERVICE" --to-latest --region "$REGION" --project "$PROJECT" >/dev/null
 
 echo
 echo "Deployed: $(service_url)"

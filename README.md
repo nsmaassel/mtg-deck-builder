@@ -386,7 +386,7 @@ The API keeps nothing between requests. The collection lives in the browser and 
 
 ### Cloud Run
 
-The app is one container. [`deploy/README.md`](./deploy/README.md) has the scripts and the guide for Google Cloud Run: a keyless identity that may call Gemini through Vertex AI and nothing else, one instance at most, a first deploy that stays private until it has been checked, and the spending limits, of which Google's spend cap budgets are the hard stop.
+The app is one container. [`deploy/README.md`](./deploy/README.md) has the scripts and the guide for Google Cloud Run: a keyless identity with the Vertex AI role it needs to call Gemini, one instance at most, a first deploy that stays private until it has been checked, and the spending limits, of which Google's spend cap budgets are the hard stop.
 
 ### Render
 
