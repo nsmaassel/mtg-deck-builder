@@ -8,12 +8,14 @@ One Cloud Run service serves the API and the web app. Everything except the chat
 
 | Limit | Where | Holds when |
 |-------|-------|-----------|
-| $0.30 of model spend a day, 100 messages a day, 10 a minute | In the app (`apps/api/src/chat-budget.ts`) | The instance keeps running. The counts are in memory: a restart forgets the day. |
+| $0.30 of model spend a day, 100 messages a day, 10 a minute, 2 answers at once | In the app (`apps/api/src/chat-budget.ts`) | The instance keeps running. The counts are in memory: a restart forgets the day. A turn is priced when it ends, so a day can end two turns over. |
 | 8 model calls and 6 tool runs per message, 40,000 tokens of history per conversation | In the agent | Always. |
 | One instance, scaled to zero when idle | Cloud Run (`--max-instances=1`) | Nearly always; Cloud Run may briefly exceed it in a spike. |
-| A monthly amount per service | Spend cap budgets on the billing account | Always, with a delay: cost estimates lag usage. |
+| A monthly amount per service | Spend cap budgets on the billing account | Until someone lifts one by hand (see below), and with a delay: cost estimates lag usage. |
 
 The spend cap budgets are the hard stop. A spend cap is Google's own: once a service's estimated cost for the month passes the amount, new usage of that service in the project is paused until the next month or until the cap is lifted by hand. Nothing is deleted. Enforcement is not instant, so set each cap a little under what you are willing to pay.
+
+**Lifting a cap by hand switches it off for the rest of the month.** Google does not trigger it again until the 1st unless you then raise its amount. So after a lift the only limits left on that service are the ones in the app, which a restart forgets. If you lift a cap, raise its amount in the same sitting to arm it again, and say by how much you are willing to go over.
 
 Create these three in the console (Billing → Budgets & alerts → Create budget → **Spend cap enforcement**). Each covers one project and one service; the project is `maassel-mtg-advisor`.
 
@@ -25,25 +27,31 @@ Create these three in the console (Billing → Budgets & alerts → Create budge
 
 That is $10 a month at most, plus the lag. A spend cap budget cannot be converted from an alerts-only one, so the existing `$10/mo` alert budget stays as it is and keeps sending its emails. Creating a cap needs Billing Account Administrator.
 
-Not covered by any cap: image storage in Artifact Registry (free to 0.5 GiB, then about ten cents per GiB a month), Cloud Build minutes (2,500 free a month; a build takes about ten), and the build's staging bucket. All are cents unless images pile up.
+Not covered by any cap, because caps exist for those four services only:
+
+- **Cloud Logging.** Cloud Run writes a line for every request, including the ones it turns away, and the app writes two more. The first 50 GiB a month are free; a flood of requests could go past that, and logging keeps going whatever the Cloud Run cap does. The `$10/mo` alert budget is what would tell you. To take the risk away, exclude the request logs (`gcloud logging sinks update _Default --add-exclusion=name=run-requests,filter='logName:"run.googleapis.com%2Frequests"'`) at the price of not having them.
+- **Image storage** in Artifact Registry (free to 0.5 GiB, then about ten cents per GiB a month), **Cloud Build** minutes (2,500 free a month; a build takes about ten), and the build's staging bucket. Cents, unless images pile up.
+- **Vertex AI beyond chat.** A cap pauses new usage; it does not stop a job already running or a resource already deployed. Nothing here creates either, but see the service's identity below.
 
 ## Accounts and permissions
 
 | Identity | Can | Cannot |
 |----------|-----|--------|
-| `deck-advisor-run` (runs the service) | Call Gemini through Vertex AI (`roles/aiplatform.user`) | Read secrets, deploy, change IAM |
-| The Compute Engine default account (runs Cloud Build) | Build and push images (`roles/cloudbuild.builds.builder`) | It is Google's default builder for a project with no organization; nothing else here uses it |
+| `deck-advisor-run` (runs the service) | Use Vertex AI (`roles/aiplatform.user`). That is the role approved for this, and it is wider than calling a model: it can also create Vertex AI jobs and endpoints | Read secrets, deploy, change IAM, touch billing |
+| `deck-advisor-build` (runs Cloud Build) | Read the uploaded source, write build logs, push images (`roles/cloudbuild.builds.builder`) | Deploy, change IAM, call models |
 
-Neither has a key. The visitor's collection is sent with each request and never stored.
+Neither has a key. The build has its own identity so that it does not use the Compute Engine default account, which this project may not have and which is often an Editor where it exists. A narrower custom role for the service (`aiplatform.endpoints.predict` alone) should be enough to call a model; it has not been tried with the ADK, so it is not what the script grants.
+
+The visitor's collection is sent with each request and never stored. The API has no login and answers any origin, so any page or script can call it: the limits above are what bound that, not who is asking.
 
 ## First deploy
 
 Needs `gcloud` signed in as an owner of the project.
 
 ```bash
-deploy/1-setup.sh          # APIs, image repository, the service's identity, the builder's role
+deploy/1-setup.sh          # APIs, image repository, the two identities
 # create the three spend cap budgets in the console (above)
-deploy/2-deploy.sh         # build with Cloud Build (about ten minutes) and deploy, still private
+deploy/2-deploy.sh         # build with Cloud Build (about ten minutes) and deploy, private
 ```
 
 Check it while it is private. This calls the service with your own identity:
@@ -58,12 +66,14 @@ curl -s -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
 # expect: an answer, with lookup_cards among its steps
 ```
 
-If the chat answers 502, read the service's log. The usual causes are the model's name or its location: `gemini-3.8-flash` is served from `global`, `us` and `eu`, not from single regions. `MODEL_LOCATION=us deploy/2-deploy.sh` moves it. To change the model, set `ADVISOR_AGENT_MODEL` on the service (and `ADVISOR_AGENT_PRICE_IN` / `ADVISOR_AGENT_PRICE_OUT` to its prices); later deploys leave those in place.
+If `gcloud builds submit` says it cannot stream the build's log, the build is still running: add `--suppress-logs` to that command in `deploy/2-deploy.sh` and read the log in the console. (The build runs as its own identity and logs to Cloud Logging; whether this version of `gcloud` streams from there has not been tried.)
+
+If the chat answers 502, read the service's log. The usual causes are the model's name or its location: `gemini-3.8-flash` is served from `global`, `us` and `eu`, not from single regions. Every deploy sets the location from `MODEL_LOCATION` in `deploy/config.sh`, so change it there; `IMAGE=<the image just built> deploy/2-deploy.sh` then applies it without building again. To change the model, set `ADVISOR_AGENT_MODEL` on the service (and `ADVISOR_AGENT_PRICE_IN` / `ADVISOR_AGENT_PRICE_OUT` to its prices); deploys leave those in place.
 
 Then open it:
 
 ```bash
-deploy/3-open.sh
+deploy/3-open.sh open
 until [ "$(curl -s -o /dev/null -w '%{http_code}' "$URL/health")" = 200 ]; do sleep 10; done   # access changes take a few minutes
 ```
 
@@ -72,10 +82,10 @@ until [ "$(curl -s -o /dev/null -w '%{http_code}' "$URL/health")" = 200 ]; do sl
 | To | Run |
 |----|-----|
 | Deploy a change, or refresh the cards, the meta and the combos (the image holds a snapshot) | `deploy/2-deploy.sh` |
-| Take the site down by hand | `deploy/3-open.sh close` |
+| Take the site down by hand | `deploy/3-open.sh close`. It removes the public as an invoker and prints who is left |
 | Roll back | `gcloud run services update-traffic deck-advisor --region us-central1 --project maassel-mtg-advisor --to-revisions=REVISION=100` |
 | See what chat cost | The service's log: each answered turn logs `advisor chat turn` with its tokens and price |
-| Resume after a cap paused a service | It resumes on the first of the month. Sooner: Billing → Budgets & alerts → the budget → Lift spend cap |
+| Resume after a cap paused a service | It resumes on the first of the month. Sooner: Billing → Budgets & alerts → the budget → Lift spend cap, **then raise its amount**, or the cap stays off until the 1st |
 
 The meta snapshot is 45 days of tournaments ending at build time. Redeploy every week or two to keep it current; nothing does that on a schedule yet.
 
@@ -84,4 +94,6 @@ The meta snapshot is 45 days of tournaments ending at build time. Redeploy every
 - The in-app daily ceiling is forgotten when the instance restarts, which Cloud Run does after about fifteen idle minutes. Someone patient could spend the daily amount several times a day, until the month's cap on Vertex AI pauses the chat. Keeping the day's count outside the instance would fix that and is not built.
 - The evals ran against the Gemini API with a key, not against Vertex AI. Same model, different endpoint: after the first deploy, run `pnpm eval:agent` once with `GOOGLE_GENAI_USE_ENTERPRISE=true`, `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_LOCATION` set.
 - Old images accumulate in the repository. Delete them by hand or add a cleanup policy.
+- Every build downloads Scryfall's bulk files and Commander Spellbook's variants again: Cloud Build keeps no layers between builds. Both sources ask for about one fetch a day, so do not rebuild in a loop; redeploy an existing image with `IMAGE=...` when only settings change.
+- A chat turn has no deadline of its own. The request times out at 120 seconds; a turn slower than that would keep running, and be charged, after the visitor got an error.
 - What a visitor sees while a spend cap has paused Cloud Run is not documented by Google and has not been tried here.

@@ -390,7 +390,7 @@ The app is one container. [`deploy/README.md`](./deploy/README.md) has the scrip
 
 ### Render
 
-`render.yaml` describes the same container on Render. It has no model access, so the advisor's chat is off there and everything else works. Nothing on that route limits spend, because nothing on it costs money per request.
+`render.yaml` describes the same container on Render. As written it has no model access, so the advisor's chat is off there, nothing costs money per request, and everything else works. Give it a Gemini key and the chat turns on with the in-app limits only: there is no spend cap behind them on that route.
 
 ### The image
 

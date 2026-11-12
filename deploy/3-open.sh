@@ -1,20 +1,32 @@
 #!/usr/bin/env bash
-# Put the service on the public internet. Run once, after the first deploy has
-# been checked and the spend cap budgets exist. To take it off again:
-#   deploy/3-open.sh close
+# Put the service on the public internet, or take it off.
 #
-# Usage: deploy/3-open.sh [close]
+#   deploy/3-open.sh open    after the first deploy has been checked and the spend cap budgets exist
+#   deploy/3-open.sh close   take it off again
+#
+# Anything else changes nothing. Both are safe to repeat.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . deploy/config.sh
 
-# Echoed to stderr, so it still shows when a command's own output is sent to /dev/null.
-run() { echo "+ $*" >&2; "$@"; }
-action=add-iam-policy-binding
-[ "${1:-}" = "close" ] && action=remove-iam-policy-binding
+case "${1:-}" in
+  open)
+    run gcloud run services add-iam-policy-binding "$SERVICE" --region "$REGION" --project "$PROJECT" \
+      --member=allUsers --role=roles/run.invoker >/dev/null
+    ;;
+  close)
+    # Removing a binding that is not there is an error to gcloud and no problem here.
+    run gcloud run services remove-iam-policy-binding "$SERVICE" --region "$REGION" --project "$PROJECT" \
+      --member=allUsers --role=roles/run.invoker >/dev/null 2>&1 || echo "(the public was not an invoker)"
+    ;;
+  *)
+    echo "Usage: deploy/3-open.sh open|close" >&2
+    exit 2
+    ;;
+esac
 
-run gcloud run services "$action" "$SERVICE" --region "$REGION" --project "$PROJECT" \
-  --member=allUsers --role=roles/run.invoker >/dev/null
-
-echo "$([ "$action" = add-iam-policy-binding ] && echo Open || echo Closed): $(gcloud run services describe "$SERVICE" --region "$REGION" --project "$PROJECT" --format='value(status.url)')"
-echo "Access changes take a couple of minutes to apply, sometimes longer."
+echo "$(service_url) can now be called by:"
+gcloud run services get-iam-policy "$SERVICE" --region "$REGION" --project "$PROJECT" \
+  --flatten='bindings[].members' --filter='bindings.role:roles/run.invoker' --format='value(bindings.members)'
+echo "(an empty list means nobody but project members). Access changes take a couple of minutes to apply, sometimes longer."
+echo "close removes only the public: an invoker added another way, or an invoker check switched off in the console, is not undone here."

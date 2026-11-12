@@ -1,0 +1,13 @@
+# What `gcloud builds submit` uploads. Without this file gcloud falls back to
+# .gitignore alone, which lets through everything git ignores some other way.
+#!include:.gitignore
+
+.git
+.gitignore
+.review
+.claude
+.vscode
+.idea
+*.pem
+.env*
+*.local

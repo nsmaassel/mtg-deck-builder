@@ -3,5 +3,9 @@ steps:
   - name: gcr.io/cloud-builders/docker
     args: ['build', '--build-arg', 'DATA_DATE=${_DATA_DATE}', '-t', '${_IMAGE}', '.']
 images: ['${_IMAGE}']
+options:
+  # deploy/2-deploy.sh runs the build as its own identity (--service-account), and a build that
+  # does not run as the project's default must say where its logs go: Cloud Logging, not a bucket.
+  logging: CLOUD_LOGGING_ONLY
 # The data stage downloads Scryfall's bulk files and Commander Spellbook's variants.
 timeout: 1800s

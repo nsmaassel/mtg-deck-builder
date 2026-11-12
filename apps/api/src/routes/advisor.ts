@@ -445,6 +445,8 @@ export async function advisorRoutes(app: FastifyInstance, options: AdvisorRouteO
           error: 'Chat unavailable',
           message: 'The advisor could not answer just now. The deck check on this page still works; try the question again in a moment.',
         });
+      } finally {
+        chatBudget?.done();
       }
     },
   });

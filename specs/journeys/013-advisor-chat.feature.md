@@ -103,13 +103,14 @@ The instruction forbids stating card text, legality, ownership, costs or meta nu
 | Model spend per UTC day, all visitors | $0.30 | `ADVISOR_AGENT_DAILY_USD`, priced by `ADVISOR_AGENT_PRICE_IN` / `ADVISOR_AGENT_PRICE_OUT` |
 | Chat messages per UTC day, all visitors | 100 | `ADVISOR_AGENT_DAILY_LIMIT` |
 | Chat messages per minute, all visitors | 10 | `ADVISOR_AGENT_PER_MINUTE` |
+| Answers under way at once, all visitors | 2 | code |
 | Model calls per message, tool round-trips included | 8 | code |
 | Tool runs per message | 6 | code |
 | Conversation history | 40,000 tokens, then a new conversation | code |
 | Messages per conversation | 30 | code |
 | Message length | 2,000 characters | code |
 
-Messages differ in cost by an order of magnitude, so the dollar ceiling is the one sized to the bill: every turn's tokens are priced and added to the day, including the tokens of a turn that failed part-way. The turn that crosses the ceiling is still answered, so a day can end one turn over. $0.30 a day is at most $9.30 a month. The default prices are gemini-3.8-flash's list prices from 2027-01-01, twice what it costs until then, so the ceiling errs towards stopping early.
+Messages differ in cost by an order of magnitude, so the dollar ceiling is the one sized to the bill: every turn's tokens are priced and added to the day, including the tokens of a turn that failed part-way. A turn is checked when it starts and priced when it ends, so the turns under way when the ceiling is crossed are still answered: a day can end two turns over. $0.30 a day is at most $9.30 a month. The default prices are gemini-3.8-flash's list prices from 2027-01-01, twice what it costs until then, so the ceiling errs towards stopping early.
 
 An answer costs a little over half a cent on the default model (measured: about 7,400 prompt and 240 output tokens on average), so the default ceiling is roughly 25 answers a day by the server's own conservative pricing, and about twice that at 2026 prices.
 

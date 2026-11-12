@@ -5,10 +5,13 @@ export interface ChatBudgetOptions {
   perMinute: number;
   /**
    * Model spend allowed per UTC day, in USD, at `price`. Chat stops for the day
-   * once the turns so far have cost this much; the turn that crosses the line
-   * is still answered, so a day can end one turn over.
+   * once the turns so far have cost this much. A turn is checked when it starts
+   * and charged when it ends, so the turns in flight when the line is crossed
+   * are still answered: a day can end `maxConcurrent` turns over.
    */
   usdPerDay?: number;
+  /** Chat turns answered at once, across all visitors. Default 2. It is what bounds the overshoot above. */
+  maxConcurrent?: number;
   /** The model's list price in USD per million tokens. Thinking is billed as output. */
   price?: TokenPrice;
   now?: () => number;
@@ -48,6 +51,7 @@ export class ChatBudget {
   private day = '';
   private usedToday = 0;
   private usdToday = 0;
+  private inFlight = 0;
   private recent: number[] = [];
   private readonly now: () => number;
 
@@ -55,7 +59,7 @@ export class ChatBudget {
     this.now = options.now ?? Date.now;
   }
 
-  /** Count one message against the budget, or refuse it. */
+  /** Count one message against the budget, or refuse it. An allowed message must be followed by `done()`. */
   spend(): BudgetDecision {
     const now = this.now();
     this.startDay(now);
@@ -64,10 +68,18 @@ export class ChatBudget {
     if (this.usedToday >= this.options.perDay) return { allowed: false, reason: 'day' };
     if (this.options.usdPerDay !== undefined && this.usdToday >= this.options.usdPerDay) return { allowed: false, reason: 'day' };
     if (this.recent.length >= this.options.perMinute) return { allowed: false, reason: 'minute' };
+    // Too many answers under way is a reason to wait a moment, like a burst.
+    if (this.inFlight >= (this.options.maxConcurrent ?? 2)) return { allowed: false, reason: 'minute' };
 
     this.usedToday += 1;
+    this.inFlight += 1;
     this.recent.push(now);
     return { allowed: true };
+  }
+
+  /** The turn that `spend()` allowed is over, answered or not. */
+  done(): void {
+    if (this.inFlight > 0) this.inFlight -= 1;
   }
 
   /**

@@ -384,6 +384,16 @@ describe('POST /api/advisor/chat', () => {
     expect(budget.spentToday).toBeCloseTo(0.05, 10);
   });
 
+  it('frees its place when a turn is over, answered or not', async () => {
+    const model = new ScriptedLlm([say('one'), { errorCode: '503', errorMessage: 'overloaded' }, say('three')]);
+    const instance = withChat(model, new ChatBudget({ perDay: 50, perMinute: 50, maxConcurrent: 1 }));
+
+    expect((await post('/api/advisor/chat', { message: 'first' }, instance)).status).toBe(200);
+    expect((await post('/api/advisor/chat', { message: 'second' }, instance)).status).toBe(502);
+    // With one place only, a turn that never gave its place back would turn this one away.
+    expect((await post('/api/advisor/chat', { message: 'third' }, instance)).status).toBe(200);
+  });
+
   it('hides the provider\'s error text when the model fails', async () => {
     const model = new ScriptedLlm([{ errorCode: '429', errorMessage: 'Quota exceeded for project secret-project-123' }]);
     const { status, body } = await post<{ error: string; message: string }>('/api/advisor/chat', { message: 'hi' }, withChat(model));
