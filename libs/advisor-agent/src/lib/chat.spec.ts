@@ -7,6 +7,7 @@ import type { LlmResponse } from '@google/adk';
 import { AdvisorChat, AdvisorChatError } from './chat';
 import type { TurnTrace } from './chat';
 import { MAX_RESULT_BYTES, createAdvisorTools } from './tools';
+import { ADVISOR_INSTRUCTION } from './instruction';
 import { ScriptedLlm, callTool, lastToolResult, say } from './testing';
 
 const index = buildTestIndex();
@@ -112,26 +113,55 @@ describe('AdvisorChat', () => {
     expect(traces).toEqual([]);
   });
 
-  it('stops a turn whose model calls have sent more than the turn allows, and reports what it used', async () => {
-    const costing = (response: LlmResponse, prompt: number): LlmResponse => ({ ...response, usageMetadata: { promptTokenCount: prompt, candidatesTokenCount: 10 } });
-    const model = new ScriptedLlm([
-      costing(callTool('collection_summary'), 600),
-      costing(callTool('collection_summary'), 600),
-      costing(say('never reached'), 600),
-    ]);
-    const chat = new AdvisorChat({ data, model, maxPromptTokensPerTurn: 1000 });
+  describe('what a turn may send', () => {
+    /** The size of a turn's first request, found by letting one through and stopping the next. */
+    const firstRequestBytes = async (): Promise<number> => {
+      for (let budget = 1024; ; budget += 1024) {
+        const model = new ScriptedLlm([say('hello')]);
+        const sent = await new AdvisorChat({ data, model, maxPromptBytesPerTurn: budget })
+          .send({ message: 'hi', collection: null }).then(() => true, () => false);
+        if (sent) return budget;
+      }
+    };
 
-    await expect(chat.send({ message: 'hi', collection: null })).rejects.toMatchObject({
-      kind: 'turn',
-      usage: { llmCalls: 2, promptTokens: 1200 },
+    it('counts the instruction and the tool descriptions, not only the conversation', async () => {
+      // The seven tools' descriptions and parameters are several kilobytes on top of the instruction.
+      expect(await firstRequestBytes()).toBeGreaterThan(Buffer.byteLength(ADVISOR_INSTRUCTION, 'utf8') + 3000);
     });
-    expect(model.requests).toHaveLength(2);
-  });
 
-  it('sends an answer that is already written, even when it took the turn past its allowance', async () => {
-    const model = new ScriptedLlm([{ ...say('here you go'), usageMetadata: { promptTokenCount: 5000, candidatesTokenCount: 10 } }]);
-    const chat = new AdvisorChat({ data, model, maxPromptTokensPerTurn: 1000 });
-    await expect(chat.send({ message: 'hi', collection: null })).resolves.toMatchObject({ reply: 'here you go' });
+    it('does not make the call that would pass the limit, and reports what the turn used', async () => {
+      const first = await firstRequestBytes();
+      const model = new ScriptedLlm([
+        { ...callTool('collection_summary'), usageMetadata: { promptTokenCount: 600, candidatesTokenCount: 10 } },
+        say('never reached'),
+      ]);
+      // Room for the first call, not for a second that carries the first again with a tool result.
+      const chat = new AdvisorChat({ data, model, maxPromptBytesPerTurn: first + 1024 });
+
+      await expect(chat.send({ message: 'hi', collection: null })).rejects.toMatchObject({
+        kind: 'turn',
+        usage: { llmCalls: 1, promptTokens: 600 },
+      });
+      expect(model.requests).toHaveLength(1);
+    });
+
+    it('counts results the tools never produced: calls to names that do not exist', async () => {
+      const first = await firstRequestBytes();
+      const flood: LlmResponse = {
+        content: { role: 'model', parts: Array.from({ length: 200 }, (_, i) => ({ functionCall: { name: `no_such_tool_${i}`, args: {} } })) },
+      };
+      const model = new ScriptedLlm([flood, say('never reached')]);
+      const chat = new AdvisorChat({ data, model, maxPromptBytesPerTurn: first * 2 + 8192 });
+
+      await expect(chat.send({ message: 'hi', collection: null })).rejects.toMatchObject({ kind: 'turn' });
+      expect(model.requests).toHaveLength(1);
+    });
+
+    it('lets an ordinary turn through at the default', async () => {
+      const model = new ScriptedLlm([callTool('collection_summary'), say('here you go')]);
+      await expect(new AdvisorChat({ data, model }).send({ message: 'hi', collection: null }))
+        .resolves.toMatchObject({ reply: 'here you go' });
+    });
   });
 
   it('caps what each model call may write', async () => {
