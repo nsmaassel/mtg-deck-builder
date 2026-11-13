@@ -34,6 +34,16 @@ const MAX_CARDS_LOOKED_UP = 8;
 const MAX_TAGS = 8;
 const MAX_TUNE_ROWS = 5;
 const MAX_COMBOS = 4;
+/** Missing cards and build steps shown from one deck check; the rest are counted. A 60-card deck rarely has more different cards. */
+const MAX_CHECK_ROWS = 30;
+/** A pasted list: a hundred-card Arena export is about 4,000 characters. */
+const MAX_DECK_TEXT = 8_000;
+/**
+ * No result may be larger than this, in bytes of JSON. A token is at least a byte, so with the
+ * number of tool runs this is what bounds what a turn's results can add to its later model calls.
+ */
+export const MAX_RESULT_BYTES = 32_000;
+const TOO_LARGE = { error: 'That result is too large to read in one go. Ask about one deck, or a shorter list.' };
 
 const COMBO_SOURCE =
   'Commander Spellbook (commanderspellbook.com). Each combo there also lists prerequisites (mana, cards in play) and steps that are not included here.';
@@ -113,6 +123,7 @@ function summarizeTune(tune: DeckTuneView, collectionLoaded: boolean) {
 /** A deck check, cut down to what the model needs to explain it. */
 function summarizeCheck(check: DeckCheck, collectionLoaded: boolean) {
   const { summary, plan } = check;
+  const missing = check.cards.filter(card => card.missing > 0);
   return {
     collectionLoaded,
     note: collectionLoaded ? undefined : NO_COLLECTION_NOTE,
@@ -126,7 +137,7 @@ function summarizeCheck(check: DeckCheck, collectionLoaded: boolean) {
     wildcardsToBuildExactly: summary.wildcardsNeeded,
     wildcardsShort: summary.wildcardsShort,
     craftableNow: summary.craftable,
-    missing: check.cards.filter(card => card.missing > 0).map(card => ({
+    missing: missing.slice(0, MAX_CHECK_ROWS).map(card => ({
       card: card.name,
       board: card.board,
       copiesMissing: card.missing,
@@ -134,9 +145,11 @@ function summarizeCheck(check: DeckCheck, collectionLoaded: boolean) {
       wildcard: card.craftRarity,
       standIns: card.substitutes.slice(0, MAX_STAND_INS).map(standIn),
     })),
+    missingCardsNotShown: missing.length > MAX_CHECK_ROWS ? missing.length - MAX_CHECK_ROWS : undefined,
     buildableToday: {
       sameAsOriginalPercent: percent(plan.fidelity),
-      steps: plan.steps.map(step => ({
+      stepsNotShown: plan.steps.length > MAX_CHECK_ROWS ? plan.steps.length - MAX_CHECK_ROWS : undefined,
+      steps: plan.steps.slice(0, MAX_CHECK_ROWS).map(step => ({
         action: step.action,
         copies: step.count,
         card: step.target,
@@ -181,6 +194,8 @@ function describeCard(card: IndexedCard, collection: Collection | null) {
 export interface ToolLimits {
   /** Tool runs allowed over the lifetime of this set of tools, which the chat builds once per turn. */
   maxCalls?: number;
+  /** The largest result a tool may hand the model, in bytes of JSON. Default `MAX_RESULT_BYTES`. */
+  maxResultBytes?: number;
 }
 
 const TOO_MANY_CALLS = {
@@ -200,9 +215,11 @@ export function createAdvisorTools(data: AdvisorData, player: PlayerContext, lim
   // Every result rides along in each later model call of the turn, so the number of runs is what bounds a turn's cost.
   let calls = 0;
   const limited = <Args extends unknown[], Result>(execute: (...args: Args) => Result) =>
-    (...args: Args): Result | typeof TOO_MANY_CALLS => {
+    (...args: Args): Result | typeof TOO_MANY_CALLS | typeof TOO_LARGE => {
       calls += 1;
-      return limits.maxCalls !== undefined && calls > limits.maxCalls ? TOO_MANY_CALLS : execute(...args);
+      if (limits.maxCalls !== undefined && calls > limits.maxCalls) return TOO_MANY_CALLS;
+      const result = execute(...args);
+      return Buffer.byteLength(JSON.stringify(result) ?? '', 'utf8') > (limits.maxResultBytes ?? MAX_RESULT_BYTES) ? TOO_LARGE : result;
     };
 
   // A name that matches nothing comes back with the nearest real names, so the model has something true to offer.
@@ -317,7 +334,7 @@ export function createAdvisorTools(data: AdvisorData, player: PlayerContext, lim
       'Check a decklist the player pasted against their collection, in any format. Same result as check_meta_deck. ' +
       'Pass the list exactly as the player wrote it.',
     parameters: z.object({
-      deckText: z.string().max(20_000).describe('The decklist: one "<count> <card name>" per line, or an MTG Arena export.'),
+      deckText: z.string().max(MAX_DECK_TEXT).describe('The decklist: one "<count> <card name>" per line, or an MTG Arena export.'),
       format: formatParam,
       spendWildcards: z.boolean().optional().describe('False to keep every wildcard and fill gaps with swaps only. Default true.'),
     }),

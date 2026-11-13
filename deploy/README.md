@@ -10,7 +10,7 @@ One other route can call a model: the Commander Builder's deck explanation (`POS
 
 | Limit | Where | Holds when |
 |-------|-------|-----------|
-| $0.30 of model spend a day, 100 messages a day, 10 a minute, 2 answers at once | In the app (`apps/api/src/chat-budget.ts`) | The instance keeps running. The counts are in memory: a restart forgets the day. A turn is priced when it ends, so a day can end two turns over: about $1.10 at worst (worked out in J-013). |
+| $0.30 of model spend a day, 100 messages a day, 10 a minute, 2 answers at once | In the app (`apps/api/src/chat-budget.ts`) | The instance keeps running. The counts are in memory: a restart forgets the day. A turn is priced when it ends, so a day can end two turns over: $1.60 at the very most (worked out in J-013). |
 | 8 model calls and 6 tool runs per message, 4,096 tokens written per model call, 100,000 prompt tokens per message, 40,000 tokens of history per conversation | In the agent | Always. The prompt limit is checked after each call, so a message can end one call over. |
 | One instance, scaled to zero when idle | Cloud Run (`--max-instances=1`) | Nearly always; Cloud Run may briefly exceed it in a spike. |
 | A monthly amount per service | Spend cap budgets on the billing account | Until someone lifts one by hand (see below), and with a delay: cost estimates lag usage. |
@@ -89,7 +89,7 @@ until [ "$(curl -s -o /dev/null -w '%{http_code}' "$URL/health")" = 200 ]; do sl
 | Deploy a change, or refresh the cards, the meta and the combos (the image holds a snapshot) | `deploy/2-deploy.sh` |
 | Take the site down by hand | `deploy/3-open.sh close`. It removes the public as an invoker and prints who is left |
 | Roll back | `gcloud run services update-traffic deck-advisor --region us-central1 --project maassel-mtg-advisor --to-revisions=REVISION=100`. Cloud Run then keeps traffic pinned there; the next `deploy/2-deploy.sh` sends it to the new revision again |
-| See what chat cost | The service's log: each answered turn logs `advisor chat turn` with its tokens and price |
+| See what chat cost | The service's log: each answered turn logs `advisor chat turn` with its tokens and price, and a turn that was stopped or failed logs `advisor chat turn without an answer` |
 | Resume after a cap paused a service | It resumes on the first of the month. Sooner: Billing → Budgets & alerts → the budget → Lift spend cap, **then raise its amount**, or the cap stays off until the 1st |
 
 The meta snapshot is 45 days of tournaments ending at build time. Redeploy every week or two to keep it current; nothing does that on a schedule yet.

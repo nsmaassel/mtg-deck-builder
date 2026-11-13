@@ -6,6 +6,7 @@ import type { MetaArchetype, MetaSnapshot, TournamentDeck } from '@mtg/meta-deck
 import type { LlmResponse } from '@google/adk';
 import { AdvisorChat, AdvisorChatError } from './chat';
 import type { TurnTrace } from './chat';
+import { MAX_RESULT_BYTES, createAdvisorTools } from './tools';
 import { ScriptedLlm, callTool, lastToolResult, say } from './testing';
 
 const index = buildTestIndex();
@@ -441,6 +442,20 @@ describe('advisor tools', () => {
     expect(plan.steps.some(s => s['action'] === 'craft')).toBe(false);
 
     expect((await toolResult('check_meta_deck', { format: 'standard', archetype: 'nope' }))['error']).toMatch(/list_meta_decks/);
+  });
+
+  it('hands the model no result larger than the limit, and says so instead', async () => {
+    const run = (maxResultBytes: number) => {
+      const tool = createAdvisorTools(data, { collection: owned }, { maxResultBytes }).find(t => t.name === 'check_decklist')!;
+      return (tool as unknown as { execute: (args: unknown) => Record<string, unknown> })
+        .execute({ deckText: '4 Steam Vents\n4 Shock\n4 Opt\n', format: 'standard' });
+    };
+    const whole = run(MAX_RESULT_BYTES);
+    expect(whole['error']).toBeUndefined();
+    const bytes = Buffer.byteLength(JSON.stringify(whole), 'utf8');
+
+    expect(run(bytes)['error']).toBeUndefined();
+    expect(run(bytes - 1)).toEqual({ error: expect.stringMatching(/too large/) });
   });
 
   it('check_decklist reads a pasted list in any format', async () => {

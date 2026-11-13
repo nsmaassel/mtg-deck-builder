@@ -432,7 +432,10 @@ export async function advisorRoutes(app: FastifyInstance, options: AdvisorRouteO
       } catch (err) {
         // No answer, so the message does not count against the day. The tokens it used before failing still do.
         chatBudget?.refund();
-        if (isChatError(err) && err.usage) chatBudget?.charge(err.usage);
+        if (isChatError(err) && err.usage) {
+          const usd = chatBudget?.charge(err.usage);
+          request.log.info({ chat: { ...err.usage, usd, stopped: err.kind } }, 'advisor chat turn without an answer');
+        }
         if (isChatError(err) && err.kind !== 'model') {
           return reply.status(409).send({
             error: err.kind === 'limit' ? 'Conversation too long' : err.kind === 'turn' ? 'Question too large' : 'Still answering',
