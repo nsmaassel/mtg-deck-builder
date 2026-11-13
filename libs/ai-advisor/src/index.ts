@@ -1,4 +1,10 @@
-export { explainDeck, explainDeckCallsModel, AiAdvisorError, EXPLAIN_DECK_MAX_OUTPUT_TOKENS } from './lib/advisor';
+export {
+  explainDeck,
+  explainDeckCallsModel,
+  explainDeckPromptTokensAtMost,
+  AiAdvisorError,
+  EXPLAIN_DECK_MAX_OUTPUT_TOKENS,
+} from './lib/advisor';
 export { ExplainDeckResultSchema } from './lib/types';
 export type {
   ExplainDeckInput,

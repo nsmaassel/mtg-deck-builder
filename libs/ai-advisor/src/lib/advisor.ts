@@ -196,6 +196,14 @@ export function explainDeckCallsModel(options: AiAdvisorOptions = {}): boolean {
   return resolveApiKey(resolveProvider(options), options) !== '';
 }
 
+/**
+ * An upper bound on the tokens of the prompt `explainDeck` would send: its length in bytes,
+ * since no token is shorter than a byte. Plain English runs at about a quarter of this.
+ */
+export function explainDeckPromptTokensAtMost(input: ExplainDeckInput): number {
+  return Buffer.byteLength(buildPrompt(input), 'utf8');
+}
+
 /** The most `explainDeck` asks a model to write, in tokens. */
 export const EXPLAIN_DECK_MAX_OUTPUT_TOKENS = 1024;
 

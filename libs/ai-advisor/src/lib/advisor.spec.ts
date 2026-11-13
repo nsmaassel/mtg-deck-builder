@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { explainDeck, AiAdvisorError } from './advisor';
+import { explainDeck, explainDeckPromptTokensAtMost, AiAdvisorError } from './advisor';
 import type { ExplainDeckInput } from './types';
 
 const MOCK_DECK_INPUT: ExplainDeckInput = {
@@ -42,6 +42,28 @@ const VALID_API_RESPONSE = {
     }),
   }],
 };
+
+describe('explainDeckPromptTokensAtMost', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('is the byte length of the prompt that is sent, whatever the script', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: VALID_API_RESPONSE.content[0]!.text }] } }] }) }));
+    // CJK names are three bytes a character, and a slot name can grow when it is upper-cased.
+    const input = {
+      ...MOCK_DECK_INPUT,
+      commanderName: '\u6843'.repeat(150),
+      deck: { ...MOCK_DECK_INPUT.deck, slots: { 'stra\u00dfe': [{ name: '\u6843'.repeat(150) }] } },
+    } as unknown as typeof MOCK_DECK_INPUT;
+
+    await explainDeck(input, { provider: 'gemini', apiKey: 'k' });
+    const sent = JSON.parse(vi.mocked(fetch).mock.calls[0]![1]?.body as string) as { contents: Array<{ parts: Array<{ text: string }> }> };
+    const prompt = sent.contents[0]!.parts[0]!.text;
+
+    expect(prompt).toContain('STRASSE');
+    expect(explainDeckPromptTokensAtMost(input)).toBe(Buffer.byteLength(prompt, 'utf8'));
+    expect(explainDeckPromptTokensAtMost(input)).toBeGreaterThan(900);
+  });
+});
 
 describe('explainDeck', () => {
   beforeEach(() => {

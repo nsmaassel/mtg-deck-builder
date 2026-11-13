@@ -6,7 +6,7 @@ import { getCardByName, ScryfallNotFoundError } from '@mtg/scryfall';
 import { buildDeck, buildDeckForBracket, candidatesFor, comboLines } from '@mtg/deck-builder';
 import type { Bracket } from '@mtg/power-level';
 import { assessPowerLevel, bracketMethod } from '@mtg/power-level';
-import { explainDeck, explainDeckCallsModel, EXPLAIN_DECK_MAX_OUTPUT_TOKENS } from '@mtg/ai-advisor';
+import { explainDeck, explainDeckCallsModel, explainDeckPromptTokensAtMost, EXPLAIN_DECK_MAX_OUTPUT_TOKENS } from '@mtg/ai-advisor';
 import { unavailable } from './commander-data';
 import type { CommanderRouteOptions } from './commander-data';
 
@@ -34,26 +34,25 @@ const EXPLAIN_MAX_SLOTS = 20;
 const EXPLAIN_MAX_SLOT_NAME_LENGTH = 40;
 
 /**
- * Everything of a deck that reaches the prompt when it is sent for an explanation (the
- * commander, the slot names and the card names), or null when it is not a deck a model
- * should be paid to read. Their number and length are what bound a call's cost.
+ * Whether a deck sent for an explanation is one a model should be paid to read. The commander,
+ * the slot names and the card names are all of it that reaches the prompt, so their number and
+ * length are what bound a call's cost.
  */
-function explainableNames(deck: unknown, commanderName: string): string[] | null {
+function isExplainable(deck: unknown, commanderName: string): boolean {
   const slots = (deck as { slots?: unknown } | null)?.slots;
-  if (!slots || typeof slots !== 'object' || Array.isArray(slots)) return null;
+  if (!slots || typeof slots !== 'object' || Array.isArray(slots)) return false;
   const slotNames = Object.keys(slots);
-  if (slotNames.length > EXPLAIN_MAX_SLOTS || slotNames.some(slot => slot.length > EXPLAIN_MAX_SLOT_NAME_LENGTH)) return null;
+  if (slotNames.length > EXPLAIN_MAX_SLOTS || slotNames.some(slot => slot.length > EXPLAIN_MAX_SLOT_NAME_LENGTH)) return false;
   const names = [commanderName];
   for (const cards of Object.values(slots)) {
-    if (!Array.isArray(cards)) return null;
+    if (!Array.isArray(cards)) return false;
     for (const card of cards) {
       const name = (card as { name?: unknown } | null)?.name;
-      if (typeof name !== 'string') return null;
+      if (typeof name !== 'string') return false;
       names.push(name);
     }
   }
-  if (names.length > EXPLAIN_MAX_CARDS + 1 || names.some(name => name.length > EXPLAIN_MAX_NAME_LENGTH)) return null;
-  return [...names, ...slotNames];
+  return names.length <= EXPLAIN_MAX_CARDS + 1 && names.every(name => name.length <= EXPLAIN_MAX_NAME_LENGTH);
 }
 
 export async function deckRoutes(app: FastifyInstance, { index, combos, chatBudget }: CommanderRouteOptions): Promise<void> {
@@ -195,8 +194,7 @@ export async function deckRoutes(app: FastifyInstance, { index, combos, chatBudg
     },
     handler: async (request, reply) => {
       const { deck, commanderName } = request.body;
-      const names = explainableNames(deck, commanderName);
-      if (!names) {
+      if (!isExplainable(deck, commanderName)) {
         return reply.status(400).send({
           error: 'Not a deck',
           message: `An explanation needs a deck of at most ${EXPLAIN_MAX_CARDS} named cards, grouped into at most ${EXPLAIN_MAX_SLOTS} slots.`,
@@ -215,19 +213,25 @@ export async function deckRoutes(app: FastifyInstance, { index, combos, chatBudg
         });
       }
 
+      const input = { deck: deck as Parameters<typeof explainDeck>[0]['deck'], commanderName };
       try {
-        const result = await explainDeck({
-          deck: deck as Parameters<typeof explainDeck>[0]['deck'],
-          commanderName,
+        return reply.send(await explainDeck(input));
+      } catch (err) {
+        // The provider's own error text can name keys, projects and quotas: log it, do not send it.
+        request.log.error({ err }, 'deck explanation failed');
+        return reply.status(502).send({
+          error: 'Explanation unavailable',
+          message: 'The explanation could not be written just now. The deck itself is unaffected; try again in a moment.',
         });
-        return reply.send(result);
       } finally {
-        // The call reports no token counts, so charge what it can have used at most, answered or
-        // not: about four characters a token for the names, with the separators and "(none)" of an
-        // empty slot, and the instructions around them.
+        // The call reports no token counts, so charge the most it can have used, answered or not.
+        // It is priced as the chat's model is (ADVISOR_AGENT_PRICE_IN and _OUT), whichever model explains.
         if (paid) {
-          const promptTokens = Math.ceil((names.join(' (none) ').length + 2000) / 4);
-          chatBudget?.charge({ promptTokens, outputTokens: EXPLAIN_DECK_MAX_OUTPUT_TOKENS, thinkingTokens: 0 });
+          chatBudget?.charge({
+            promptTokens: explainDeckPromptTokensAtMost(input),
+            outputTokens: EXPLAIN_DECK_MAX_OUTPUT_TOKENS,
+            thinkingTokens: 0,
+          });
           chatBudget?.done();
         }
       }

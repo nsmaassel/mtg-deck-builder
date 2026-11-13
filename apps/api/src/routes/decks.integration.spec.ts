@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   assessPowerLevel: vi.fn(),
   explainDeck: vi.fn(),
   explainDeckCallsModel: vi.fn(),
+  explainDeckPromptTokensAtMost: vi.fn(),
 }));
 
 // Scryfall is only asked to spell a commander name the index does not know.
@@ -37,6 +38,7 @@ vi.mock('@mtg/power-level', async importOriginal => ({
 vi.mock('@mtg/ai-advisor', () => ({
   explainDeck: mocks.explainDeck,
   explainDeckCallsModel: mocks.explainDeckCallsModel,
+  explainDeckPromptTokensAtMost: mocks.explainDeckPromptTokensAtMost,
   EXPLAIN_DECK_MAX_OUTPUT_TOKENS: 1024,
 }));
 
@@ -382,6 +384,7 @@ describe('POST /api/ai/explain-deck', () => {
   beforeEach(() => {
     mocks.explainDeck.mockReset().mockResolvedValue({ explanation: 'test', keyCards: [], suggestedUpgrades: [] });
     mocks.explainDeckCallsModel.mockReset().mockReturnValue(true);
+    mocks.explainDeckPromptTokensAtMost.mockReset().mockReturnValue(1000);
   });
 
   it('counts a paid explanation against the chat budget and refuses once the day is spent', async () => {
@@ -397,12 +400,14 @@ describe('POST /api/ai/explain-deck', () => {
     expect(mocks.explainDeck).toHaveBeenCalledTimes(1);
   });
 
-  it('charges a call that failed, and frees its place', async () => {
+  it('charges a call that failed, frees its place, and keeps the provider\'s words to the log', async () => {
     const budget = new ChatBudget({ perDay: 50, perMinute: 50, usdPerDay: 1, maxConcurrent: 1, price: { input: 1, output: 10 } });
     const app = buildApp({ advisor, chatBudget: budget });
-    mocks.explainDeck.mockRejectedValueOnce(new Error('provider down'));
+    mocks.explainDeck.mockRejectedValueOnce(new Error('Gemini API error 429: quota for project 1234'));
 
-    expect((await explain(app)).statusCode).toBe(500);
+    const failed = await explain(app);
+    expect(failed.statusCode).toBe(502);
+    expect(failed.body).not.toContain('1234');
     expect(budget.spentToday).toBeGreaterThan(0);
     expect((await explain(app)).statusCode).toBe(200);
   });
@@ -440,21 +445,15 @@ describe('POST /api/ai/explain-deck', () => {
     expect(mocks.explainDeck).not.toHaveBeenCalled();
   });
 
-  it('charges for every character that reaches the prompt', async () => {
-    const budget = new ChatBudget({ perDay: 50, perMinute: 50, usdPerDay: 100, price: { input: 1_000_000, output: 0 } });
+  it('charges the prompt at its upper bound and the output at its cap', async () => {
+    // A dollar a prompt token and a thousand dollars an output token keep the two apart in the sum.
+    const budget = new ChatBudget({ perDay: 50, perMinute: 50, usdPerDay: 1e9, price: { input: 1e6, output: 1e9 } });
     const app = buildApp({ advisor, chatBudget: budget });
-    const slots = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`${i}`.padEnd(40, 's'), [{ name: 'n'.repeat(150) }]]));
-    mocks.explainDeck.mockImplementationOnce(async (input: { deck: { slots: Record<string, Array<{ name: string }>> }; commanderName: string }) => {
-      // What the prompt is built from, as libs/ai-advisor writes it.
-      const lines = Object.entries(input.deck.slots).map(([slot, cards]) => `${slot.toUpperCase()}: ${cards.map(c => c.name).join(', ') || '(none)'}`);
-      promptLength = `COMMANDER: ${input.commanderName}\n${lines.join('\n')}`.length;
-      return { explanation: 'test', keyCards: [], suggestedUpgrades: [] };
-    });
-    let promptLength = 0;
+    mocks.explainDeckPromptTokensAtMost.mockReturnValue(70_610);
 
-    expect((await explain(app, { deck: { slots }, commanderName: 'c'.repeat(150) })).statusCode).toBe(200);
-    // At a dollar a token the day's spend is the tokens charged.
-    expect(budget.spentToday).toBeGreaterThan(promptLength / 4);
+    expect((await explain(app)).statusCode).toBe(200);
+    expect(mocks.explainDeckPromptTokensAtMost).toHaveBeenCalledWith({ deck, commanderName: 'Krenko, Mob Boss' });
+    expect(budget.spentToday).toBeCloseTo(70_610 + 1024 * 1000);
   });
 });
 

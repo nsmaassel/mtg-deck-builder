@@ -213,6 +213,7 @@ GOOGLE_API_KEY=...             # Gemini API key
 ADVISOR_AGENT_MODEL=gemini-3.8-flash   # default
 ADVISOR_AGENT_THINKING=low             # default; minimal, low, medium, high, or "default" to send none (for a model that takes no level)
 ADVISOR_AGENT_DAILY_USD=0.30           # model spend per UTC day, all visitors, at the prices below
+ADVISOR_AGENT_MAX_OUTPUT_TOKENS=4096   # the most one model call may write, thinking included
 ADVISOR_AGENT_PRICE_IN=1.50            # USD per million prompt tokens (default: gemini-3.8-flash from 2027-01-01)
 ADVISOR_AGENT_PRICE_OUT=7.50           # USD per million output tokens
 ADVISOR_AGENT_DAILY_LIMIT=100          # chat messages per UTC day, all visitors

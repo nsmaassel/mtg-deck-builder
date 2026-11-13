@@ -37,6 +37,11 @@ export interface AdvisorChatOptions {
   maxLlmCallsPerTurn?: number;
   /** Tool runs allowed in one turn; each result is carried in every later model call. Default 6. */
   maxToolCallsPerTurn?: number;
+  /**
+   * The most one model call may write, thinking included, in tokens. Default 4,096.
+   * Without it a visitor asking for a very long answer sets the price of a turn.
+   */
+  maxOutputTokensPerCall?: number;
   /** Turns allowed in one conversation. Default 30. */
   maxTurnsPerSession?: number;
   /**
@@ -164,6 +169,7 @@ export class AdvisorChat {
     this.options = {
       maxLlmCallsPerTurn: 8,
       maxToolCallsPerTurn: 6,
+      maxOutputTokensPerCall: 4096,
       maxTurnsPerSession: 30,
       maxContextTokens: 40_000,
       sessionTtlMs: 60 * 60 * 1000,
@@ -221,10 +227,13 @@ export class AdvisorChat {
       model: this.options.model,
       instruction: ADVISOR_INSTRUCTION,
       tools: createAdvisorTools(this.options.data, { collection }, { maxCalls: this.options.maxToolCallsPerTurn }),
-      ...(this.options.thinkingLevel && {
-        // The API's own spelling of the level; typed as a string enum in the SDK the ADK wraps.
-        generateContentConfig: { thinkingConfig: { thinkingLevel: this.options.thinkingLevel.toUpperCase() as never } },
-      }),
+      generateContentConfig: {
+        maxOutputTokens: this.options.maxOutputTokensPerCall,
+        ...(this.options.thinkingLevel && {
+          // The API's own spelling of the level; typed as a string enum in the SDK the ADK wraps.
+          thinkingConfig: { thinkingLevel: this.options.thinkingLevel.toUpperCase() as never },
+        }),
+      },
     });
     const runner = new Runner({ appName: APP_NAME, agent, sessionService: this.sessionService });
 

@@ -49,6 +49,7 @@ async function main(): Promise<void> {
       thinkingLevel: process.env['ADVISOR_AGENT_THINKING']?.trim().toLowerCase() === 'default'
         ? undefined
         : parseThinkingLevel(process.env['ADVISOR_AGENT_THINKING']) ?? 'low',
+      maxOutputTokensPerCall: positiveInt(process.env['ADVISOR_AGENT_MAX_OUTPUT_TOKENS'], 4096),
     });
   }
   // The dollar ceiling is the one sized to the bill: $0.30 a day is about $9.30 a month, plus

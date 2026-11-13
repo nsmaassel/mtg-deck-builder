@@ -111,6 +111,16 @@ describe('AdvisorChat', () => {
     expect(traces).toEqual([]);
   });
 
+  it('caps what each model call may write', async () => {
+    const byDefault = new ScriptedLlm([say('hello')]);
+    await new AdvisorChat({ data, model: byDefault }).send({ message: 'hi', collection: null });
+    expect(byDefault.requests[0]!.config?.maxOutputTokens).toBe(4096);
+
+    const set = new ScriptedLlm([say('hello')]);
+    await new AdvisorChat({ data, model: set, maxOutputTokensPerCall: 512, thinkingLevel: 'low' }).send({ message: 'hi', collection: null });
+    expect(set.requests[0]!.config).toMatchObject({ maxOutputTokens: 512, thinkingConfig: { thinkingLevel: 'LOW' } });
+  });
+
   it('gives the model the instruction and every tool', async () => {
     const model = new ScriptedLlm([say('hello')]);
     await new AdvisorChat({ data, model }).send({ message: 'hi', collection: null });
