@@ -23,9 +23,9 @@ Create these three in the console (Billing → Budgets & alerts → Create budge
 |---------|-----------------------|-------|
 | Gemini Enterprise Agent Platform (Vertex AI) | $6 | The chat, which is the only thing that costs money per request. The rest of the site keeps working. |
 | Cloud Run | $2 | The whole site. This is for someone hammering the deck check. A cap counts list price before the free tier and credits, so it may count usage that would have cost nothing: $2 is roughly twenty busy hours of the one instance in a month. |
-| Gemini API | $2 | The development key used for `pnpm eval:agent`. The deployed service does not use it. |
+| Gemini API | $5 | The development key used for `pnpm eval:agent`. The deployed service does not use it. |
 
-The three caps add up to $10 a month. The bill is not capped at that: the lag comes on top, and so does everything no cap covers, below. A spend cap budget cannot be converted from an alerts-only one, so the existing `$10/mo` alert budget stays as it is and keeps sending its emails. Creating a cap needs Billing Account Administrator.
+The amounts are Nick's (2026-11-13) and are lines in the workspace spend plan, [homelab ADR-044](https://github.com/nsmaassel/homelab/blob/main/docs/decisions/ADR-044-one-spend-plan-for-every-project.md), which also withdrew the billing-detach function #7 had asked for. The three caps add up to $13 a month. The bill is not capped at that: the lag comes on top, and so does everything no cap covers, below. A spend cap budget cannot be converted from an alerts-only one, so the existing `$10/mo` alert budget stays as it is and keeps sending its emails. Creating a cap needs Billing Account Administrator.
 
 Not covered by any cap, because caps exist for four services only (Gemini API, Vertex AI, Cloud Run and Cloud Run functions):
 
