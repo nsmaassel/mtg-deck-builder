@@ -427,6 +427,35 @@ describe('POST /api/ai/explain-deck', () => {
     expect((await explain(app, { deck: { slots: { ramp: 'Sol Ring' } }, commanderName: 'Krenko, Mob Boss' })).statusCode).toBe(400);
     expect(mocks.explainDeck).not.toHaveBeenCalled();
   });
+
+  it('refuses slot names that would pad the prompt', async () => {
+    const app = buildApp({ advisor });
+    const longSlot = { slots: { ['x'.repeat(41)]: [] } };
+    const manySlots = { slots: Object.fromEntries(Array.from({ length: 21 }, (_, i) => [`slot${i}`, []])) };
+
+    expect((await explain(app, { deck: longSlot, commanderName: 'Krenko, Mob Boss' })).statusCode).toBe(400);
+    expect((await explain(app, { deck: manySlots, commanderName: 'Krenko, Mob Boss' })).statusCode).toBe(400);
+    expect((await explain(app, { deck: { slots: [[{ name: 'Sol Ring' }]] }, commanderName: 'Krenko, Mob Boss' })).statusCode).toBe(400);
+    expect((await explain(app, { deck: { slots: { ramp: [{ name: 'x'.repeat(300_000) }] } }, commanderName: 'K' })).statusCode).toBe(413);
+    expect(mocks.explainDeck).not.toHaveBeenCalled();
+  });
+
+  it('charges for every character that reaches the prompt', async () => {
+    const budget = new ChatBudget({ perDay: 50, perMinute: 50, usdPerDay: 100, price: { input: 1_000_000, output: 0 } });
+    const app = buildApp({ advisor, chatBudget: budget });
+    const slots = Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`${i}`.padEnd(40, 's'), [{ name: 'n'.repeat(150) }]]));
+    mocks.explainDeck.mockImplementationOnce(async (input: { deck: { slots: Record<string, Array<{ name: string }>> }; commanderName: string }) => {
+      // What the prompt is built from, as libs/ai-advisor writes it.
+      const lines = Object.entries(input.deck.slots).map(([slot, cards]) => `${slot.toUpperCase()}: ${cards.map(c => c.name).join(', ') || '(none)'}`);
+      promptLength = `COMMANDER: ${input.commanderName}\n${lines.join('\n')}`.length;
+      return { explanation: 'test', keyCards: [], suggestedUpgrades: [] };
+    });
+    let promptLength = 0;
+
+    expect((await explain(app, { deck: { slots }, commanderName: 'c'.repeat(150) })).statusCode).toBe(200);
+    // At a dollar a token the day's spend is the tokens charged.
+    expect(budget.spentToday).toBeGreaterThan(promptLength / 4);
+  });
 });
 
 describe('Commander Builder without a card index', () => {

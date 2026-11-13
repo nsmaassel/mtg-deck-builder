@@ -29,15 +29,20 @@ async function findCommander(index: CardIndex, name: string): Promise<IndexedCar
 /** A Commander deck is 100 cards; the room above that is for a list still being cut. */
 const EXPLAIN_MAX_CARDS = 150;
 const EXPLAIN_MAX_NAME_LENGTH = 150;
+/** The builder uses eight slots; a slot's name is a word. */
+const EXPLAIN_MAX_SLOTS = 20;
+const EXPLAIN_MAX_SLOT_NAME_LENGTH = 40;
 
 /**
- * The card names of a deck sent for an explanation, or null when it is not a deck a model
- * should be paid to read: the names are all of the deck that reaches the prompt, so their
- * number and length are what bound a call's cost.
+ * Everything of a deck that reaches the prompt when it is sent for an explanation (the
+ * commander, the slot names and the card names), or null when it is not a deck a model
+ * should be paid to read. Their number and length are what bound a call's cost.
  */
 function explainableNames(deck: unknown, commanderName: string): string[] | null {
   const slots = (deck as { slots?: unknown } | null)?.slots;
-  if (!slots || typeof slots !== 'object') return null;
+  if (!slots || typeof slots !== 'object' || Array.isArray(slots)) return null;
+  const slotNames = Object.keys(slots);
+  if (slotNames.length > EXPLAIN_MAX_SLOTS || slotNames.some(slot => slot.length > EXPLAIN_MAX_SLOT_NAME_LENGTH)) return null;
   const names = [commanderName];
   for (const cards of Object.values(slots)) {
     if (!Array.isArray(cards)) return null;
@@ -48,7 +53,7 @@ function explainableNames(deck: unknown, commanderName: string): string[] | null
     }
   }
   if (names.length > EXPLAIN_MAX_CARDS + 1 || names.some(name => name.length > EXPLAIN_MAX_NAME_LENGTH)) return null;
-  return names;
+  return [...names, ...slotNames];
 }
 
 export async function deckRoutes(app: FastifyInstance, { index, combos, chatBudget }: CommanderRouteOptions): Promise<void> {
@@ -176,6 +181,8 @@ export async function deckRoutes(app: FastifyInstance, { index, combos, chatBudg
   app.post<{
     Body: { deck: unknown; commanderName: string };
   }>('/api/ai/explain-deck', {
+    // A built deck with all its card details is about a tenth of this.
+    bodyLimit: 256 * 1024,
     schema: {
       body: {
         type: 'object',
@@ -192,7 +199,7 @@ export async function deckRoutes(app: FastifyInstance, { index, combos, chatBudg
       if (!names) {
         return reply.status(400).send({
           error: 'Not a deck',
-          message: `An explanation needs a deck of at most ${EXPLAIN_MAX_CARDS} named cards, grouped by slot.`,
+          message: `An explanation needs a deck of at most ${EXPLAIN_MAX_CARDS} named cards, grouped into at most ${EXPLAIN_MAX_SLOTS} slots.`,
         });
       }
 
@@ -216,9 +223,10 @@ export async function deckRoutes(app: FastifyInstance, { index, combos, chatBudg
         return reply.send(result);
       } finally {
         // The call reports no token counts, so charge what it can have used at most, answered or
-        // not: about four characters a token for the names and the instructions around them.
+        // not: about four characters a token for the names, with the separators and "(none)" of an
+        // empty slot, and the instructions around them.
         if (paid) {
-          const promptTokens = Math.ceil((names.join(', ').length + 2000) / 4);
+          const promptTokens = Math.ceil((names.join(' (none) ').length + 2000) / 4);
           chatBudget?.charge({ promptTokens, outputTokens: EXPLAIN_DECK_MAX_OUTPUT_TOKENS, thinkingTokens: 0 });
           chatBudget?.done();
         }
