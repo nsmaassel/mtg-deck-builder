@@ -143,7 +143,30 @@ describe('parseCollectionCsv', () => {
     expect(imp.entries).toEqual([{ count: 4, name: 'Opt' }]);
   });
 
-  it('survives an unknown header such as an Untapped export: extra columns ignored', () => {
+  it('reads an Untapped.gg export by its per-printing count, not the per-card count it repeats on every row', () => {
+    // The header and rows as Untapped wrote them on 2026-11-12: one row per printing. `Count` is the
+    // card's copies across printings (4 on each Opt row); `PrintCount` is this printing's own.
+    const imp = parseCollectionCsv(
+      [
+        'Id,Name,Set,Color,Rarity,Count,PrintCount',
+        '6873,"Crash of Rhinos",AA4,Green,Common,0,0',
+        '66091,"Opt",XLN,Blue,Common,4,4',
+        '70206,"Opt",ELD,Blue,Common,4,2',
+        '68310,"Llanowar Elves",M19,Green,Common,4,3',
+        '69781,"Llanowar Elves",DAR,Green,Common,4,0',
+        '82345,"Sheoldred, the Apocalypse",DMU,Black,Mythic,2,2',
+      ].join('\n'),
+    );
+    expect(imp.warnings).toEqual([]);
+    expect(imp.entries).toEqual([
+      { count: 4, name: 'Opt', arenaId: 66091, set: 'XLN' },
+      { count: 2, name: 'Opt', arenaId: 70206, set: 'ELD' },
+      { count: 3, name: 'Llanowar Elves', arenaId: 68310, set: 'M19' },
+      { count: 2, name: 'Sheoldred, the Apocalypse', arenaId: 82345, set: 'DMU' },
+    ]);
+  });
+
+  it('survives an unknown header: extra columns ignored', () => {
     const imp = parseCollectionCsv(
       'Card Name,Set,Rarity,Color,Owned,Missing,Type\n"Sheoldred, the Apocalypse",DMU,Mythic,B,2,2,Creature\nOpt,ELD,Common,U,4,0,Instant\n',
     );

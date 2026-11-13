@@ -57,7 +57,10 @@ export function readCsv(input: string, delimiter: string): CsvRecord[] {
 // aliases win when a file has several candidates. The lists go beyond the exports seen so far on
 // purpose: Untapped's premium CSV export has not been seen, and a near-miss header should still import.
 const COLUMN_ALIASES = {
-  count: ['count', 'quantity', 'qty', 'owned', 'amount', 'copies', 'numberowned', 'quantityowned'],
+  // `printcount` first: Untapped.gg writes one row per printing with both `Count` (copies of the
+  // card across all its printings, repeated on every row) and `PrintCount` (copies of this
+  // printing). Rows are summed, so only the second adds up to what the player owns.
+  count: ['printcount', 'count', 'quantity', 'qty', 'owned', 'amount', 'copies', 'numberowned', 'quantityowned'],
   name: ['name', 'card', 'cardname', 'title'],
   set: ['edition', 'editioncode', 'set', 'setcode', 'expansion', 'expansioncode'],
   number: ['collectornumber', 'cardnumber', 'number', 'cn'],

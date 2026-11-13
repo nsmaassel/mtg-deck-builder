@@ -25,6 +25,7 @@ Feature: Collection import
     Given I upload a CSV from Untapped.gg, Moxfield, Archidekt or MTG Arena Tool
     When I import
     Then the count, name, set and number columns are found by their headers, in any order
+    And an Untapped.gg export, which has one row per printing, is added up by its per-printing count
 
   Scenario: Add wildcards and saved decks from Player.log
     Given I choose my Player.log with Detailed Logs enabled
