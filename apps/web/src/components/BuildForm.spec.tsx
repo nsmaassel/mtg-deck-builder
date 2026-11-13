@@ -162,7 +162,7 @@ describe('BuildForm', () => {
       deck: { commander: { name: 'Krenko, Mob Boss' }, slots: {}, totalCards: 100 },
       analysis: { averageCmc: 2.5, topPicksCoveragePercent: 40, themes: [], colorDistribution: {}, commanderName: 'Krenko', manaCurve: {} },
       gaps: { missingCards: [], budgetUpgrades: [], premiumUpgrades: [] },
-      powerLevel: { bracket: 2, score: 4, label: 'Core', signals: { gameChangers: [], tierATutors: [], tierBTutors: [], avgCmc: 2.5, interactionCount: 8, topPicksCoverage: 40, fastManaRatio: 0.05, twoCardComboCount: 0 }, explanation: [], targetSuggestions: [] },
+      powerLevel: { bracket: 2, score: 4, label: 'Core', signals: { gameChangers: [], tutors: [], massLandDenial: [], extraTurns: [], avgCmc: 2.5, interactionCount: 8, topPicksCoverage: 40, fastManaRatio: 0.05, twoCardComboCount: 0 }, explanation: [], targetSuggestions: [] },
     });
 
     const onResult = vi.fn();
@@ -193,7 +193,7 @@ describe('BuildForm', () => {
       deck: { commander: { name: 'Krenko, Mob Boss' }, slots: {}, totalCards: 100 },
       analysis: { averageCmc: 2.5, topPicksCoveragePercent: 0, themes: [], colorDistribution: {}, commanderName: 'Krenko', manaCurve: {} },
       gaps: { missingCards: [], budgetUpgrades: [], premiumUpgrades: [] },
-      powerLevel: { bracket: 2, score: 4, label: 'Core', signals: { gameChangers: [], tierATutors: [], tierBTutors: [], avgCmc: 2.5, interactionCount: 8, topPicksCoverage: 0, fastManaRatio: 0.05, twoCardComboCount: 0 }, explanation: [], targetSuggestions: [] },
+      powerLevel: { bracket: 2, score: 4, label: 'Core', signals: { gameChangers: [], tutors: [], massLandDenial: [], extraTurns: [], avgCmc: 2.5, interactionCount: 8, topPicksCoverage: 0, fastManaRatio: 0.05, twoCardComboCount: 0 }, explanation: [], targetSuggestions: [] },
     });
 
     const onResult = vi.fn();

@@ -1,4 +1,5 @@
 import type { CardIndex, IndexedCard } from '@mtg/card-index';
+import { powerTraits } from './power-traits';
 import { landFit } from './lands';
 import { cardName, frontType, matches } from './match';
 import { assignSlot } from './slots';
@@ -251,6 +252,8 @@ export function scoreFor(index: CardIndex, profile: CommanderProfile, card: Inde
   if (card.usd !== undefined) recommendation.usd = card.usd;
   if (land) recommendation.colorFit = land.fit;
   if (card.gameChanger) recommendation.gameChanger = true;
+  const traits = powerTraits(card);
+  if (traits.length > 0) recommendation.traits = traits;
   return recommendation;
 }
 

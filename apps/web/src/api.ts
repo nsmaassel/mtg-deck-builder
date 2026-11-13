@@ -37,7 +37,23 @@ export type CollectionParseResult = {
 
 export type BuildMode = 'prefer-owned' | 'owned-only' | 'budget';
 export type Bracket = 1 | 2 | 3 | 4 | 5;
-export type BracketLabel = 'Exhibition' | 'Core' | 'Enhanced' | 'Optimized' | 'cEDH';
+export type BracketLabel = 'Exhibition' | 'Core' | 'Upgraded' | 'Optimized' | 'cEDH';
+
+export type Reference = { name: string; url: string };
+
+/** How a bracket is worked out and where each signal comes from, as the API sends it. */
+export type BracketMethod = {
+  official: {
+    sources: Reference[];
+    brackets: Array<{ bracket: Bracket; label: BracketLabel; allows: string }>;
+    note: string;
+  };
+  signals: Array<{ name: string; how: string; basis: 'rule' | 'estimate'; source: Reference }>;
+  estimate: string[];
+  checkedAgainst: Array<{ what: string; source: Reference }>;
+  cardDataDate?: string;
+  gameChangerCount?: number;
+};
 
 export type DeckCard = {
   name: string;
@@ -93,8 +109,9 @@ export type BuildDeckResult = {
     label: BracketLabel;
     signals: {
       gameChangers: string[];
-      tierATutors: string[];
-      tierBTutors: string[];
+      tutors: string[];
+      massLandDenial: string[];
+      extraTurns: string[];
       avgCmc: number;
       interactionCount: number;
       topPicksCoverage: number;
@@ -103,6 +120,8 @@ export type BuildDeckResult = {
       twoCardComboCount: number;
     };
     explanation: string[];
+    /** Each reason, marked as a rule of the published brackets or as our own estimate. */
+    findings?: Array<{ basis: 'rule' | 'estimate'; bracket: Bracket; text: string }>;
     targetBracket?: Bracket;
     targetSuggestions?: Array<{
       remove: string;
@@ -111,6 +130,7 @@ export type BuildDeckResult = {
       alternatives: Array<{ name: string; popularity: number; synergy?: number; slot: string }>;
     }>;
   };
+  bracketMethod?: BracketMethod;
   /** What the build did to land on the bracket it was aimed at. Absent when no bracket was chosen. */
   bracketTuning?: {
     target: Bracket;
