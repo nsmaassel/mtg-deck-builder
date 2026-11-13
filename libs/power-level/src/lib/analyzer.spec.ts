@@ -1,9 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { assessPowerLevel } from './analyzer';
+import { assessPowerLevel, ESTIMATE } from './analyzer';
+import { bracketMethod } from './method';
 import type { DeckList, DeckAnalysis } from '@mtg/deck-builder';
 
 /** Cards these tests treat as Game Changers. Real decks carry the flag from Scryfall's card data. */
 const GAME_CHANGERS = new Set(["jeweled lotus", "mana crypt", "thassa's oracle", "demonic consultation", "dockside extortionist", "demonic tutor", "vampiric tutor", "fierce guardianship", "rhystic study", "smothering tithe", "cyclonic rift", "force of will", "mana drain"]);
+
+/** What these tests' cards do that the brackets single out. Real decks carry it from Scryfall's Tagger tags. */
+const TRAITS: Record<string, Array<'tutor' | 'mass-land-denial' | 'extra-turn'>> = {
+  'demonic tutor': ['tutor'],
+  'vampiric tutor': ['tutor'],
+  armageddon: ['mass-land-denial'],
+  'time warp': ['extra-turn'],
+  'temporal manipulation': ['extra-turn'],
+  'capture of jingzhou': ['extra-turn'],
+};
 
 function makeDeck(cardNames: string[], rampCmcs: number[] = []): DeckList {
   const makeCard = (name: string, slot: string, cmc = 2) =>
@@ -20,6 +31,7 @@ function makeDeck(cardNames: string[], rampCmcs: number[] = []): DeckList {
       usdPrice: null,
       reasons: [],
       gameChanger: GAME_CHANGERS.has(name.toLowerCase()),
+      traits: TRAITS[name.toLowerCase()],
     } as import('@mtg/deck-builder').DeckCard);
 
   const rampCards = rampCmcs.map((cmc, i) => makeCard(`Ramp Card ${i}`, 'ramp', cmc));
@@ -89,7 +101,7 @@ describe('assessPowerLevel', () => {
     expect(assessPowerLevel(deck, { ...makeAnalysis(3.0, 45), topPicksCoveragePercent: 0 }).bracket).toBe(3);
   });
 
-  it('takes the combos it is handed: a two-card combo is Bracket 3 at least, Bracket 4 beside a Game Changer', () => {
+  it('takes the combos it is handed, at the bracket Commander Spellbook gives each', () => {
     const combo = { id: 'c1', uses: ['Dramatic Reversal', 'Isochron Scepter'], cardCount: 2, produces: ['Infinite mana'] };
     const three = { id: 'c2', uses: ['A', 'B', 'C'], cardCount: 3, produces: ['Infinite tokens'] };
     const casual = makeDeck(['Llanowar Elves', 'Rampant Growth', 'Farseek']);
@@ -101,8 +113,13 @@ describe('assessPowerLevel', () => {
     expect(withCombo).toMatchObject({ bracket: 3, signals: { twoCardComboCount: 1 } });
     expect(withCombo.signals.combos).toHaveLength(2);
 
-    const withGameChanger = makeDeck(['Rhystic Study', 'Arcane Signet', 'Rampant Growth']);
-    expect(assessPowerLevel(withGameChanger, makeAnalysis(3.0, 20), undefined, undefined, [combo]).bracket).toBe(4);
+    // A fast combo is Bracket 4 by itself; one that no bracket rules out does not count at all.
+    const fast = assessPowerLevel(casual, makeAnalysis(3.0, 20), undefined, undefined, [{ ...combo, bracket: 4 }]);
+    expect(fast.bracket).toBe(4);
+    expect(fast.findings[0]).toMatchObject({ basis: 'rule', bracket: 4 });
+    expect(fast.findings[0]!.text).toContain('Dramatic Reversal + Isochron Scepter');
+    const harmless = assessPowerLevel(casual, makeAnalysis(3.0, 20), undefined, undefined, [{ ...combo, bracket: 1 }]);
+    expect(harmless).toMatchObject({ bracket: 1, signals: { twoCardComboCount: 0 } });
   });
 
   it('returns Bracket 3 when a Game Changer is present', () => {
@@ -110,7 +127,7 @@ describe('assessPowerLevel', () => {
     const analysis = makeAnalysis(3.0, 50);
     const result = assessPowerLevel(deck, analysis);
     expect(result.bracket).toBe(3);
-    expect(result.label).toBe('Enhanced');
+    expect(result.label).toBe('Upgraded');
     expect(result.signals.gameChangers).toContain('Rhystic Study');
   });
 
@@ -190,12 +207,59 @@ describe('assessPowerLevel', () => {
     expect(result.signals.gameChangers).toContain('Rhystic Study');
   });
 
-  it('correctly identifies Tier-A tutors in signals', () => {
-    const deck = makeDeck(['Demonic Tutor', 'Vampiric Tutor']);
-    const analysis = makeAnalysis(2.5, 55);
-    const result = assessPowerLevel(deck, analysis);
-    expect(result.signals.tierATutors).toContain('Demonic Tutor');
-    expect(result.signals.tierATutors).toContain('Vampiric Tutor');
+  it('finds cheap tutors by the trait the card data gives them, not by name', () => {
+    const deck = makeDeck(['Demonic Tutor', 'Vampiric Tutor', 'Diabolic Tutor']);
+    const result = assessPowerLevel(deck, makeAnalysis(2.5, 55));
+    expect(result.signals.tutors).toEqual(['Demonic Tutor', 'Vampiric Tutor']);
+  });
+
+  it('puts mass land denial in Bracket 4 as a rule of the brackets', () => {
+    const result = assessPowerLevel(makeDeck(['Armageddon']), makeAnalysis(3, 20));
+    expect(result.bracket).toBe(4);
+    expect(result.signals.massLandDenial).toEqual(['Armageddon']);
+    expect(result.findings[0]).toMatchObject({ basis: 'rule', bracket: 4 });
+    expect(result.findings[0]!.text).toContain('Armageddon');
+  });
+
+  it('reads two extra-turn cards as enough to chain turns, and one as fine from Bracket 2', () => {
+    const one = assessPowerLevel(makeDeck(['Time Warp']), makeAnalysis(3, 20));
+    expect(one.bracket).toBe(2);
+
+    const two = assessPowerLevel(makeDeck(['Time Warp', 'Temporal Manipulation']), makeAnalysis(3, 20));
+    expect(two.bracket).toBe(4);
+    // How many cards make a chain is our reading, not a published number.
+    expect(two.findings[0]).toMatchObject({ basis: 'estimate', bracket: 4 });
+  });
+
+  it('counts a combo as two-card when two cards besides the commander make it, and not when it takes more', () => {
+    const casual = makeDeck(['Llanowar Elves']);
+    const line = { id: 'c3', uses: ['Test Commander', 'A', 'B'], cardCount: 3, produces: ['Infinite tokens'], bracket: 3 as const };
+    const withCommander = assessPowerLevel(casual, makeAnalysis(3, 20), undefined, undefined, [{ ...line, besidesCommander: 2 }]);
+    expect(withCommander).toMatchObject({ bracket: 3, signals: { twoCardComboCount: 1 } });
+    const threeCards = assessPowerLevel(casual, makeAnalysis(3, 20), undefined, undefined, [line]);
+    expect(threeCards).toMatchObject({ bracket: 1, signals: { twoCardComboCount: 0 } });
+  });
+
+  it('puts a slow or minor two-card combo at Bracket 2, as an estimate', () => {
+    const combo = { id: 'c4', uses: ['A', 'B'], cardCount: 2, produces: ['Infinite scry'], bracket: 2 as const };
+    const result = assessPowerLevel(makeDeck(['Llanowar Elves']), makeAnalysis(3, 20), undefined, undefined, [combo]);
+    expect(result.bracket).toBe(2);
+    expect(result.findings[0]).toMatchObject({ basis: 'estimate', bracket: 2 });
+  });
+
+  it('suggests taking out what Brackets 1 to 3 rule out, not only Game Changers', () => {
+    const combo = { id: 'c5', uses: ['Combo A', 'Combo B'], cardCount: 2, produces: ['Infinite mana'], bracket: 4 as const };
+    const deck = makeDeck(['Armageddon', 'Time Warp', 'Temporal Manipulation', 'Combo A', 'Combo B']);
+    const result = assessPowerLevel(deck, makeAnalysis(3, 20), 3, [], [combo]);
+    expect(result.targetSuggestions!.map(suggestion => suggestion.remove)).toEqual(['Armageddon', 'Temporal Manipulation', 'Combo A']);
+  });
+
+  it('marks each reason as a rule or an estimate, rules first, and the bracket is the highest', () => {
+    const result = assessPowerLevel(makeDeck(['Rhystic Study']), makeAnalysis(3, 45));
+    expect(result.bracket).toBe(3);
+    expect(result.findings.map(finding => finding.basis)).toEqual(['rule', 'estimate']);
+    expect(result.findings[0]!.text).toContain('Brackets 1 and 2 allow none');
+    expect(result.explanation).toEqual(result.findings.map(finding => finding.text));
   });
 
   it('computes fast mana ratio from ramp slot CMC', () => {
@@ -204,5 +268,22 @@ describe('assessPowerLevel', () => {
     const analysis = makeAnalysis(3.0, 30);
     const result = assessPowerLevel(deck, analysis);
     expect(result.signals.fastManaRatio).toBe(0.5);
+  });
+});
+
+describe('bracketMethod', () => {
+  it('links every signal to where its data comes from', () => {
+    const method = bracketMethod({ cardDataDate: '2026-11-13', gameChangerCount: 53 });
+    expect(method.official.sources.every(source => source.url.startsWith('https://magic.wizards.com/'))).toBe(true);
+    expect(method.official.brackets.map(row => row.bracket)).toEqual([1, 2, 3, 4, 5]);
+    for (const signal of method.signals) expect(signal.source.url).toMatch(/^https:\/\//);
+    expect(method.signals.find(signal => signal.name === 'Game Changers')!.source.url).toContain('is%3Agamechanger');
+    expect(method.gameChangerCount).toBe(53);
+  });
+
+  it('prints the numbers the assessment runs on', () => {
+    const text = bracketMethod().estimate.join(' ');
+    expect(text).toContain(`average ${ESTIMATE.staplesWellTuned} or more`);
+    expect(text).toContain(`${ESTIMATE.gameChangersCedh} or more Game Changers`);
   });
 });

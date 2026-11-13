@@ -1,5 +1,5 @@
 import React from 'react';
-import type { BuildDeckResult, Bracket } from '../api';
+import type { BuildDeckResult, Bracket, BracketMethod, Reference } from '../api';
 import { DataCredit, POPULARITY_TOOLTIP, popularityLabel } from './DataCredit';
 
 const TOP_PICKS_TOOLTIP = 'Of the cards we would pick for this commander with every card available, the share that is in this deck';
@@ -81,9 +81,19 @@ export function DeckView({ result, onExplain, explaining, explanation }: DeckVie
               ⚡ {powerLevel.signals.gameChangers.length} Game Changer{powerLevel.signals.gameChangers.length > 1 ? 's' : ''}
             </span>
           )}
-          {powerLevel.signals.tierATutors.length > 0 && (
-            <span className="signal-chip signal-orange" title={powerLevel.signals.tierATutors.join(', ')}>
-              🔍 {powerLevel.signals.tierATutors.length} Tutor{powerLevel.signals.tierATutors.length > 1 ? 's' : ''}
+          {powerLevel.signals.massLandDenial.length > 0 && (
+            <span className="signal-chip signal-red" title={powerLevel.signals.massLandDenial.join(', ')}>
+              Mass land denial
+            </span>
+          )}
+          {powerLevel.signals.extraTurns.length > 0 && (
+            <span className="signal-chip signal-orange" title={powerLevel.signals.extraTurns.join(', ')}>
+              {powerLevel.signals.extraTurns.length} extra turn{powerLevel.signals.extraTurns.length > 1 ? 's' : ''}
+            </span>
+          )}
+          {powerLevel.signals.tutors.length > 0 && (
+            <span className="signal-chip signal-orange" title={powerLevel.signals.tutors.join(', ')}>
+              🔍 {powerLevel.signals.tutors.length} cheap tutor{powerLevel.signals.tutors.length > 1 ? 's' : ''}
             </span>
           )}
           {powerLevel.signals.twoCardComboCount > 0 && (
@@ -104,11 +114,20 @@ export function DeckView({ result, onExplain, explaining, explanation }: DeckVie
         <details className="power-explanation">
           <summary>Why this bracket?</summary>
           <ul>
-            {powerLevel.explanation.map((line, i) => (
-              <li key={i}>{line}</li>
+            {(powerLevel.findings ?? powerLevel.explanation.map(text => ({ text, basis: undefined }))).map((finding, i) => (
+              <li key={i}>
+                {finding.basis && (
+                  <span className={`finding-basis finding-${finding.basis}`}>
+                    {finding.basis === 'rule' ? 'Bracket rule' : 'Our estimate'}
+                  </span>
+                )}
+                {finding.text}
+              </li>
             ))}
           </ul>
         </details>
+
+        {result.bracketMethod && <BracketMethodNote method={result.bracketMethod} />}
 
         {bracketTuning && (
           <div className="bracket-tuning">
@@ -257,5 +276,65 @@ export function DeckView({ result, onExplain, explaining, explanation }: DeckVie
 
       <DataCredit />
     </div>
+  );
+}
+
+function SourceLink({ source }: { source: Reference }) {
+  return <a href={source.url} target="_blank" rel="noreferrer">{source.name}</a>;
+}
+
+/** How brackets are worked out here, with a link to where each part comes from. The text is the API's, not this page's. */
+function BracketMethodNote({ method }: { method: BracketMethod }) {
+  return (
+    <details className="bracket-method">
+      <summary>How brackets are worked out</summary>
+
+      <h4>The brackets, as Wizards of the Coast publishes them</h4>
+      <table className="bracket-method-table">
+        <tbody>
+          {method.official.brackets.map(row => (
+            <tr key={row.bracket}>
+              <th scope="row">{row.bracket} · {row.label}</th>
+              <td>{row.allows}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p>{method.official.note}</p>
+      <p className="bracket-method-sources">
+        Read the rules themselves:{' '}
+        {method.official.sources.map((source, i) => (
+          <React.Fragment key={source.url}>{i > 0 && ' · '}<SourceLink source={source} /></React.Fragment>
+        ))}
+      </p>
+
+      <h4>What we look at in a deck</h4>
+      <ul className="bracket-method-signals">
+        {method.signals.map(signal => (
+          <li key={signal.name}>
+            <span className={`finding-basis finding-${signal.basis}`}>
+              {signal.basis === 'rule' ? 'Bracket rule' : 'Our estimate'}
+            </span>
+            <strong>{signal.name}.</strong> {signal.how}{' '}
+            {signal.name === 'Game Changers' && method.gameChangerCount !== undefined && (
+              <>There are {method.gameChangerCount} in our card data{method.cardDataDate ? ` of ${method.cardDataDate}` : ''}. </>
+            )}
+            <SourceLink source={signal.source} />
+          </li>
+        ))}
+      </ul>
+
+      <h4>Where the rules stop and our estimate starts</h4>
+      <ul>
+        {method.estimate.map((line, i) => <li key={i}>{line}</li>)}
+      </ul>
+
+      <h4>What it was checked against</h4>
+      <ul>
+        {method.checkedAgainst.map((check, i) => (
+          <li key={i}>{check.what} <SourceLink source={check.source} /></li>
+        ))}
+      </ul>
+    </details>
   );
 }

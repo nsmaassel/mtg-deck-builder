@@ -86,17 +86,21 @@ Scenario: Targeting a lower bracket with a deck that is simply full of widely pl
 
 ## Signal to Bracket Mapping (for test expectations)
 
-| Condition | Expected Bracket | Test Commander |
-|-----------|-----------------|----------------|
-| 0 Game Changers, 0 tutors, spells averaging under 30 | 1 | Any with minimal collection in owned-only mode |
-| 1+ Tier-B tutor OR spells averaging 30+ | 2 | Most collections |
-| 1+ Game Changer (as Scryfall's card data marks them) OR 2+ Tier-A tutors OR a two-card combo OR spells averaging 40+ | 3 | Collection with Rhystic Study; any build with no collection |
-| 4+ Game Changers OR 2-card combo + GC | 4 | Collection with Jeweled Lotus + combos |
-| 6+ GC + 2 Tier-A + avg CMC <2.0 | 5 | cEDH collection |
+| Condition | Basis | Expected Bracket |
+|-----------|-------|-----------------|
+| Nothing below, spells averaging under 24 | our estimate | 1 |
+| Spells averaging 24–39, one extra-turn card, or a slow or minor two-card combo | our estimate | 2 |
+| 1–3 Game Changers (as Scryfall's card data marks them), or a two-card combo Commander Spellbook places in Bracket 3 | published rule | 3 |
+| 2+ cheap tutors, or spells averaging 40+ | our estimate | 3 |
+| 4+ Game Changers, mass land denial, or a fast two-card combo (Commander Spellbook's Bracket 4) | published rule | 4 |
+| 2+ extra-turn cards, or 2+ Game Changers with 2+ cheap tutors or a very low curve | our estimate | 4 |
+| 8+ Game Changers, or Game Changers or combos with cheap tutors and an average mana value near 2 | our estimate | 5 |
 
-"Spells averaging N" is how widely played the deck's nonland cards are across Commander, on average, out of 100 (from Scryfall's EDHREC rank). It stands in for how tuned a list is when there are no Game Changers, tutors or combos to go by, and it is about the deck's own cards: measured on real builds, the best list for a commander averages 41–50, a list from a large collection 33–45, and from a starter collection 28–38.
+A deck sits in the highest bracket any row puts it in, and the page labels each reason "Bracket rule" or "Our estimate". "How brackets are worked out" under the bracket links every source.
 
-Two-card combos come from Commander Spellbook's data, read locally: only combos that need nothing but their two named cards count.
+"Spells averaging N" is how widely played the deck's nonland cards are across Commander, on average, out of 100 (from Scryfall's EDHREC rank). It stands in for how tuned a list is when there are no Game Changers, tutors or combos to go by, and it is about the deck's own cards: measured on real builds, the best list for a commander averages 41–50, a list from a large collection 33–45, and from a starter collection 28–38. Wizards' preconstructed decks since 2023 average 20–39, nine in ten at 24 or more, which is where the line between Brackets 1 and 2 sits.
+
+Combos come from Commander Spellbook's data, read locally: only two-card combos that need nothing but their named cards count (the commander is not one of the two), each at the bracket their data gives it.
 
 "Top picks" is shown on the page but not scored: the share of the deck we would build with every card available that is in this deck.
 
