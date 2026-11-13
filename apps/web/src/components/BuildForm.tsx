@@ -15,11 +15,11 @@ const MODE_LABELS: Record<BuildMode, string> = {
 };
 
 const BRACKET_OPTIONS: Array<{ value: Bracket; label: string }> = [
-  { value: 1, label: '1 — Exhibition (a theme or an idea before power)' },
-  { value: 2, label: '2 — Core (straightforward, no Game Changers)' },
-  { value: 3, label: '3 — Upgraded (up to three Game Changers)' },
-  { value: 4, label: '4 — Optimized (anything legal)' },
-  { value: 5, label: '5 — cEDH (built for the competitive metagame)' },
+  { value: 1, label: '1 — Exhibition (kitchen table, precon-lite)' },
+  { value: 2, label: '2 — Core (precon-level, few staples)' },
+  { value: 3, label: '3 — Enhanced (optimized synergies, some staples)' },
+  { value: 4, label: '4 — Optimized (tuned, efficient, may combo)' },
+  { value: 5, label: '5 — cEDH (competitive, turn-3 wins)' },
 ];
 
 export function BuildForm({ onResult, onError }: BuildFormProps) {

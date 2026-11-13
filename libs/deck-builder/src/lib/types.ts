@@ -1,4 +1,4 @@
-import type { CommanderProfile, PowerTrait, Recommendation } from '@mtg/commander-recs';
+import type { CommanderProfile, Recommendation } from '@mtg/commander-recs';
 import type { PowerLevelResult, Bracket } from '@mtg/power-level';
 
 export interface DeckCard {
@@ -21,8 +21,6 @@ export interface DeckCard {
   reasons: string[];
   /** On the Commander Game Changers list, per Scryfall's card data. */
   gameChanger?: boolean;
-  /** What the card does that the Commander Brackets single out, from Scryfall's Tagger tags. */
-  traits?: PowerTrait[];
 }
 
 export type SlotName = 'ramp' | 'draw' | 'interaction' | 'winConditions' | 'synergy' | 'lands' | 'flex';

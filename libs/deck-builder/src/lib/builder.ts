@@ -1,4 +1,4 @@
-import { byScore, cardName, powerTraits, recommendationScore } from '@mtg/commander-recs';
+import { byScore, cardName, recommendationScore } from '@mtg/commander-recs';
 import type { Recommendation } from '@mtg/commander-recs';
 import type {
   BuildAdjustments,
@@ -52,7 +52,6 @@ function toDeckCard({ card, owned }: Candidate, slot: SlotName, score: number): 
     usdPrice: card.usd ?? null,
     reasons: card.reasons,
     ...(card.gameChanger ? { gameChanger: true } : {}),
-    ...(card.traits ? { traits: card.traits } : {}),
   };
 }
 
@@ -188,7 +187,6 @@ export function buildDeck(input: BuildDeckInput, adjust: BuildAdjustments = {}):
   const candidates = eligible(recommendations, commander.oracleId, identity, owned, mode, budgetMaxPrice, adjust);
   const { slots, used } = fillSlots(candidates, identity, adjust.include);
 
-  const commanderTraits = powerTraits(commander);
   const commanderDeckCard: DeckCard = {
     name: cardName(commander),
     quantity: 1,
@@ -202,7 +200,6 @@ export function buildDeck(input: BuildDeckInput, adjust: BuildAdjustments = {}):
     usdPrice: commander.usd ?? null,
     reasons: ['The commander'],
     ...(commander.gameChanger ? { gameChanger: true } : {}),
-    ...(commanderTraits.length > 0 ? { traits: commanderTraits } : {}),
   };
 
   const totalCards = 1 + Object.values(slots).reduce((sum, s) => sum + s.length, 0);
@@ -228,7 +225,7 @@ export function buildDeck(input: BuildDeckInput, adjust: BuildAdjustments = {}):
   return { deck, analysis, gaps, powerLevel };
 }
 
-export function analyzeCurve(deck: DeckList): Pick<DeckAnalysis, 'manaCurve' | 'averageCmc'> {
+function analyzeCurve(deck: DeckList): Pick<DeckAnalysis, 'manaCurve' | 'averageCmc'> {
   const manaCurve: Record<number, number> = {};
   let totalCmc = 0;
   let spells = 0;
@@ -266,7 +263,7 @@ function countColors(
 }
 
 /** How widely played the deck's spells are across Commander, on average, 0..100. */
-export function averagePopularity(slots: Record<SlotName, DeckCard[]>): number {
+function averagePopularity(slots: Record<SlotName, DeckCard[]>): number {
   const spells = Object.values(slots).flat().filter(card => card.slot !== 'lands');
   if (spells.length === 0) return 0;
   return Math.round((spells.reduce((sum, card) => sum + card.popularity, 0) / spells.length) * 100);

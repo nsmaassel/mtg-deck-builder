@@ -43,16 +43,15 @@ const index = buildCommanderTestIndex();
 const advisor: AdvisorData = { index, text: new TextModel(index), meta: new Map() };
 
 function makePowerLevelResult(bracket: 1 | 2 | 3 | 4 | 5 = 2, targetSuggestions?: unknown[]) {
-  const labels = { 1: 'Exhibition', 2: 'Core', 3: 'Upgraded', 4: 'Optimized', 5: 'cEDH' } as const;
+  const labels = { 1: 'Exhibition', 2: 'Core', 3: 'Enhanced', 4: 'Optimized', 5: 'cEDH' } as const;
   return {
     bracket,
     score: bracket * 2,
     label: labels[bracket],
     signals: {
       gameChangers: [],
-      tutors: [],
-      massLandDenial: [],
-      extraTurns: [],
+      tierATutors: [],
+      tierBTutors: [],
       avgCmc: 2.5,
       interactionCount: 8,
       topPicksCoverage: 40,
@@ -488,16 +487,6 @@ describe('POST /api/decks/build-from-commander: commander checks and combos', ()
     const res = await app.inject({ method: 'POST', url: '/api/decks/build-from-commander', payload: { commanderName: 'Sol Ring' } });
     expect(res.statusCode).toBe(422);
     expect(res.json<{ error: string; message: string }>()).toMatchObject({ error: 'Not a commander' });
-  });
-
-  it('sends how brackets are worked out with every build: sources, and the Game Changers in the card data', async () => {
-    const app = buildApp({ advisor });
-    const res = await app.inject({ method: 'POST', url: '/api/decks/build-from-commander', payload: { commanderName: 'Krenko, Mob Boss' } });
-    const { bracketMethod } = res.json();
-    expect(bracketMethod.official.sources[0].url).toContain('magic.wizards.com');
-    expect(bracketMethod.signals.map((signal: { name: string }) => signal.name)).toContain('Game Changers');
-    expect(bracketMethod.cardDataDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(bracketMethod.gameChangerCount).toBe(index.all().filter(card => card.gameChanger).length);
   });
 
   it('hands the power assessment the combos in the deck when combo data is loaded, and none when it is not', async () => {

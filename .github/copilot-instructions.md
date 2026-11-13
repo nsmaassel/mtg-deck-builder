@@ -91,7 +91,7 @@ These are used in Playwright tests and component tests. If you rename them, upda
 | `.build-btn` | Submit button |
 | `.suggestions li` | Commander autocomplete items |
 | `.power-level-badge` | Power level badge container |
-| `.bracket-label` | e.g. "Bracket 3 — Upgraded" |
+| `.bracket-label` | e.g. "Bracket 3 — Enhanced" |
 | `.power-score` | e.g. "6/10" |
 | `.signal-chip` | Individual signal badges |
 | `.target-suggestions` | Swap suggestions panel |

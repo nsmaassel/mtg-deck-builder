@@ -12,8 +12,6 @@ export type { RecommendOptions } from './lib/recommend';
 export { profileDeckThemes, themeFit, DECK_THEME_SHARE, MAX_DECK_THEMES } from './lib/deck-themes';
 export type { DeckCardCount, ThemeFit } from './lib/deck-themes';
 export { assignSlot } from './lib/slots';
-export { powerTraits, CHEAP_TUTOR_MAX_CMC } from './lib/power-traits';
-export type { PowerTrait } from './lib/power-traits';
 export { landFit } from './lib/lands';
 export { canBeCommander, cardName } from './lib/match';
 export { THEMES, THEME_THRESHOLD, MAX_THEMES } from './lib/themes';

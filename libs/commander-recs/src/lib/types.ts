@@ -1,5 +1,4 @@
 import type { Format, IndexedCard } from '@mtg/card-index';
-import type { PowerTrait } from './power-traits';
 
 export const RECOMMENDATION_SLOTS = ['ramp', 'draw', 'interaction', 'winConditions', 'synergy', 'lands'] as const;
 export type RecommendationSlot = (typeof RECOMMENDATION_SLOTS)[number];
@@ -31,8 +30,6 @@ export interface Recommendation {
   colorFit?: number;
   /** On the Commander Game Changers list, per Scryfall's card data. */
   gameChanger?: boolean;
-  /** What the card does that the Commander Brackets single out. Absent when nothing. */
-  traits?: PowerTrait[];
 }
 
 export interface ThemeInfo {

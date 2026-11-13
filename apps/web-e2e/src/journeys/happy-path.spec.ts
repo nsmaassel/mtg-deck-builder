@@ -42,7 +42,7 @@ test.describe('Journey 1: Core Deck Build — Happy Path', () => {
     await builder.buildDeck(sampleCollection, "Atraxa, Praetors' Voice");
     // Collection has Rhystic Study (Game Changer) — should show signal chip
     const signalText = await builder.signalChips().allTextContents();
-    expect(signalText.some(t => t.includes('Game Changer') || /tutor/i.test(t))).toBe(true);
+    expect(signalText.some(t => t.includes('Game Changer') || t.includes('Tutor'))).toBe(true);
   });
 
   test('@regression gap analysis section is shown for small collection', async ({ page }) => {

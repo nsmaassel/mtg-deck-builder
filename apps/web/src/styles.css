@@ -121,19 +121,6 @@ textarea { resize: vertical; }
 .power-explanation ul { margin-top: 0.5rem; padding-left: 1.25rem; }
 .power-explanation li { font-size: 0.82rem; color: #aaa; line-height: 1.5; }
 
-.finding-basis { display: inline-block; margin-right: 0.4rem; padding: 0 0.4rem; border-radius: 3px; font-size: 0.72rem; line-height: 1.5; white-space: nowrap; }
-.finding-rule { background: #2a3550; color: #b8c8ee; }
-.finding-estimate { background: #3a3324; color: #e0cfa0; }
-.bracket-method { margin-top: 0.5rem; font-size: 0.82rem; color: #aaa; line-height: 1.5; }
-.bracket-method summary { cursor: pointer; color: #888; font-size: 0.85rem; }
-.bracket-method summary:hover { color: #ccc; }
-.bracket-method h4 { margin: 0.9rem 0 0.35rem; font-size: 0.85rem; color: #ccc; }
-.bracket-method ul { margin: 0; padding-left: 1.25rem; }
-.bracket-method li { margin-bottom: 0.35rem; }
-.bracket-method a { color: #8ab4f8; }
-.bracket-method-table { border-collapse: collapse; width: 100%; }
-.bracket-method-table th { text-align: left; white-space: nowrap; padding: 0.2rem 0.75rem 0.2rem 0; vertical-align: top; color: #ccc; font-weight: 600; }
-.bracket-method-table td { padding: 0.2rem 0; }
 .bracket-tuning { margin-top: 0.75rem; padding: 0.75rem; background: #1a2230; border-radius: 6px; border: 1px solid #34486a; font-size: 0.84rem; }
 .bracket-tuning > strong { color: #9fc0ee; font-size: 0.88rem; display: block; }
 .bracket-tuning p { margin: 0.4rem 0 0; line-height: 1.5; }

@@ -5,7 +5,7 @@ import { canBeCommander, profileCommander } from '@mtg/commander-recs';
 import { getCardByName, ScryfallNotFoundError } from '@mtg/scryfall';
 import { buildDeck, buildDeckForBracket, candidatesFor, comboLines } from '@mtg/deck-builder';
 import type { Bracket } from '@mtg/power-level';
-import { assessPowerLevel, bracketMethod } from '@mtg/power-level';
+import { assessPowerLevel } from '@mtg/power-level';
 import { explainDeck } from '@mtg/ai-advisor';
 import { unavailable } from './commander-data';
 import type { CommanderRouteOptions } from './commander-data';
@@ -27,13 +27,6 @@ async function findCommander(index: CardIndex, name: string): Promise<IndexedCar
 }
 
 export async function deckRoutes(app: FastifyInstance, { index, combos }: CommanderRouteOptions): Promise<void> {
-  // How a bracket is worked out and where each signal comes from, sent with every build so the page can show it.
-  const method = bracketMethod(
-    index
-      ? { cardDataDate: index.builtAt.slice(0, 10), gameChangerCount: index.all().filter(card => card.gameChanger).length }
-      : {},
-  );
-
   app.post<{
     Body: {
       collectionText?: string;
@@ -144,7 +137,7 @@ export async function deckRoutes(app: FastifyInstance, { index, combos }: Comman
       const lines = combos ? comboLines(index, combos, result.deck) : [];
       const powerLevel = assessPowerLevel(result.deck, result.analysis, targetBracket, swapCandidates, lines);
 
-      return reply.send({ ...result, powerLevel, bracketMethod: method });
+      return reply.send({ ...result, powerLevel });
     },
   });
 

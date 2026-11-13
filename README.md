@@ -148,31 +148,19 @@ What it cannot know: how often a card is played *with this commander*. No open d
 
 ### Power Level Assessment (Commander Brackets)
 
-A deck sits in the highest bracket any one reason puts it in. Each reason is either a rule of the brackets as Wizards of the Coast publishes them, or this project's own estimate where the published brackets leave it to the table; the app labels every reason as one or the other.
+| Bracket | Label | Key Signals |
+|---------|-------|-------------|
+| 1 | Exhibition | No Game Changers, no tutors, spells averaging under 30 for how widely played they are |
+| 2 | Core | Tier-B tutors, or spells averaging 30–39 |
+| 3 | Enhanced | 1+ Game Changer, 2+ Tier-A tutors, a two-card combo, or spells averaging 40+ |
+| 4 | Optimized | 4+ Game Changers or 2-card combo + GC |
+| 5 | cEDH | 6+ GC + 2 Tier-A tutors + avg CMC <2.0 |
 
-| Bracket | Label | Rule of the published brackets | Our estimate |
-|---------|-------|--------------------------------|--------------|
-| 1 | Exhibition | | Spells averaging under 24 for how widely played they are |
-| 2 | Core | | Spells averaging 24–39; one extra-turn card; a slow or minor two-card combo |
-| 3 | Upgraded | 1–3 Game Changers; a two-card combo (Commander Spellbook's Bracket 3) | 2+ cheap tutors, or spells averaging 40+ |
-| 4 | Optimized | 4+ Game Changers; mass land denial; a fast two-card combo (Commander Spellbook's Bracket 4) | 2+ extra-turn cards; 2+ Game Changers with 2+ cheap tutors or a very low curve |
-| 5 | cEDH | | 8+ Game Changers, or Game Changers or combos with cheap tutors and an average mana value near 2 |
+"Spells averaging N" is the mean popularity of the deck's nonland cards, out of 100, from Scryfall's EDHREC rank: a stand-in for how tuned a list is when it has no Game Changers, tutors or combos to go by. Two-card combos are found in Commander Spellbook's data, read locally (`libs/combos`); the build makes no request to them.
 
-Nothing in the assessment is a list kept in this repository:
+Game Changers are the cards Scryfall's card data marks as on the list (`game_changer`), so the list is as current as the card index. Tutor tiers are a hand-kept list (`libs/power-level`).
 
-| Signal | Where it comes from |
-|--------|---------------------|
-| Game Changers | Scryfall's `game_changer` flag on each card, so the list is as current as the card index |
-| Mass land denial, extra turns | Scryfall Tagger's `mass-land-denial` and `extra-turn` tags (planeswalkers left out) |
-| Cheap tutors | Tagger's `tutor-card` tag at mana value 2 or less. The brackets stopped limiting tutors in October 2025; this is estimate only |
-| Two-card combos, and which bracket each belongs in | Commander Spellbook's bulk data and the bracket tag it gives every combo, read locally (`libs/combos`). The commander does not count as one of the two cards |
-| "Spells averaging N" | Mean popularity of the deck's nonland cards, out of 100, from Scryfall's EDHREC rank |
-
-The app shows all of this under "How brackets are worked out" below a deck's bracket, with links to Wizards' articles and to each source. The text and the numbers in it come from the API (`bracketMethod` in `libs/power-level`), which prints the same constants the assessment runs on.
-
-**Checked against real decks.** No public set of decks labelled with a bracket exists. The closest thing is Wizards' own preconstructed Commander decks, which they built as the Bracket 2 baseline. `scripts/eval-brackets.ts` rates all of them from MTGJSON's decklists (186 decks, 2011–2026): 117 land in Bracket 2, 39 in Bracket 1 (mostly decks from before 2020, and brand-new ones whose cards have no play data yet), and every one of the 30 above Bracket 2 is there for something in the box: a Game Changer, a combo or land denial. The line between Brackets 1 and 2 was set on this run. The script can also ask Commander Spellbook's open bracket estimator about the same lists: on the 40 newest decks, every deck they place in Bracket 3 we place in 3, and every deck they place below it we place below it. Twelve of the decks are pinned as test fixtures (`libs/power-level/src/lib/__fixtures__/precons.json`).
-
-**Building to a bracket.** With a target, the build changes one card at a time until the assessment above agrees with it (`buildDeckForBracket` in `libs/deck-builder`). To come down it leaves out a land-denial card, a piece of a combo, a Game Changer, a cheap tutor or an extra-turn card, whichever lowers the bracket; when nothing of that kind is left and the deck is still too strong on widely played cards alone, staples give way to cards fewer decks play, the ones that do nothing for the commander first. To go up it puts in Game Changers and cheap tutors the build may use (owned ones in an owned-only build). It never goes above the target, and it says so when it cannot get there. The bracket is this project's reading of the signals in the table, not a ruling: a pod's own sense of a deck still decides.
+**Building to a bracket.** With a target, the build changes one card at a time until the assessment above agrees with it (`buildDeckForBracket` in `libs/deck-builder`). To come down it leaves out a piece of a two-card combo, a Game Changer or a tutor, whichever lowers the bracket; when nothing of that kind is left and the deck is still too strong on widely played cards alone, staples give way to cards fewer decks play, the ones that do nothing for the commander first. To go up it puts in Game Changers and tutors the build may use (owned ones in an owned-only build). It never goes above the target, and it says so when it cannot get there. The bracket is this project's estimate from the signals in the table, not a ruling: a pod's own sense of a deck still decides.
 
 Swap suggestions rank alternatives by a blend of popularity and synergy. The candidates are this commander's own recommendations that did not make the deck, so colour identity is correct by construction.
 
@@ -362,10 +350,9 @@ The API keeps nothing between requests. The collection lives in the browser and 
   powerLevel: {
     bracket: 1|2|3|4|5,
     score: number,            // 1–10
-    label: 'Exhibition'|'Core'|'Upgraded'|'Optimized'|'cEDH',
-    signals: { gameChangers: string[], tutors: string[], massLandDenial: string[], extraTurns: string[], twoCardComboCount: number, avgCmc: number, ... },
+    label: 'Exhibition'|'Core'|'Enhanced'|'Optimized'|'cEDH',
+    signals: { gameChangers: string[], tierATutors: string[], twoCardComboCount: number, avgCmc: number, ... },
     explanation: string[],
-    findings: Array<{ basis: 'rule'|'estimate', bracket, text }>,   // the same reasons, each marked as a published rule or our estimate
     targetSuggestions?: Array<{
       remove: string, removeReason: string, removeSlot: string,
       alternatives: Array<{ name, popularity, synergy?, slot }>

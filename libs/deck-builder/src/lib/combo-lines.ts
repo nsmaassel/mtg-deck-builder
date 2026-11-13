@@ -1,7 +1,6 @@
 import type { CardIndex } from '@mtg/card-index';
 import type { ComboIndex } from '@mtg/combos';
 import { cardName } from '@mtg/commander-recs';
-import { bracketOfTag } from '@mtg/power-level';
 import type { ComboResult } from '@mtg/power-level';
 import type { DeckList } from './types';
 
@@ -24,18 +23,13 @@ export function comboLines(index: CardIndex, combos: ComboIndex, deck: DeckList)
   return combos
     .complete(held, { format: 'commander', specificOnly: true, limit: Infinity })
     .filter(combo => combo.commanders.every(id => id === commander))
-    .map(combo => {
-      const bracket = bracketOfTag(combo.bracketTag);
-      return {
-        id: combo.id,
-        uses: combo.cards.map(id => {
-          const card = index.get(id);
-          return card ? cardName(card) : id;
-        }),
-        cardCount: combo.cards.length,
-        ...(commander && combo.cards.includes(commander) ? { besidesCommander: combo.cards.length - 1 } : {}),
-        produces: combo.produces,
-        ...(bracket ? { bracket } : {}),
-      };
-    });
+    .map(combo => ({
+      id: combo.id,
+      uses: combo.cards.map(id => {
+        const card = index.get(id);
+        return card ? cardName(card) : id;
+      }),
+      cardCount: combo.cards.length,
+      produces: combo.produces,
+    }));
 }

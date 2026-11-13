@@ -77,12 +77,11 @@ function makeResult(overrides: Partial<BuildDeckResult> = {}): BuildDeckResult {
       bracket: 3,
       targetBracket: 2,
       score: 6,
-      label: 'Upgraded',
+      label: 'Enhanced',
       signals: {
         gameChangers: ['Rhystic Study', 'Cyclonic Rift'],
-        tutors: ['Demonic Tutor'],
-        massLandDenial: [],
-        extraTurns: [],
+        tierATutors: ['Demonic Tutor'],
+        tierBTutors: ['Mystical Tutor'],
         avgCmc: 2.8,
         interactionCount: 12,
         topPicksCoverage: 62,
@@ -90,7 +89,7 @@ function makeResult(overrides: Partial<BuildDeckResult> = {}): BuildDeckResult {
         fastManaRatio: 0.08,
         twoCardComboCount: 0,
       },
-      explanation: ['Has 2 game changers.', 'Has cheap tutors.'],
+      explanation: ['Has 2 game changers.', 'Has Tier-A tutors.'],
       targetSuggestions: [
         {
           remove: 'Rhystic Study',
@@ -310,7 +309,7 @@ describe('DeckView', () => {
   });
 
   // 12. Tutor signal chip shown
-  it('shows tutor signal chip when cheap tutors are present', () => {
+  it('shows tutor signal chip when tier-A tutors are present', () => {
     render(<DeckView result={makeResult()} />);
     const chips = document.querySelectorAll('.signal-chip');
     const texts = Array.from(chips).map(c => c.textContent ?? '');
@@ -337,42 +336,5 @@ describe('DeckView', () => {
   it('shows AI explanation text when explanation prop is provided', () => {
     render(<DeckView result={makeResult()} explanation="This deck uses proliferate synergies..." />);
     expect(screen.getByText(/proliferate synergies/i)).toBeInTheDocument();
-  });
-
-  it('marks each reason as a bracket rule or our estimate', () => {
-    const result = makeResult();
-    result.powerLevel.findings = [
-      { basis: 'rule', bracket: 3, text: '2 Game Changers (Rhystic Study, Cyclonic Rift): Brackets 1 and 2 allow none' },
-      { basis: 'estimate', bracket: 3, text: 'Its spells average 44 out of 100: a well-tuned list' },
-    ];
-    render(<DeckView result={result} />);
-    const items = Array.from(document.querySelectorAll('.power-explanation li')).map(li => li.textContent);
-    expect(items[0]).toMatch(/^Bracket rule2 Game Changers/);
-    expect(items[1]).toMatch(/^Our estimateIts spells average/);
-  });
-
-  it('explains how brackets are worked out, with a link for every source, from what the API sent', () => {
-    const scryfall = { name: 'Scryfall: every Game Changer', url: 'https://scryfall.com/search?q=is%3Agamechanger' };
-    const wizards = { name: 'Wizards of the Coast: Commander Brackets', url: 'https://magic.wizards.com/brackets' };
-    const result = makeResult();
-    result.bracketMethod = {
-      official: { sources: [wizards], brackets: [{ bracket: 3, label: 'Upgraded', allows: 'Up to 3 Game Changers.' }], note: 'The brackets are in beta.' },
-      signals: [{ name: 'Game Changers', how: 'Scryfall flags each card on the list.', basis: 'rule', source: scryfall }],
-      estimate: ['A deck sits in the highest bracket any one reason puts it in.'],
-      checkedAgainst: [{ what: 'Preconstructed decks.', source: { name: 'MTGJSON', url: 'https://mtgjson.com/' } }],
-      cardDataDate: '2026-11-13',
-      gameChangerCount: 53,
-    };
-    render(<DeckView result={result} />);
-    const note = document.querySelector('.bracket-method')!;
-    expect(note.textContent).toContain('Up to 3 Game Changers.');
-    expect(note.textContent).toContain('There are 53 in our card data of 2026-11-13.');
-    const links = Array.from(note.querySelectorAll('a')).map(a => a.getAttribute('href'));
-    expect(links).toEqual([wizards.url, scryfall.url, 'https://mtgjson.com/']);
-  });
-
-  it('shows no method note when the API sent none', () => {
-    render(<DeckView result={makeResult()} />);
-    expect(document.querySelector('.bracket-method')).toBeNull();
   });
 });

@@ -73,18 +73,6 @@ describe('buildDeckForBracket', () => {
     expect(result.powerLevel.signals.gameChangers).toHaveLength(3);
   });
 
-  it('leaves out mass land denial below Bracket 4, and keeps it at Bracket 4', () => {
-    const cards = pool(0.35, [rec('Armageddon', 'interaction', { popularity: 0.9, traits: ['mass-land-denial'] })]);
-    expect(buildDeck(input(cards)).powerLevel.bracket).toBe(4);
-
-    const down = buildDeckForBracket(input(cards), 2);
-    expect(down.bracketTuning).toMatchObject({ reached: 2, untuned: 4 });
-    expect(down.bracketTuning!.leftOut).toEqual([{ name: 'Armageddon', reason: 'Mass land denial' }]);
-
-    const kept = buildDeckForBracket(input(cards), 4);
-    expect(names(kept.deck)).toContain('Armageddon');
-  });
-
   it('breaks a two-card combo by leaving out the half the deck needs less, and says which combo', () => {
     const cards = pool(0.35, [
       rec('Combo Half', 'synergy', { popularity: 0.8 }),
@@ -98,7 +86,7 @@ describe('buildDeckForBracket', () => {
     expect(buildDeckForBracket(input(cards), 3, combosOf).bracketTuning).toMatchObject({ reached: 3, leftOut: [] });
     const result = buildDeckForBracket(input(cards), 2, combosOf);
     expect(result.bracketTuning).toMatchObject({ reached: 2, untuned: 3 });
-    expect(result.bracketTuning!.leftOut).toEqual([{ name: 'Other Half', reason: 'Part of a combo with Combo Half' }]);
+    expect(result.bracketTuning!.leftOut).toEqual([{ name: 'Other Half', reason: 'Half of a two-card combo with Combo Half' }]);
     expect(names(result.deck)).toContain('Combo Half');
   });
 
@@ -153,14 +141,14 @@ describe('buildDeckForBracket, choosing what to change', () => {
     const onTheme = Array.from({ length: 70 }, (_, i) =>
       rec(`Theme ${i}`, (['ramp', 'draw', 'interaction', 'synergy'] as const)[i % 4]!, { popularity: 0.33, synergy: 0.8 }),
     );
-    const cards = pool(0.6, [...onTheme, rec('Demonic Tutor', 'synergy', { popularity: 0.9, synergy: 0.9, traits: ['tutor'] })]);
+    const cards = pool(0.6, [...onTheme, rec('Demonic Tutor', 'synergy', { popularity: 0.9, synergy: 0.9 })]);
     const result = buildDeckForBracket(input(cards), 2);
     expect(result.bracketTuning).toMatchObject({ reached: 2, leftOut: [], fewerStaples: true });
     expect(names(result.deck)).toContain('Demonic Tutor');
   });
 
   it('takes the change that lands on the target over one that goes past it', () => {
-    // A fast combo holds this deck at 4; the Game Changer alone would leave it a 3. Only the combo has to go.
+    // Either a Game Changer or a combo holds this deck at 4. Without the Game Changer it is a 3; without the combo too.
     const cards = pool(0.35, [
       gameChanger('Rhystic Study'),
       rec('Combo Half', 'synergy', { popularity: 0.8 }),
@@ -168,12 +156,11 @@ describe('buildDeckForBracket, choosing what to change', () => {
     ]);
     const combosOf = (deck: DeckList): ComboResult[] =>
       ['Combo Half', 'Other Half'].every(name => names(deck).includes(name))
-        ? [{ id: 'c1', uses: ['Combo Half', 'Other Half'], cardCount: 2, produces: ['Infinite mana'], bracket: 4 }]
+        ? [{ id: 'c1', uses: ['Combo Half', 'Other Half'], cardCount: 2, produces: ['Infinite mana'] }]
         : [];
     const result = buildDeckForBracket(input(cards), 3, combosOf);
     expect(result.bracketTuning).toMatchObject({ reached: 3, untuned: 4 });
-    expect(result.bracketTuning!.leftOut).toEqual([{ name: 'Other Half', reason: 'Part of a combo with Combo Half' }]);
-    expect(result.powerLevel.signals.gameChangers).toEqual(['Rhystic Study']);
+    expect(result.bracketTuning!.leftOut).toHaveLength(1);
   });
 
   it('counts a commander on the Game Changers list', () => {

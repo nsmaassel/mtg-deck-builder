@@ -2,7 +2,6 @@ export { buildDeck } from './lib/builder';
 export { buildDeckForBracket } from './lib/bracket-target';
 export { candidatesFor, buildDeckForCommander } from './lib/candidates';
 export { comboLines } from './lib/combo-lines';
-export { listAsDeck } from './lib/rate-list';
 export type { Candidates } from './lib/candidates';
 export { OWNED_BOOST, scoreCard, isColorLegal, basicLandForColor, nonbasicLandLimit } from './lib/scoring';
 export type {
