@@ -28,6 +28,11 @@ esac
 
 # Read first: a failure here (no such service, no permission) stops the script before anything is claimed.
 before="$(invokers)"
+# The spend caps are made in the console and cannot be read from here, so opening asks for a yes.
+if [ "$1" = open ] && [ "${SPEND_CAPS_SET:-}" != yes ]; then
+  echo "Not opened. Create the three spend cap budgets first (deploy/README.md), then: SPEND_CAPS_SET=yes deploy/3-open.sh open" >&2
+  exit 1
+fi
 if [ "$1" = open ]; then
   run gcloud run services add-iam-policy-binding "$SERVICE" --region "$REGION" --project "$PROJECT" \
     --member=allUsers --role=roles/run.invoker >/dev/null

@@ -317,7 +317,7 @@ scripts/
 | `GET` | `/api/themes` | List supported archetypes |
 | `POST` | `/api/decks/build-from-commander` | **Core:** Build 100-card Commander deck |
 | `POST` | `/api/decks/build-from-theme` | Theme-based commander discovery (API only — no UI yet) |
-| `POST` | `/api/ai/explain-deck` | AI strategy explanation via Claude |
+| `POST` | `/api/ai/explain-deck` | AI strategy explanation via Gemini or Claude when a key is set; counts against the chat's daily ceiling |
 | `GET` | `/api/advisor/status` | What data the advisor is running on: card count, meta formats, sources |
 | `GET` | `/api/advisor/collection/sample?profile=` | A made-up collection (`newcomer`, `regular`, `veteran`) for trying the advisor |
 | `POST` | `/api/advisor/collection/import` | `{ texts: string[] }` → collection keyed by card, wildcards, saved decks |
@@ -390,7 +390,7 @@ The app is one container. [`deploy/README.md`](./deploy/README.md) has the scrip
 
 ### Render
 
-`render.yaml` describes the same container on Render. As written it has no model access, so the advisor's chat is off there, nothing costs money per request, and everything else works. Give it a Gemini key and the chat turns on with the in-app limits only: there is no spend cap behind them on that route.
+`render.yaml` describes the same container on Render. As written it has no model access, so the advisor's chat is off there, nothing costs money per request, and everything else works. Give it a Gemini key and the chat and the Commander Builder's deck explanation turn on with the in-app limits only: there is no spend cap behind them on that route.
 
 ### The image
 

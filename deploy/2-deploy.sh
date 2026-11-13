@@ -32,7 +32,7 @@ fi
 # The name is compared whole, so a sibling such as deck-advisor-staging is not mistaken for it.
 SERVICES="$(gcloud run services list --region "$REGION" --project "$PROJECT" --format='value(metadata.name)')"
 EXISTING=""
-if grep -qx "$SERVICE" <<<"$SERVICES"; then EXISTING=yes; fi
+if grep -qxF "$SERVICE" <<<"$SERVICES"; then EXISTING=yes; fi
 ACCESS=()
 [ -n "$EXISTING" ] || ACCESS=(--no-allow-unauthenticated)
 

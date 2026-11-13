@@ -1,6 +1,7 @@
 import type { FastifyReply } from 'fastify';
 import type { CardIndex } from '@mtg/card-index';
 import type { ComboIndex } from '@mtg/combos';
+import type { ChatBudget } from '../chat-budget';
 
 export interface CommanderRouteOptions {
   /**
@@ -10,6 +11,8 @@ export interface CommanderRouteOptions {
   index: CardIndex | null;
   /** Commander Spellbook's combos, for the power assessment. Without them a build is assessed on its other signals. */
   combos?: ComboIndex | null;
+  /** The ceiling on model spend, shared with the advisor's chat. The deck explanation counts against it. */
+  chatBudget?: ChatBudget | null;
 }
 
 export function unavailable(reply: FastifyReply) {

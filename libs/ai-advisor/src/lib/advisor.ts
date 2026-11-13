@@ -106,7 +106,7 @@ async function callAnthropic(
     },
     body: JSON.stringify({
       model: ANTHROPIC_MODEL,
-      max_tokens: 1024,
+      max_tokens: EXPLAIN_DECK_MAX_OUTPUT_TOKENS,
       messages: [{ role: 'user', content: prompt }],
     }),
   });
@@ -136,7 +136,7 @@ async function callGemini(
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
-          maxOutputTokens: 1024,
+          maxOutputTokens: EXPLAIN_DECK_MAX_OUTPUT_TOKENS,
           responseMimeType: 'application/json',
           responseSchema: EXPLAIN_DECK_RESPONSE_SCHEMA,
         },
@@ -190,6 +190,14 @@ function parseExplainDeckResult(jsonText: string): ExplainDeckResult {
 
   return result.data;
 }
+
+/** Whether `explainDeck` would call a model, which costs money, or return its canned answer. */
+export function explainDeckCallsModel(options: AiAdvisorOptions = {}): boolean {
+  return resolveApiKey(resolveProvider(options), options) !== '';
+}
+
+/** The most `explainDeck` asks a model to write, in tokens. */
+export const EXPLAIN_DECK_MAX_OUTPUT_TOKENS = 1024;
 
 /** Graceful fallback when AI is unavailable */
 function buildFallbackResult(

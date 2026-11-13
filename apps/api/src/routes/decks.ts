@@ -6,7 +6,7 @@ import { getCardByName, ScryfallNotFoundError } from '@mtg/scryfall';
 import { buildDeck, buildDeckForBracket, candidatesFor, comboLines } from '@mtg/deck-builder';
 import type { Bracket } from '@mtg/power-level';
 import { assessPowerLevel, bracketMethod } from '@mtg/power-level';
-import { explainDeck } from '@mtg/ai-advisor';
+import { explainDeck, explainDeckCallsModel, EXPLAIN_DECK_MAX_OUTPUT_TOKENS } from '@mtg/ai-advisor';
 import { unavailable } from './commander-data';
 import type { CommanderRouteOptions } from './commander-data';
 
@@ -26,7 +26,32 @@ async function findCommander(index: CardIndex, name: string): Promise<IndexedCar
   }
 }
 
-export async function deckRoutes(app: FastifyInstance, { index, combos }: CommanderRouteOptions): Promise<void> {
+/** A Commander deck is 100 cards; the room above that is for a list still being cut. */
+const EXPLAIN_MAX_CARDS = 150;
+const EXPLAIN_MAX_NAME_LENGTH = 150;
+
+/**
+ * The card names of a deck sent for an explanation, or null when it is not a deck a model
+ * should be paid to read: the names are all of the deck that reaches the prompt, so their
+ * number and length are what bound a call's cost.
+ */
+function explainableNames(deck: unknown, commanderName: string): string[] | null {
+  const slots = (deck as { slots?: unknown } | null)?.slots;
+  if (!slots || typeof slots !== 'object') return null;
+  const names = [commanderName];
+  for (const cards of Object.values(slots)) {
+    if (!Array.isArray(cards)) return null;
+    for (const card of cards) {
+      const name = (card as { name?: unknown } | null)?.name;
+      if (typeof name !== 'string') return null;
+      names.push(name);
+    }
+  }
+  if (names.length > EXPLAIN_MAX_CARDS + 1 || names.some(name => name.length > EXPLAIN_MAX_NAME_LENGTH)) return null;
+  return names;
+}
+
+export async function deckRoutes(app: FastifyInstance, { index, combos, chatBudget }: CommanderRouteOptions): Promise<void> {
   // How a bracket is worked out and where each signal comes from, sent with every build so the page can show it.
   const method = bracketMethod(
     index
@@ -163,11 +188,41 @@ export async function deckRoutes(app: FastifyInstance, { index, combos }: Comman
     },
     handler: async (request, reply) => {
       const { deck, commanderName } = request.body;
-      const result = await explainDeck({
-        deck: deck as Parameters<typeof explainDeck>[0]['deck'],
-        commanderName,
-      });
-      return reply.send(result);
+      const names = explainableNames(deck, commanderName);
+      if (!names) {
+        return reply.status(400).send({
+          error: 'Not a deck',
+          message: `An explanation needs a deck of at most ${EXPLAIN_MAX_CARDS} named cards, grouped by slot.`,
+        });
+      }
+
+      // With a model key this is a paid call, so it counts against the same ceiling as the chat.
+      const paid = explainDeckCallsModel();
+      const decision = paid ? chatBudget?.spend() : undefined;
+      if (decision && !decision.allowed) {
+        return reply.status(429).send({
+          error: 'Budget reached',
+          message: decision.reason === 'day'
+            ? 'The explanation is not available again today: the daily budget for model calls is used up. The deck itself is unaffected.'
+            : 'A lot of questions are being answered right now. Try again in a minute.',
+        });
+      }
+
+      try {
+        const result = await explainDeck({
+          deck: deck as Parameters<typeof explainDeck>[0]['deck'],
+          commanderName,
+        });
+        return reply.send(result);
+      } finally {
+        // The call reports no token counts, so charge what it can have used at most, answered or
+        // not: about four characters a token for the names and the instructions around them.
+        if (paid) {
+          const promptTokens = Math.ceil((names.join(', ').length + 2000) / 4);
+          chatBudget?.charge({ promptTokens, outputTokens: EXPLAIN_DECK_MAX_OUTPUT_TOKENS, thinkingTokens: 0 });
+          chatBudget?.done();
+        }
+      }
     },
   });
 }

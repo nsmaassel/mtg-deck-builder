@@ -2,6 +2,8 @@
 
 One Cloud Run service serves the API and the web app. Everything except the chat is local data and local code; the chat calls Gemini through Vertex AI as the service's own identity, with no API key.
 
+One other route can call a model: the Commander Builder's deck explanation (`POST /api/ai/explain-deck`). It only does so when the service has a `GEMINI_API_KEY`, `GOOGLE_API_KEY` or `ANTHROPIC_API_KEY`, which this deployment does not set, so here it returns a fixed text and costs nothing. If a key is ever added, each explanation counts against the same daily ceiling as the chat, but its spend goes to that key and not to the Vertex AI cap.
+
 **Status: written, not yet run.** The commands were checked against Google's documentation on 2026-11-12, and nothing here has been executed against the project. Expect to fix something on the first pass, and update this file when you do.
 
 ## What limits the bill
@@ -76,7 +78,7 @@ If the chat answers 502, read the service's log. The usual causes are the model'
 Then open it:
 
 ```bash
-deploy/3-open.sh open
+SPEND_CAPS_SET=yes deploy/3-open.sh open   # refuses without the yes: the caps cannot be checked from a script
 until [ "$(curl -s -o /dev/null -w '%{http_code}' "$URL/health")" = 200 ]; do sleep 10; done   # access changes take a few minutes
 ```
 
@@ -94,7 +96,7 @@ The meta snapshot is 45 days of tournaments ending at build time. Redeploy every
 
 ## Known gaps
 
-- The in-app daily ceiling is forgotten when the instance restarts, which Cloud Run does after about fifteen idle minutes. Someone patient could spend the daily amount several times a day, until the month's cap on Vertex AI pauses the chat. Keeping the day's count outside the instance would fix that and is not built.
+- The in-app daily ceiling is forgotten when the instance restarts, which Cloud Run does after about fifteen idle minutes and on every deploy. Someone patient could spend the daily amount several times a day, until the month's cap on Vertex AI pauses the chat. Keeping the day's count outside the instance would fix that and is not built.
 - The evals ran against the Gemini API with a key, not against Vertex AI. Same model, different endpoint: after the first deploy, run `pnpm eval:agent` once with `GOOGLE_GENAI_USE_ENTERPRISE=true`, `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_LOCATION` set.
 - Old images accumulate in the repository. Delete them by hand or add a cleanup policy.
 - Every build downloads Scryfall's bulk files and Commander Spellbook's variants again: Cloud Build keeps no layers between builds. Both sources ask for about one fetch a day, so do not rebuild in a loop; redeploy an existing image with `IMAGE=...` when only settings change.
