@@ -111,6 +111,28 @@ describe('AdvisorChat', () => {
     expect(traces).toEqual([]);
   });
 
+  it('stops a turn whose model calls have sent more than the turn allows, and reports what it used', async () => {
+    const costing = (response: LlmResponse, prompt: number): LlmResponse => ({ ...response, usageMetadata: { promptTokenCount: prompt, candidatesTokenCount: 10 } });
+    const model = new ScriptedLlm([
+      costing(callTool('collection_summary'), 600),
+      costing(callTool('collection_summary'), 600),
+      costing(say('never reached'), 600),
+    ]);
+    const chat = new AdvisorChat({ data, model, maxPromptTokensPerTurn: 1000 });
+
+    await expect(chat.send({ message: 'hi', collection: null })).rejects.toMatchObject({
+      kind: 'turn',
+      usage: { llmCalls: 2, promptTokens: 1200 },
+    });
+    expect(model.requests).toHaveLength(2);
+  });
+
+  it('sends an answer that is already written, even when it took the turn past its allowance', async () => {
+    const model = new ScriptedLlm([{ ...say('here you go'), usageMetadata: { promptTokenCount: 5000, candidatesTokenCount: 10 } }]);
+    const chat = new AdvisorChat({ data, model, maxPromptTokensPerTurn: 1000 });
+    await expect(chat.send({ message: 'hi', collection: null })).resolves.toMatchObject({ reply: 'here you go' });
+  });
+
   it('caps what each model call may write', async () => {
     const byDefault = new ScriptedLlm([say('hello')]);
     await new AdvisorChat({ data, model: byDefault }).send({ message: 'hi', collection: null });

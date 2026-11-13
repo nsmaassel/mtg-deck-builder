@@ -435,7 +435,7 @@ export async function advisorRoutes(app: FastifyInstance, options: AdvisorRouteO
         if (isChatError(err) && err.usage) chatBudget?.charge(err.usage);
         if (isChatError(err) && err.kind !== 'model') {
           return reply.status(409).send({
-            error: err.kind === 'limit' ? 'Conversation too long' : 'Still answering',
+            error: err.kind === 'limit' ? 'Conversation too long' : err.kind === 'turn' ? 'Question too large' : 'Still answering',
             message: err.message,
           });
         }

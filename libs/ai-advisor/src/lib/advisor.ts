@@ -11,6 +11,8 @@ const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
 const DEFAULT_GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com';
 const ANTHROPIC_MODEL = 'claude-haiku-4-5';
 const GEMINI_MODEL = 'gemini-3.7-flash';
+/** A provider that does not answer in this long is given up on, so its place in the budget is freed. */
+const REQUEST_TIMEOUT_MS = 30_000;
 
 /** Gemini REST Schema — uppercase types required by generateContent responseSchema. */
 const EXPLAIN_DECK_RESPONSE_SCHEMA = {
@@ -99,6 +101,7 @@ async function callAnthropic(
 ): Promise<AnthropicMessageResponse> {
   const response = await fetch(`${baseUrl.replace(/\/+$/, '')}/v1/messages`, {
     method: 'POST',
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: {
       'Content-Type': 'application/json',
       'x-api-key': apiKey,
@@ -129,6 +132,7 @@ async function callGemini(
     `${baseUrl.replace(/\/+$/, '')}/v1beta/models/${GEMINI_MODEL}:generateContent`,
     {
       method: 'POST',
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       headers: {
         'Content-Type': 'application/json',
         'x-goog-api-key': apiKey,
@@ -208,13 +212,9 @@ export function explainDeckPromptTokensAtMost(input: ExplainDeckInput): number {
 export const EXPLAIN_DECK_MAX_OUTPUT_TOKENS = 1024;
 
 /** Graceful fallback when AI is unavailable */
-function buildFallbackResult(
-  commanderName: string,
-  provider: AiAdvisorProvider,
-): ExplainDeckResult {
-  const keyName = provider === 'gemini' ? 'GEMINI_API_KEY' : 'ANTHROPIC_API_KEY';
+function buildFallbackResult(commanderName: string): ExplainDeckResult {
   return {
-    explanation: `This deck is built around ${commanderName} as the commander. The deck follows a synergy-focused strategy typical for this commander archetype, with supporting ramp, card draw, interaction, and win conditions selected from your collection. For detailed strategic analysis, ensure your ${keyName} is configured.`,
+    explanation: `This deck is built around ${commanderName} as the commander, with ramp, card draw, interaction and win conditions chosen to support it, from your collection first. A written explanation of its strategy is not switched on for this site.`,
     keyCards: [],
     suggestedUpgrades: [],
   };
@@ -242,7 +242,7 @@ export async function explainDeck(
   const baseUrl = resolveBaseUrl(provider, options);
 
   if (!apiKey) {
-    return buildFallbackResult(input.commanderName, provider);
+    return buildFallbackResult(input.commanderName);
   }
 
   const prompt = buildPrompt(input);

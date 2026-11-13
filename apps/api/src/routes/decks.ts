@@ -224,7 +224,7 @@ export async function deckRoutes(app: FastifyInstance, { index, combos, chatBudg
           message: 'The explanation could not be written just now. The deck itself is unaffected; try again in a moment.',
         });
       } finally {
-        // The call reports no token counts, so charge the most it can have used, answered or not.
+        // The call's own token counts are not passed back, so charge the most it can have used, answered or not.
         // It is priced as the chat's model is (ADVISOR_AGENT_PRICE_IN and _OUT), whichever model explains.
         if (paid) {
           chatBudget?.charge({

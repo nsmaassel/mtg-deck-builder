@@ -346,7 +346,7 @@ describe('explainDeck (multi-provider)', () => {
 
       expect(fetch).not.toHaveBeenCalled();
       expect(result.explanation).toContain("Atraxa, Praetors' Voice");
-      expect(result.explanation).toContain('GEMINI_API_KEY');
+      expect(result.explanation).not.toContain('API_KEY');
       expect(result.keyCards).toEqual([]);
       expect(result.suggestedUpgrades).toEqual([]);
     });
@@ -355,7 +355,7 @@ describe('explainDeck (multi-provider)', () => {
       const result = await explainDeck(MOCK_DECK_INPUT, { provider: 'anthropic' });
 
       expect(fetch).not.toHaveBeenCalled();
-      expect(result.explanation).toContain('ANTHROPIC_API_KEY');
+      expect(result.explanation).toContain('not switched on');
     });
   });
 });

@@ -10,8 +10,8 @@ One other route can call a model: the Commander Builder's deck explanation (`POS
 
 | Limit | Where | Holds when |
 |-------|-------|-----------|
-| $0.30 of model spend a day, 100 messages a day, 10 a minute, 2 answers at once | In the app (`apps/api/src/chat-budget.ts`) | The instance keeps running. The counts are in memory: a restart forgets the day. A turn is priced when it ends, so a day can end two turns over: about $1.50 at worst (see J-013). |
-| 8 model calls and 6 tool runs per message, 4,096 tokens written per model call, 40,000 tokens of history per conversation | In the agent | Always. |
+| $0.30 of model spend a day, 100 messages a day, 10 a minute, 2 answers at once | In the app (`apps/api/src/chat-budget.ts`) | The instance keeps running. The counts are in memory: a restart forgets the day. A turn is priced when it ends, so a day can end two turns over: about $1.10 at worst (worked out in J-013). |
+| 8 model calls and 6 tool runs per message, 4,096 tokens written per model call, 100,000 prompt tokens per message, 40,000 tokens of history per conversation | In the agent | Always. The prompt limit is checked after each call, so a message can end one call over. |
 | One instance, scaled to zero when idle | Cloud Run (`--max-instances=1`) | Nearly always; Cloud Run may briefly exceed it in a spike. |
 | A monthly amount per service | Spend cap budgets on the billing account | Until someone lifts one by hand (see below), and with a delay: cost estimates lag usage. |
 

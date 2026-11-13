@@ -42,6 +42,13 @@ export interface AdvisorChatOptions {
    * Without it a visitor asking for a very long answer sets the price of a turn.
    */
   maxOutputTokensPerCall?: number;
+  /**
+   * Prompt tokens one turn may send, over all its model calls. Every tool result is sent again
+   * with each later call, so a turn of large results costs far more than its history. The turn
+   * stops once it has passed this, so it can end one model call over. Default 100,000, about
+   * six times the largest turn the evals have seen.
+   */
+  maxPromptTokensPerTurn?: number;
   /** Turns allowed in one conversation. Default 30. */
   maxTurnsPerSession?: number;
   /**
@@ -113,7 +120,7 @@ export class AdvisorChatError extends Error {
      * `limit`: the conversation is over its turn budget. `busy`: it is still
      * answering the previous message. `model`: the model call failed.
      */
-    public readonly kind: 'limit' | 'busy' | 'model',
+    public readonly kind: 'limit' | 'turn' | 'busy' | 'model',
     /** Tokens a failed turn used before it failed. They are billed all the same. */
     public readonly usage?: ChatUsage,
   ) {
@@ -170,6 +177,7 @@ export class AdvisorChat {
       maxLlmCallsPerTurn: 8,
       maxToolCallsPerTurn: 6,
       maxOutputTokensPerCall: 4096,
+      maxPromptTokensPerTurn: 100_000,
       maxTurnsPerSession: 30,
       maxContextTokens: 40_000,
       sessionTtlMs: 60 * 60 * 1000,
@@ -259,6 +267,10 @@ export class AdvisorChat {
         usage.promptTokens += event.usageMetadata.promptTokenCount ?? 0;
         usage.outputTokens += event.usageMetadata.candidatesTokenCount ?? 0;
         usage.thinkingTokens += event.usageMetadata.thoughtsTokenCount ?? 0;
+        // An answer already written is paid for and is sent; anything short of one stops here.
+        if (usage.promptTokens > this.options.maxPromptTokensPerTurn && !isFinalResponse(event)) {
+          throw new AdvisorChatError('That question needed more reading than one answer allows. Ask about one deck at a time.', 'turn');
+        }
       }
       for (const call of getFunctionCalls(event)) {
         const name = call.name ?? 'tool';
