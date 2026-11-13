@@ -58,6 +58,7 @@ export const incompleteCheck: DeckCheck = {
     fidelity: 0.87,
   },
   issues: [],
+  themes: [],
   unrecognizedLines: [],
 };
 
@@ -69,6 +70,7 @@ export const completeCheck: DeckCheck = {
   cards: [row({ name: 'Shock' }), row({ name: 'Mountain' })],
   plan: { steps: [], arenaText: 'Deck\n4 Shock\n4 Mountain\n', wildcardsSpent: { common: 0, uncommon: 0, rare: 0, mythic: 0 }, fidelity: 1 },
   issues: [],
+  themes: [],
   unrecognizedLines: [],
 };
 

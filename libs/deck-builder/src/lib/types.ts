@@ -19,6 +19,8 @@ export interface DeckCard {
   usdPrice?: number | null;
   /** Why the card is in the deck: one or two short statements that are true of the card. */
   reasons: string[];
+  /** On the Commander Game Changers list, per Scryfall's card data. */
+  gameChanger?: boolean;
 }
 
 export type SlotName = 'ramp' | 'draw' | 'interaction' | 'winConditions' | 'synergy' | 'lands' | 'flex';
@@ -88,8 +90,9 @@ export interface BuildDeckOptions {
   /** USD price ceiling per card when mode is 'budget'. Defaults to 5. */
   budgetMaxPrice?: number;
   /**
-   * Target power bracket (1–5, Official Commander Brackets).
-   * When provided, the result includes suggestions for reaching this bracket.
+   * Target power bracket (1–5, Official Commander Brackets). `buildDeckForBracket`
+   * builds towards it; where it cannot get there, the result includes
+   * suggestions for the rest of the way.
    */
   targetBracket?: Bracket;
 }
@@ -104,11 +107,47 @@ export interface BuildDeckInput {
   options?: BuildDeckOptions;
 }
 
+/** How a build aimed at a bracket steers the plain build. Oracle ids throughout. */
+export interface BuildAdjustments {
+  /** Cards kept out of the deck. */
+  exclude?: ReadonlySet<string>;
+  /** Cards that go in before anything else, when the build may use them at all. */
+  include?: ReadonlySet<string>;
+  /**
+   * 0..2: how far being widely played stops counting for a card. Up to 1 it
+   * stops counting for cards that do nothing for the commander; from 1 to 2
+   * it stops counting for every card, until at 2 the build goes by synergy
+   * and mana cost alone.
+   */
+  stapleDiscount?: number;
+}
+
+/** One card a build aimed at a bracket left out or put in, and why. */
+export interface BracketChange {
+  name: string;
+  reason: string;
+}
+
+/** What a build did to land on the bracket it was asked for. */
+export interface BracketTuning {
+  target: Bracket;
+  /** The bracket the deck is assessed at after tuning. Equal to `target` when the build got there. */
+  reached: Bracket;
+  /** The bracket the same build comes out at with no target. */
+  untuned: Bracket;
+  leftOut: BracketChange[];
+  added: BracketChange[];
+  /** True when widely played staples gave way to cards fewer decks play. */
+  fewerStaples: boolean;
+}
+
 export interface BuildDeckResult {
   deck: DeckList;
   analysis: DeckAnalysis;
   gaps: GapReport;
   powerLevel: PowerLevelResult;
+  /** Present when the build was aimed at a bracket. */
+  bracketTuning?: BracketTuning;
 }
 
 // Re-export so consumers can import from @mtg/deck-builder

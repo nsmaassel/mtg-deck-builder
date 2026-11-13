@@ -3,7 +3,7 @@ import type { CardIndex, IndexedCard } from '@mtg/card-index';
 import { parseArenaCollection } from '@mtg/collection';
 import { canBeCommander, profileCommander } from '@mtg/commander-recs';
 import { getCardByName, ScryfallNotFoundError } from '@mtg/scryfall';
-import { buildDeck, candidatesFor, comboLines } from '@mtg/deck-builder';
+import { buildDeck, buildDeckForBracket, candidatesFor, comboLines } from '@mtg/deck-builder';
 import type { Bracket } from '@mtg/power-level';
 import { assessPowerLevel } from '@mtg/power-level';
 import { explainDeck } from '@mtg/ai-advisor';
@@ -118,18 +118,19 @@ export async function deckRoutes(app: FastifyInstance, { index, combos }: Comman
       const profile = profileCommander(index, commander);
       const { recommendations, owned } = candidatesFor(index, profile, parseResult.collection, { mode, budgetMaxPrice });
 
-      const result = buildDeck({
-        profile,
-        recommendations,
-        owned,
-        options: { mode, budgetMaxPrice, targetBracket },
-      });
+      // With a target the build is steered to that bracket; combos count towards it when their data is loaded.
+      const input = { profile, recommendations, owned, options: { mode, budgetMaxPrice, targetBracket } };
+      const result = targetBracket
+        ? buildDeckForBracket(input, targetBracket, deck => (combos ? comboLines(index, combos, deck) : []))
+        : buildDeck(input);
 
       // Candidate pool for swap suggestions: recommendations not in the final deck
       const deckNames = new Set(
         [result.deck.commander, ...Object.values(result.deck.slots).flat()].map(c => c.name)
       );
-      const swapCandidates = recommendations.filter(r => !deckNames.has(r.name));
+      // Cards the bracket tuning took out on purpose are not offered back.
+      const leftOut = new Set(result.bracketTuning?.leftOut.map(card => card.name));
+      const swapCandidates = recommendations.filter(r => !deckNames.has(r.name) && !leftOut.has(r.name));
 
       // Assess again with what the build itself could not know: the cards left out, for swap
       // suggestions, and the combos in the deck, from Commander Spellbook's data when it is loaded.

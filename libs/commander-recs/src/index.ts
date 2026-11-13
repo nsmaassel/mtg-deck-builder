@@ -9,6 +9,8 @@ export {
   SLOT_LIMITS,
 } from './lib/recommend';
 export type { RecommendOptions } from './lib/recommend';
+export { profileDeckThemes, themeFit, DECK_THEME_SHARE, MAX_DECK_THEMES } from './lib/deck-themes';
+export type { DeckCardCount, ThemeFit } from './lib/deck-themes';
 export { assignSlot } from './lib/slots';
 export { landFit } from './lib/lands';
 export { canBeCommander, cardName } from './lib/match';

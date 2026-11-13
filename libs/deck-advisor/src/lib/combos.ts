@@ -88,6 +88,58 @@ function comboView(combo: Combo, index: CardIndex): ComboView | undefined {
 const views = (combos: Combo[], index: CardIndex): ComboView[] =>
   combos.map(combo => comboView(combo, index)).filter((view): view is ComboView => view !== undefined);
 
+/** The cards of a list by oracle id, and the test for a combo that needs a card in the command zone. */
+function seating(deck: DeckList, index: CardIndex): { held: Map<string, number>; seated: (combo: Combo) => boolean } {
+  const held = new Map<string, number>();
+  for (const [, lines] of deckBoards(deck)) {
+    for (const line of lines) {
+      const card = index.byName(line.name);
+      if (card) held.set(card.oracleId, (held.get(card.oracleId) ?? 0) + line.count);
+    }
+  }
+  const commanders = new Set(deck.commander.map(line => index.byName(line.name)?.oracleId));
+  return { held, seated: combo => combo.commanders.every(id => commanders.has(id)) };
+}
+
+/** Every combo whose cards are all in the list, most played first, under the rules `deckCombos` states. */
+export function combosInDeck(deck: DeckList, format: Format, index: CardIndex, combos: ComboIndex): Combo[] {
+  const { held, seated } = seating(deck, index);
+  return combos.complete(held, { format, identity: deckColors(deck, index), ...ALL }).filter(seated);
+}
+
+/**
+ * What a combo is, in a clause: "with Zealous Conscripts (infinite creature
+ * tokens)". `without` is the card the sentence is already about.
+ */
+export function comboPhrase(combo: Combo, without: string, index: CardIndex): string {
+  const partners = combo.cards.filter(id => id !== without).map(id => index.get(id)?.name ?? 'another card');
+  const result = combo.produces[0];
+  const list = partners.length > 1 ? `${partners.slice(0, -1).join(', ')} and ${partners[partners.length - 1]}` : partners[0] ?? 'itself';
+  return result ? `with ${list} (${result.charAt(0).toLowerCase()}${result.slice(1)})` : `with ${list}`;
+}
+
+/**
+ * Cards that would finish a combo with cards the player already holds for the
+ * list, each with the most played combo it finishes. Only combos that need
+ * nothing but their named cards count, so "finishes a combo" is true as said.
+ */
+export function comboFinishers(
+  deck: DeckList,
+  held: ReadonlyMap<string, number>,
+  format: Format,
+  index: CardIndex,
+  combos: ComboIndex,
+): Map<string, Combo> {
+  const { seated } = seating(deck, index);
+  const finishers = new Map<string, Combo>();
+  for (const { combo, missing } of combos.near(held, { format, identity: deckColors(deck, index), specificOnly: true, ...ALL })) {
+    const [lacking] = missing;
+    if (!lacking || combo.commanders.includes(lacking) || !seated(combo)) continue;
+    if (!finishers.has(lacking)) finishers.set(lacking, combo);
+  }
+  return finishers;
+}
+
 /**
  * Combos in a list, and the single cards that would add one.
  *
@@ -102,15 +154,7 @@ export function deckCombos(
   index: CardIndex,
   combos: ComboIndex,
 ): DeckCombos {
-  const held = new Map<string, number>();
-  for (const [, lines] of deckBoards(deck)) {
-    for (const line of lines) {
-      const card = index.byName(line.name);
-      if (card) held.set(card.oracleId, (held.get(card.oracleId) ?? 0) + line.count);
-    }
-  }
-  const commanders = new Set(deck.commander.map(line => index.byName(line.name)?.oracleId));
-  const seated = (combo: Combo) => combo.commanders.every(id => commanders.has(id));
+  const { held, seated } = seating(deck, index);
   const query = { format, identity: deckColors(deck, index) };
 
   const inDeck = combos.complete(held, { ...query, ...ALL }).filter(seated);

@@ -36,7 +36,7 @@ const BRACKET_COLORS: Record<Bracket, string> = {
 };
 
 export function DeckView({ result, onExplain, explaining, explanation }: DeckViewProps) {
-  const { deck, analysis, gaps, powerLevel } = result;
+  const { deck, analysis, gaps, powerLevel, bracketTuning } = result;
 
   return (
     <div className="deck-view">
@@ -109,6 +109,45 @@ export function DeckView({ result, onExplain, explaining, explanation }: DeckVie
             ))}
           </ul>
         </details>
+
+        {bracketTuning && (
+          <div className="bracket-tuning">
+            <strong>
+              {bracketTuning.reached === bracketTuning.target
+                ? `Built for Bracket ${bracketTuning.target}`
+                : `Aimed at Bracket ${bracketTuning.target}; the closest this build gets is Bracket ${bracketTuning.reached}`}
+            </strong>
+            {bracketTuning.untuned === bracketTuning.target && (
+              <p>The best cards for this commander already make a Bracket {bracketTuning.target} deck, so nothing was changed.</p>
+            )}
+            {bracketTuning.untuned !== bracketTuning.target &&
+              bracketTuning.leftOut.length === 0 && bracketTuning.added.length === 0 && !bracketTuning.fewerStaples && (
+              <p>
+                Without a target this deck is Bracket {bracketTuning.untuned}, and nothing this build may use moves it
+                {bracketTuning.untuned < bracketTuning.target ? ' up' : ' down'}.
+              </p>
+            )}
+            {bracketTuning.leftOut.length > 0 && (
+              <p className="tuning-left-out">
+                Left out: {bracketTuning.leftOut.map((card, i) => (
+                  <span key={card.name}>{i > 0 && ', '}<strong>{card.name}</strong> <small>({card.reason})</small></span>
+                ))}
+              </p>
+            )}
+            {bracketTuning.added.length > 0 && (
+              <p className="tuning-added">
+                Put in: {bracketTuning.added.map((card, i) => (
+                  <span key={card.name}>{i > 0 && ', '}<strong>{card.name}</strong> <small>({card.reason})</small></span>
+                ))}
+              </p>
+            )}
+            {bracketTuning.fewerStaples && (
+              <p className="tuning-staples">
+                Widely played staples gave way to cards fewer decks play, the ones that do nothing for this commander first.
+              </p>
+            )}
+          </div>
+        )}
 
         {powerLevel.targetBracket !== undefined && powerLevel.targetBracket !== powerLevel.bracket && (
           <div className="target-suggestions">

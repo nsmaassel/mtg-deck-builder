@@ -193,12 +193,12 @@ export function BuildForm({ onResult, onError }: BuildFormProps) {
           onChange={e => setTargetBracket(e.target.value ? Number(e.target.value) as Bracket : undefined)}
           className="mode-select"
         >
-          <option value="">— No target (score only) —</option>
+          <option value="">— No target (best cards, score only) —</option>
           {BRACKET_OPTIONS.map(opt => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
         </select>
-        <small className="form-hint">Get suggestions for reaching this bracket after the build.</small>
+        <small className="form-hint">The build aims for this bracket and lists what it left out or put in to get there.</small>
       </div>
 
       <button type="submit" disabled={building} className="build-btn">

@@ -6,25 +6,21 @@ import { join } from 'path';
 const sampleCollection = readFileSync(join(__dirname, '../fixtures/sample-collection.txt'), 'utf-8');
 
 test.describe('Journey 2: Power Level Bracket Targeting', () => {
-  test('@regression swap suggestions appear when targeting lower bracket', async ({ page }) => {
+  test('@regression a build aimed at a lower bracket says what it left out', async ({ page }) => {
     const builder = new DeckBuilderPage(page);
     await page.goto('/#/commander');
     await builder.pasteCollection(sampleCollection);
     await builder.enterCommander("Atraxa, Praetors' Voice");
-    // Sample collection has Game Changers — should build at Bracket 3+
-    // Target Bracket 1 to force maximum suggestions
-    await builder.selectTargetBracket(1);
+    // Sample collection has Game Changers — builds at Bracket 3+ with no target
+    await builder.selectTargetBracket(2);
     await builder.submitBuild();
     await builder.waitForDeck();
 
-    // Swap suggestions panel should be visible
-    await expect(builder.targetSuggestions()).toBeVisible();
-    // At least one suggestion
-    const swapCount = await builder.swapSuggestions().count();
-    expect(swapCount).toBeGreaterThanOrEqual(1);
-    // First suggestion should have a removal card name
-    const firstSwap = builder.swapSuggestions().first();
-    await expect(firstSwap.locator('.swap-remove strong')).not.toBeEmpty();
+    // The build is steered to the bracket and names what it changed to get there
+    const tuning = page.locator('.bracket-tuning');
+    await expect(tuning).toBeVisible();
+    await expect(tuning).toContainText('Bracket 2');
+    await expect(tuning.locator('.tuning-left-out strong').first()).not.toBeEmpty();
   });
 
   test('@regression no swap suggestions when no bracket target set', async ({ page }) => {
@@ -38,5 +34,6 @@ test.describe('Journey 2: Power Level Bracket Targeting', () => {
 
     // No suggestions panel when no target set
     await expect(builder.targetSuggestions()).not.toBeVisible();
+    await expect(page.locator('.bracket-tuning')).not.toBeVisible();
   });
 });

@@ -1,4 +1,5 @@
 export { buildDeck } from './lib/builder';
+export { buildDeckForBracket } from './lib/bracket-target';
 export { candidatesFor, buildDeckForCommander } from './lib/candidates';
 export { comboLines } from './lib/combo-lines';
 export type { Candidates } from './lib/candidates';
@@ -10,6 +11,9 @@ export type {
   DeckTheme,
   GapReport,
   MissingCard,
+  BracketChange,
+  BracketTuning,
+  BuildAdjustments,
   BuildDeckInput,
   BuildDeckOptions,
   BuildDeckResult,

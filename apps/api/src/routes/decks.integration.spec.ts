@@ -26,7 +26,8 @@ vi.mock('@mtg/scryfall', () => ({
 }));
 
 // The power assessment has its own tests; here it is watched for what the route hands it.
-vi.mock('@mtg/power-level', () => ({
+vi.mock('@mtg/power-level', async importOriginal => ({
+  ...(await importOriginal<typeof import('@mtg/power-level')>()),
   assessPowerLevel: mocks.assessPowerLevel,
 }));
 
@@ -56,6 +57,7 @@ function makePowerLevelResult(bracket: 1 | 2 | 3 | 4 | 5 = 2, targetSuggestions?
       topPicksCoverage: 40,
       averagePopularity: 35,
       fastManaRatio: 0.05,
+      combos: [],
       twoCardComboCount: 0,
     },
     explanation: ['No game changers detected.'],
@@ -238,6 +240,15 @@ describe('POST /api/decks/build-from-commander', () => {
     const body = res.json<BuildBody>();
     expect(body.powerLevel.targetSuggestions).toHaveLength(1);
     expect(body.powerLevel.targetSuggestions[0]?.remove).toBe('Underworld Breach');
+  });
+
+  it('reports what a build aimed at a bracket did, and nothing of the kind without a target', async () => {
+    mocks.assessPowerLevel.mockReturnValue(makePowerLevelResult(3));
+    const aimed = await build({ collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME, options: { targetBracket: 1 } });
+    expect(aimed.json<{ bracketTuning?: unknown }>().bracketTuning).toMatchObject({ target: 1, reached: 3, untuned: 3 });
+
+    const plain = await build({ collectionText: SAMPLE_COLLECTION, commanderName: COMMANDER_NAME });
+    expect(plain.json<{ bracketTuning?: unknown }>().bracketTuning).toBeUndefined();
   });
 
   it('responds 200 with a 100-card deck when collectionText is omitted (new player path)', async () => {

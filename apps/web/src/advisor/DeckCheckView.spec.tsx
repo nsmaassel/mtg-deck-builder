@@ -151,6 +151,27 @@ describe('DeckCheckView: problems and the tournament comparison', () => {
     expect(within(problems).getByText('28 cards in the main deck. Standard needs at least 60.')).toBeInTheDocument();
   });
 
+  it('says what the list is built around, and which combo a swap gives up', () => {
+    const check = {
+      ...incompleteCheck,
+      themes: [{ slug: 'spellslinger', name: 'Spellslinger', because: '8 of its cards reward casting spells' }],
+      plan: {
+        ...incompleteCheck.plan,
+        steps: incompleteCheck.plan.steps.map(step =>
+          step.action === 'substitute' ? { ...step, comboLost: 'Without Slickshot Show-Off the deck loses its combo with Opt (infinite damage).' } : step,
+        ),
+      },
+    };
+    renderCheck({ check });
+    expect(screen.getByText('Built around:').parentElement).toHaveTextContent('Spellslinger (8 of its cards reward casting spells)');
+    expect(screen.getByText('Without Slickshot Show-Off the deck loses its combo with Opt (infinite damage).')).toBeInTheDocument();
+  });
+
+  it('says nothing about themes when the list has none', () => {
+    renderCheck();
+    expect(screen.queryByText('Built around:')).not.toBeInTheDocument();
+  });
+
   it('shows no problems box for a legal deck', () => {
     renderCheck();
     expect(screen.queryByRole('note', { name: 'Problems with this list' })).not.toBeInTheDocument();

@@ -121,6 +121,10 @@ textarea { resize: vertical; }
 .power-explanation ul { margin-top: 0.5rem; padding-left: 1.25rem; }
 .power-explanation li { font-size: 0.82rem; color: #aaa; line-height: 1.5; }
 
+.bracket-tuning { margin-top: 0.75rem; padding: 0.75rem; background: #1a2230; border-radius: 6px; border: 1px solid #34486a; font-size: 0.84rem; }
+.bracket-tuning > strong { color: #9fc0ee; font-size: 0.88rem; display: block; }
+.bracket-tuning p { margin: 0.4rem 0 0; line-height: 1.5; }
+.bracket-tuning small { color: #888; }
 .target-suggestions {
   margin-top: 0.75rem; padding: 0.75rem; background: #1a2a1a;
   border-radius: 6px; border: 1px solid #3a5a3a;
@@ -421,6 +425,10 @@ textarea { resize: vertical; }
 .step-open .step-verb { color: var(--bad); }
 .step-body .quality { margin-left: 0.4rem; }
 .step-note { display: block; color: var(--ink-faint); font-size: 0.78rem; line-height: 1.4; margin-top: 0.1rem; }
+.step-warning { display: block; color: #ecd9a0; font-size: 0.78rem; line-height: 1.4; margin-top: 0.1rem; }
+.deck-themes { font-size: 0.88rem; margin: 0.75rem 0; }
+.deck-themes small { color: var(--ink-faint); }
+.deck-themes-note { display: block; margin-top: 0.15rem; }
 .arrow { color: var(--ink-faint); }
 .plan-wildcards { font-size: 0.85rem; color: var(--ink-soft); margin-top: 0.9rem; padding-top: 0.75rem; border-top: 1px solid var(--line); }
 .export { margin-top: 1rem; display: grid; gap: 0.6rem; justify-items: start; }

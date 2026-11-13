@@ -1,5 +1,4 @@
 import type { DeckList, DeckAnalysis } from '@mtg/deck-builder';
-import { findGameChangers, GAME_CHANGERS } from './game-changers.js';
 import { findTutors } from './tutors.js';
 import type { ComboResult } from './combos.js';
 
@@ -15,13 +14,15 @@ export interface SwapCandidate {
   synergy?: number;
   /** Deck slot the card fills (e.g. 'ramp', 'draw', 'interaction', 'synergy') */
   slot: string;
+  /** On the Commander Game Changers list, per Scryfall's card data */
+  gameChanger?: boolean;
 }
 
 export type Bracket = 1 | 2 | 3 | 4 | 5;
 export type BracketLabel = 'Exhibition' | 'Core' | 'Enhanced' | 'Optimized' | 'cEDH';
 
 export interface PowerLevelSignals {
-  /** Cards present from the WotC Game Changers list */
+  /** Cards in the deck that are on the Commander Game Changers list, as Scryfall's card data marks them */
   gameChangers: string[];
   /** Tier-A tutors (unconditional, low-cost) found in deck */
   tierATutors: string[];
@@ -154,7 +155,7 @@ function _assess(
   const cardNames = allCards.map(c => c.name);
 
   // --- Collect signals ---
-  const gameChangers = findGameChangers(cardNames);
+  const gameChangers = allCards.filter(c => c.gameChanger).map(c => c.name);
   const tutors = findTutors(cardNames);
   const tierATutors = tutors.filter(t => t.tier === 'A').map(t => t.name);
   const tierBTutors = tutors.filter(t => t.tier === 'B').map(t => t.name);
@@ -323,7 +324,7 @@ function buildSuggestions(
       const slot = cardSlotMap.get(cardName.toLowerCase()) ?? 'synergy';
       suggestions.push({
         remove: cardName,
-        removeReason: 'WotC Game Changer — one of the ~40 cards that most warp casual play',
+        removeReason: 'On the Commander Game Changers list: one of the cards that most warp casual play',
         removeSlot: slot,
         alternatives: candidatesBySlot.get(slot)?.slice(0, 3) ?? [],
       });
@@ -348,7 +349,7 @@ function buildSuggestions(
       const blended = (c: SwapCandidate) => c.popularity * 0.5 + (c.synergy ?? 0) * 0.5;
 
       const gcCandidates = (candidates ?? [])
-        .filter(c => GAME_CHANGERS.has(c.name.toLowerCase()))
+        .filter(c => c.gameChanger)
         .sort((a, b) => blended(b) - blended(a))
         .slice(0, target >= 4 ? 4 : 2);
 
@@ -402,7 +403,7 @@ function buildCandidateIndex(
   for (const c of candidates) {
     const lower = c.name.toLowerCase();
     if (deckCardNames.has(lower)) continue;
-    if (GAME_CHANGERS.has(lower)) continue;
+    if (c.gameChanger) continue;
 
     const slot = c.slot || 'synergy';
     if (!index.has(slot)) index.set(slot, []);

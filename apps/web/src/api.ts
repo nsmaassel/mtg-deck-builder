@@ -111,6 +111,15 @@ export type BuildDeckResult = {
       alternatives: Array<{ name: string; popularity: number; synergy?: number; slot: string }>;
     }>;
   };
+  /** What the build did to land on the bracket it was aimed at. Absent when no bracket was chosen. */
+  bracketTuning?: {
+    target: Bracket;
+    reached: Bracket;
+    untuned: Bracket;
+    leftOut: Array<{ name: string; reason: string }>;
+    added: Array<{ name: string; reason: string }>;
+    fewerStaples: boolean;
+  };
 };
 
 export type ExplainResult = {

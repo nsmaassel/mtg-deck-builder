@@ -1,6 +1,7 @@
-import { byScore, cardName } from '@mtg/commander-recs';
+import { byScore, cardName, recommendationScore } from '@mtg/commander-recs';
 import type { Recommendation } from '@mtg/commander-recs';
 import type {
+  BuildAdjustments,
   BuildDeckInput,
   BuildDeckResult,
   BuildMode,
@@ -20,8 +21,10 @@ const STAPLE_SLOTS = ['ramp', 'draw', 'interaction', 'winConditions'] as const;
 
 const COLORS = ['W', 'U', 'B', 'R', 'G'];
 
-interface Candidate {
+export interface Candidate {
   card: Recommendation;
+  /** The card as the build ranks it: the same card, with its popularity marked down when staples are eased off. */
+  ranked: Recommendation;
   owned: boolean;
   /** Whether owning the card counts for it. */
   boosted: boolean;
@@ -48,25 +51,42 @@ function toDeckCard({ card, owned }: Candidate, slot: SlotName, score: number): 
     type_line: card.typeLine,
     usdPrice: card.usd ?? null,
     reasons: card.reasons,
+    ...(card.gameChanger ? { gameChanger: true } : {}),
   };
 }
 
+/**
+ * The card as a build that eases off staples ranks it (see
+ * `BuildAdjustments.stapleDiscount`). The card shown to people keeps its real
+ * numbers.
+ */
+function rankedFor(card: Recommendation, discount: number): Recommendation {
+  if (discount <= 0) return card;
+  const offTheme = Math.min(1, discount);
+  const everything = Math.min(1, Math.max(0, discount - 1));
+  const popularity = card.popularity * (1 - offTheme * (1 - card.synergy)) * (1 - everything);
+  return { ...card, popularity, score: recommendationScore({ ...card, popularity }) };
+}
+
 /** The cards a build may use, best first. An empty `owned` and mode `prefer-owned` give the unconstrained pool. */
-function eligible(
+export function eligible(
   recommendations: Recommendation[],
   commanderId: string,
   identity: readonly string[],
   owned: ReadonlySet<string>,
   mode: BuildMode,
   budgetMaxPrice: number,
+  adjust: BuildAdjustments = {},
 ): Candidate[] {
   return recommendations
     .filter(card => card.oracleId !== commanderId && isColorLegal(card.colorIdentity, identity))
+    .filter(card => !adjust.exclude?.has(card.oracleId))
     .map(card => {
       const isOwned = owned.has(card.oracleId);
       // In owned-only mode every candidate is owned, so the boost would only inflate the scores.
       const boosted = isOwned && mode !== 'owned-only';
-      return { card, owned: isOwned, boosted, score: scoreCard(card, boosted) };
+      const ranked = rankedFor(card, adjust.stapleDiscount ?? 0);
+      return { card, ranked, owned: isOwned, boosted, score: scoreCard(ranked, boosted) };
     })
     .filter(({ card, owned: isOwned }) => {
       if (isOwned) return true;
@@ -78,8 +98,8 @@ function eligible(
     .sort((a, b) => b.score - a.score || byScore(a.card, b.card));
 }
 
-/** Fill the slots from candidates sorted best first. */
-function fillSlots(candidates: Candidate[], identity: readonly string[]): Filled {
+/** Fill the slots from candidates sorted best first. Cards in `include` go in before anything else. */
+function fillSlots(candidates: Candidate[], identity: readonly string[], include?: ReadonlySet<string>): Filled {
   const slots: Record<SlotName, DeckCard[]> = {
     ramp: [], draw: [], interaction: [], winConditions: [], synergy: [], lands: [], flex: [],
   };
@@ -92,27 +112,37 @@ function fillSlots(candidates: Candidate[], identity: readonly string[]): Filled
   };
   const unplacedNonlands = () => candidates.filter(({ card }) => card.slot !== 'lands' && !used.has(card.oracleId));
 
+  // Cards the build was told to play take their own slot while it has room, and a synergy slot after that.
+  if (include?.size) {
+    for (const candidate of candidates) {
+      if (!include.has(candidate.card.oracleId)) continue;
+      const own = candidate.card.slot;
+      place(candidate, slots[own].length < SLOT_TARGETS[own] ? own : 'synergy');
+    }
+  }
+
   // Staples first: each of these slots takes the best cards that do its job.
   for (const slot of STAPLE_SLOTS) {
     for (const candidate of candidates) {
       if (slots[slot].length >= SLOT_TARGETS[slot]) break;
-      if (candidate.card.slot === slot) place(candidate, slot);
+      if (candidate.card.slot === slot && !used.has(candidate.card.oracleId)) place(candidate, slot);
     }
   }
 
   // Synergy is open to every nonland card still unplaced, scored for how well
   // it fits the commander rather than for the job that lost it its own slot.
   const forSynergy = unplacedNonlands()
-    .map(candidate => ({ candidate, score: scoreCard(candidate.card, candidate.boosted, 'synergy') }))
+    .map(candidate => ({ candidate, score: scoreCard(candidate.ranked, candidate.boosted, 'synergy') }))
     .sort((a, b) => b.score - a.score || byScore(a.candidate.card, b.candidate.card));
-  for (const { candidate, score } of forSynergy.slice(0, SLOT_TARGETS.synergy)) place(candidate, 'synergy', score);
+  const synergyRoom = Math.max(0, SLOT_TARGETS.synergy - slots.synergy.length);
+  for (const { candidate, score } of forSynergy.slice(0, synergyRoom)) place(candidate, 'synergy', score);
 
   // Lands: nonbasics up to what the colours can carry, basics for the rest.
   // Basics are exempt from the singleton rule, and everyone has them.
   const nonbasicLands = Math.min(SLOT_TARGETS.lands, nonbasicLandLimit(identity.length));
   for (const candidate of candidates) {
     if (slots.lands.length >= nonbasicLands) break;
-    if (candidate.card.slot === 'lands') place(candidate, 'lands');
+    if (candidate.card.slot === 'lands' && !used.has(candidate.card.oracleId)) place(candidate, 'lands');
   }
   const basics = identity.length > 0 ? identity : ['C'];
   for (let i = 0; slots.lands.length < SLOT_TARGETS.lands; i++) {
@@ -134,7 +164,7 @@ function fillSlots(candidates: Candidate[], identity: readonly string[]): Filled
   // Flex takes the most widely played cards that fit nowhere else, and grows
   // to cover any slot the candidates could not fill.
   const nonlandTarget = TOTAL_DECK_SIZE - 1 - SLOT_TARGETS.lands;
-  const played = (candidate: Candidate) => candidate.card.popularity + (candidate.boosted ? OWNED_BOOST : 0);
+  const played = (candidate: Candidate) => candidate.ranked.popularity + (candidate.boosted ? OWNED_BOOST : 0);
   const leftovers = unplacedNonlands().sort((a, b) => played(b) - played(a) || byScore(a.card, b.card));
   for (const candidate of leftovers) {
     if (nonlands >= nonlandTarget) break;
@@ -144,14 +174,18 @@ function fillSlots(candidates: Candidate[], identity: readonly string[]): Filled
   return { slots, used };
 }
 
-export function buildDeck(input: BuildDeckInput): BuildDeckResult {
+/**
+ * Build the deck. `adjust` is how a build aimed at a bracket steers this one
+ * (see `buildDeckForBracket`); a plain build passes none.
+ */
+export function buildDeck(input: BuildDeckInput, adjust: BuildAdjustments = {}): BuildDeckResult {
   const { profile, recommendations, owned } = input;
   const { commander, identity } = profile;
   const mode = input.options?.mode ?? 'prefer-owned';
   const budgetMaxPrice = input.options?.budgetMaxPrice ?? 5;
 
-  const candidates = eligible(recommendations, commander.oracleId, identity, owned, mode, budgetMaxPrice);
-  const { slots, used } = fillSlots(candidates, identity);
+  const candidates = eligible(recommendations, commander.oracleId, identity, owned, mode, budgetMaxPrice, adjust);
+  const { slots, used } = fillSlots(candidates, identity, adjust.include);
 
   const commanderDeckCard: DeckCard = {
     name: cardName(commander),
@@ -165,6 +199,7 @@ export function buildDeck(input: BuildDeckInput): BuildDeckResult {
     type_line: commander.typeLine,
     usdPrice: commander.usd ?? null,
     reasons: ['The commander'],
+    ...(commander.gameChanger ? { gameChanger: true } : {}),
   };
 
   const totalCards = 1 + Object.values(slots).reduce((sum, s) => sum + s.length, 0);

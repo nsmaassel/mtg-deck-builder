@@ -98,6 +98,8 @@ export interface ScoreBreakdown {
   color: number;
   /** Evidence that players of this deck's archetype run it. */
   meta: number;
+  /** How much of the original's part in the deck's themes it keeps. Counts only when the original has one. */
+  fit: number;
 }
 
 export interface Substitute {
@@ -139,6 +141,16 @@ export interface PlanStep {
   substitute?: Substitute;
   /** Why this action was chosen, in one sentence. */
   note: string;
+  /** For `substitute` and `unfilled`: the combo the list loses without the original card. */
+  comboLost?: string;
+}
+
+/** What a list is built around, as read from its commander or its cards. */
+export interface DeckThemeView {
+  slug: string;
+  name: string;
+  /** What switched the theme on, as a clause: "8 of its cards reward casting spells", "its commander cares about tokens". */
+  because: string;
 }
 
 export interface DeckPlan {
@@ -159,4 +171,6 @@ export interface DeckPlan {
   fidelity: number;
   /** Every stand-in found for each missing card of `gap.cards`, owned and craftable, best first. */
   standIns: ReadonlyMap<CardGap, Substitute[]>;
+  /** What the list is built around; stand-ins for cards that serve a theme are judged on serving it too. */
+  themes: DeckThemeView[];
 }

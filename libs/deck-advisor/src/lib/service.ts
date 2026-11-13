@@ -19,6 +19,7 @@ import type {
   DeckGap,
   DeckList,
   MatchQuality,
+  DeckThemeView,
   PlanAction,
   Substitute,
   SubstituteSource,
@@ -88,6 +89,8 @@ export interface PlanStepView {
   craftRarity?: Rarity;
   substitute?: SubstituteView;
   note: string;
+  /** The combo the list loses without the original card. */
+  comboLost?: string;
 }
 
 export interface TuneCardView {
@@ -129,6 +132,8 @@ export interface DeckCheck {
   tune?: DeckTuneView;
   /** Combos in the list and the cards that would add one. Absent when the combo data is not loaded. */
   combos?: DeckCombos;
+  /** What the list is built around, strongest first. Empty when nothing in it points anywhere. */
+  themes: DeckThemeView[];
   cards: DeckCardView[];
   plan: {
     steps: PlanStepView[];
@@ -238,7 +243,7 @@ export function checkDeck(
     ? { archetype: options.archetype, similarity: 1 }
     : snapshot && nearestArchetype(deck, snapshot, data.index);
   const usage = match ? archetypeUsage(match.archetype, data.index) : undefined;
-  const plan = planDeck(deck, collection, data.index, format, data.text, { usage, craft: options.craft });
+  const plan = planDeck(deck, collection, data.index, format, data.text, { usage, craft: options.craft, combos: data.combos });
   const { gap } = plan;
   const tune = match && tuneDeck(deck, match, collection, data.index);
 
@@ -263,6 +268,7 @@ export function checkDeck(
     colors: gap.colors,
     summary: gapSummary(gap),
     issues: deckIssues(deck, format, data.index),
+    themes: plan.themes,
     cards,
     plan: {
       steps: plan.steps.map(step => {
@@ -275,6 +281,7 @@ export function checkDeck(
         };
         if (step.craftRarity) view.craftRarity = step.craftRarity;
         if (step.substitute) view.substitute = substituteView(step.substitute);
+        if (step.comboLost) view.comboLost = step.comboLost;
         return view;
       }),
       arenaText: plan.arenaText,

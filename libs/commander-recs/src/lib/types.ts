@@ -28,6 +28,8 @@ export interface Recommendation {
   usd?: number;
   /** Lands only, 0..1: how much of the commander's colour identity the land provides. */
   colorFit?: number;
+  /** On the Commander Game Changers list, per Scryfall's card data. */
+  gameChanger?: boolean;
 }
 
 export interface ThemeInfo {

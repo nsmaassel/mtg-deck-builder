@@ -19,19 +19,19 @@ Background:
 
 ---
 
-## Scenario 1: Swap Suggestions for Powering Down
+## Scenario 1: A Build Aimed at a Lower Bracket
 
 ```gherkin
-Scenario: Build targeting a lower bracket shows named swap suggestions
+Scenario: Build targeting a lower bracket is steered to it and says what changed
   Given I build a deck for "Atraxa, Praetors' Voice"
-  And I select "Target Bracket 1" before building
+  And I select "Target Bracket 2" before building
   When the deck builds successfully
-  Then the "💡 Suggestions" panel should be visible
-  And at least one swap suggestion should be shown
-  And each suggestion should name a specific card to remove (e.g. "Rhystic Study")
-  And each suggestion should give a reason (e.g. "WotC Game Changer")
-  And each suggestion should offer 1–3 alternatives from the recommendations for this commander
-  And each alternative should say how widely it is played across Commander ("widely played", "often played", "rarely played")
+  Then the power level badge should show Bracket 2
+  And a "Built for Bracket 2" box should name each card left out (e.g. "Rhystic Study")
+  And each card left out should give a reason (e.g. "On the Game Changers list", "Half of a two-card combo with …")
+  And the deck should still have 100 cards
+  # Where the build cannot reach the target, the box says "Aimed at Bracket N; the closest this build gets is Bracket M"
+  # and the "💡 Suggestions" panel covers the rest, with 1–3 alternatives per swap and how widely each is played
 ```
 
 ---
@@ -40,7 +40,7 @@ Scenario: Build targeting a lower bracket shows named swap suggestions
 
 ```gherkin
 Scenario: Building without a target bracket shows no swap panel
-  Given I do NOT select a target bracket (leave it as "— No target (score only) —")
+  Given I do NOT select a target bracket (leave it as "— No target (best cards, score only) —")
   When I build a deck
   Then the power level badge should show
   And the swap suggestions panel should NOT be visible
@@ -49,30 +49,37 @@ Scenario: Building without a target bracket shows no swap panel
 
 ---
 
-## Scenario 3: Power-Up Suggestions
+## Scenario 3: Aiming Higher
 
 ```gherkin
-Scenario: Build targeting a higher bracket shows add suggestions
-  Given I have a small collection with no Game Changers
-  And my deck builds to Bracket 1 or 2
+Scenario: Build targeting a higher bracket puts in what gets it there
+  Given my deck builds to Bracket 2 with no target
   And I select "Target Bracket 3"
   When the deck builds successfully
-  Then the suggestions panel should recommend Game Changers to add, from the recommendations for this commander
+  Then the tuning box should name each Game Changer or tutor put in, with its reason
+  And the power level badge should show Bracket 3
+
+Scenario: An owned-only build that cannot get there says so
+  Given I build in "Owned Only" mode from a small collection with no Game Changers
+  And I select "Target Bracket 3"
+  When the deck builds successfully
+  Then the tuning box should say "Aimed at Bracket 3; the closest this build gets is Bracket …"
+  And the suggestions panel should recommend Game Changers to add, from the recommendations for this commander
   And the alternatives should show how widely each is played and its synergy with the commander where there is some
 ```
 
 ---
 
-## Scenario 4: No Actionable Swaps (A Bracket Reached on Widely Played Cards Alone)
+## Scenario 4: Too Strong on Widely Played Cards Alone
 
 ```gherkin
-Scenario: Targeting lower bracket with a deck that is simply full of widely played cards shows explanatory hint
+Scenario: Targeting a lower bracket with a deck that is simply full of widely played cards
   Given my deck reaches Bracket 3 only because its spells are widely played (no Game Changers, no tutors, no combos)
   And I select "Target Bracket 2"
   When the deck builds successfully
-  Then the suggestions area should show an explanatory message
-  # e.g. "no specific swaps needed — this deck reaches Bracket 3 on widely played cards alone"
-  And the message should NOT be silently empty
+  Then the tuning box should say that widely played staples gave way to cards fewer decks play
+  And the "Widely played" figure should be under 40
+  # If even that does not get there, the suggestions area shows its explanatory message rather than nothing
 ```
 
 ---
@@ -83,7 +90,7 @@ Scenario: Targeting lower bracket with a deck that is simply full of widely play
 |-----------|-----------------|----------------|
 | 0 Game Changers, 0 tutors, spells averaging under 30 | 1 | Any with minimal collection in owned-only mode |
 | 1+ Tier-B tutor OR spells averaging 30+ | 2 | Most collections |
-| 1+ Game Changer OR 2+ Tier-A tutors OR a two-card combo OR spells averaging 40+ | 3 | Collection with Rhystic Study; any build with no collection |
+| 1+ Game Changer (as Scryfall's card data marks them) OR 2+ Tier-A tutors OR a two-card combo OR spells averaging 40+ | 3 | Collection with Rhystic Study; any build with no collection |
 | 4+ Game Changers OR 2-card combo + GC | 4 | Collection with Jeweled Lotus + combos |
 | 6+ GC + 2 Tier-A + avg CMC <2.0 | 5 | cEDH collection |
 
@@ -99,7 +106,8 @@ Two-card combos come from Commander Spellbook's data, read locally: only combos 
 
 | Criterion | How Tested |
 |-----------|-----------|
-| Suggestions panel appears when targetBracket !== actualBracket | E2E bracket-targeting.spec.ts |
+| A build with a target is steered to it and lists what it left out or put in | `.bracket-tuning`; unit tests in `libs/deck-builder/src/lib/bracket-target.spec.ts` |
+| Suggestions panel appears when the build could not reach the target | `.target-suggestions` when targetBracket !== actualBracket |
 | Shows swap cards when Game Changers/tutors exist | `.swap-remove strong` not empty |
 | Shows explanatory hint when no swaps possible (top-picks-only bracket) | `.no-suggestions-hint` visible |
 | Alternatives say how widely played | `.swap-alt-chip em` shows a word, with a tooltip naming Scryfall's EDHREC rank |

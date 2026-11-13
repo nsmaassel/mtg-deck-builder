@@ -1,5 +1,7 @@
 import { RARITIES } from '@mtg/card-index';
 import type { CardIndex, Format, IndexedCard } from '@mtg/card-index';
+import { themeFit } from '@mtg/commander-recs';
+import type { ProfiledTheme, ThemeFit } from '@mtg/commander-recs';
 import { FORMAT_RULES } from './formats';
 import { frontColors, isCastable, isLand, usableCopies } from './gap';
 import { PRIMARY_ROLE_PATTERN, roleWeight, tagOverlap } from './similarity';
@@ -24,6 +26,10 @@ export interface SubstituteContext {
   /** How the deck's archetype uses cards, when the deck came from the meta. */
   usage?: ArchetypeUsage;
   text: TextModel;
+  /** What the deck is built around. A stand-in for a card that serves a theme is judged on serving it too. */
+  themes?: readonly ProfiledTheme[];
+  /** oracleId → the combo a card would finish with cards the player already has for this deck, in words. */
+  finishesCombo?: ReadonlyMap<string, string>;
 }
 
 export interface SubstituteOptions {
@@ -47,10 +53,16 @@ const PARTIAL_ON_ROLE = 0.35;
  */
 const SHORTLIST: Record<SubstituteSource, number> = { owned: 40, craft: 20 };
 
-const SPELL_WEIGHTS: ScoreBreakdown = { role: 0.42, text: 0.13, type: 0.12, cost: 0.17, color: 0.04, meta: 0.12 };
+const SPELL_WEIGHTS: ScoreBreakdown = { role: 0.42, text: 0.13, type: 0.12, cost: 0.17, color: 0.04, meta: 0.12, fit: 0 };
+/**
+ * Added to the weights above when the missing card serves one of the deck's
+ * themes: a sacrifice outlet's stand-in should be one too, however alike two
+ * cards look otherwise. Where the original serves no theme, nothing changes.
+ */
+const THEME_FIT_WEIGHT = 0.18;
 const UNTAGGED_SPELL_WEIGHTS: ScoreBreakdown = { ...SPELL_WEIGHTS, role: 0, text: SPELL_WEIGHTS.role + SPELL_WEIGHTS.text };
 // For a land, `color` is how much of the original's mana it makes and `cost` is whether it enters untapped.
-const LAND_WEIGHTS: ScoreBreakdown = { role: 0.3, text: 0.05, type: 0, cost: 0.15, color: 0.4, meta: 0.1 };
+const LAND_WEIGHTS: ScoreBreakdown = { role: 0.3, text: 0.05, type: 0, cost: 0.15, color: 0.4, meta: 0.1, fit: 0 };
 
 /** Tagger's names for lands whose point is to make more than one colour. */
 const FIXING_LAND_TAGS = ['dual-land', 'triland', 'triome', 'rainbow-land', 'fetchland'];
@@ -162,6 +174,8 @@ function quality(target: IndexedCard, scored: Scored, score: number, ctx: Substi
   return grade;
 }
 
+const NO_THEME: ThemeFit = { fit: 0 };
+
 interface Candidate {
   card: IndexedCard;
   source: SubstituteSource;
@@ -180,6 +194,8 @@ interface Scored extends Candidate {
   uncovered: string[];
   metaShare: number;
   partial: number;
+  /** The candidate's own place in the deck's themes. */
+  themes: ThemeFit;
 }
 
 function weigh(breakdown: ScoreBreakdown, weights: ScoreBreakdown, skip: Array<keyof ScoreBreakdown> = []): number {
@@ -193,7 +209,12 @@ function weigh(breakdown: ScoreBreakdown, weights: ScoreBreakdown, skip: Array<k
   return weightSum > 0 ? total / weightSum : 0;
 }
 
-function describe(target: IndexedCard, scored: Scored, ctx: SubstituteContext): string[] {
+function lowerFirst(text: string): string {
+  // "Blood Artist effect" keeps its capital; "Creature sacrifice outlet" does not need one.
+  return /^[A-Z][a-z]+ [A-Z]/.test(text) ? text : text.charAt(0).toLowerCase() + text.slice(1);
+}
+
+function describe(target: IndexedCard, targetThemes: ThemeFit, scored: Scored, ctx: SubstituteContext): string[] {
   const { card, breakdown, shared } = scored;
   const reasons: string[] = [];
 
@@ -219,6 +240,14 @@ function describe(target: IndexedCard, scored: Scored, ctx: SubstituteContext): 
       reasons.push(`${types.charAt(0).toUpperCase()}${types.slice(1)} instead of ${cardTypes(target).join(' ').toLowerCase()}`);
     }
   }
+
+  if (scored.themes.theme && scored.themes.want) {
+    reasons.push(`Fits the deck's ${scored.themes.theme.name} theme: ${lowerFirst(scored.themes.want.reason)}`);
+  } else if (targetThemes.theme) {
+    reasons.push(`Does nothing for the deck's ${targetThemes.theme.name} theme, which the original serves`);
+  }
+  const combo = ctx.finishesCombo?.get(card.oracleId);
+  if (combo) reasons.push(combo);
 
   if (ctx.usage && scored.metaShare >= 0.05) {
     reasons.push(`In ${Math.round(scored.metaShare * 100)}% of ${ctx.usage.archetype} main decks`);
@@ -251,6 +280,7 @@ export class SubstituteFinder {
   private craftable?: Pools;
   private readonly tagWeights = new Map<string, number>();
   private readonly cardWeights = new Map<string, number>();
+  private readonly themeFits = new Map<string, ThemeFit>();
 
   constructor(private readonly ctx: SubstituteContext) {}
 
@@ -266,9 +296,11 @@ export class SubstituteFinder {
     const sources = options.sources ?? ['owned', 'craft'];
 
     const targetTags = new Map(target.tags.map(tag => [tag, this.tagWeight(tag)]));
+    const targetThemes = isLand(target) ? NO_THEME : this.themeFit(target);
+    const finishes = (s: Substitute) => Number(ctx.finishesCombo?.has(s.card.oracleId) ?? false);
     const shortlist = sources.flatMap(source =>
       this.candidates(target, source)
-        .map(candidate => this.scoreFast(target, targetTags, candidate))
+        .map(candidate => this.scoreFast(target, targetTags, targetThemes, candidate))
         .sort((a, b) => b.partial - a.partial || a.card.name.localeCompare(b.card.name))
         .slice(0, SHORTLIST[source]),
     );
@@ -288,14 +320,14 @@ export class SubstituteFinder {
           quality: quality(target, scored, score, ctx),
           available: scored.available,
           breakdown: scored.breakdown,
-          reasons: describe(target, scored, ctx),
+          reasons: describe(target, targetThemes, scored, ctx),
         };
         if (scored.source === 'craft') substitute.craftRarity = scored.card.arenaRarity;
         return substitute;
       })
       .filter(s => s.score >= minScore)
       // An owned card beats a craft of equal merit: it is free.
-      .sort((a, b) => b.score - a.score || (a.source === b.source ? 0 : a.source === 'owned' ? -1 : 1) || a.card.name.localeCompare(b.card.name))
+      .sort((a, b) => b.score - a.score || (a.source === b.source ? 0 : a.source === 'owned' ? -1 : 1) || finishes(b) - finishes(a) || a.card.name.localeCompare(b.card.name))
       .slice(0, limit);
   }
 
@@ -379,6 +411,17 @@ export class SubstituteFinder {
     return weight;
   }
 
+  private themeFit(card: IndexedCard): ThemeFit {
+    const themes = this.ctx.themes;
+    if (!themes || themes.length === 0) return NO_THEME;
+    let fit = this.themeFits.get(card.oracleId);
+    if (!fit) {
+      fit = themeFit(themes, card);
+      this.themeFits.set(card.oracleId, fit);
+    }
+    return fit;
+  }
+
   /** Total weight of a card's tags, the candidate's side of the overlap ratio. */
   private cardWeight(card: IndexedCard): number {
     let weight = this.cardWeights.get(card.oracleId);
@@ -400,7 +443,7 @@ export class SubstituteFinder {
   }
 
   /** Every signal except rules text, which is only compared for the shortlist. */
-  private scoreFast(target: IndexedCard, targetTags: Map<string, number>, candidate: Candidate): Scored {
+  private scoreFast(target: IndexedCard, targetTags: Map<string, number>, targetThemes: ThemeFit, candidate: Candidate): Scored {
     const { ctx } = this;
     const { card } = candidate;
     const role = this.roleScore(target, targetTags, card);
@@ -408,6 +451,7 @@ export class SubstituteFinder {
 
     let breakdown: ScoreBreakdown;
     let weights: ScoreBreakdown;
+    let themes = NO_THEME;
     if (isLand(target)) {
       const wanted = target.producedMana.filter(c => ctx.colors.includes(c));
       const made = wanted.filter(c => card.producedMana.includes(c));
@@ -420,9 +464,11 @@ export class SubstituteFinder {
         color: wanted.length ? (made.length / wanted.length) * fixingQuality(card) : 1,
         // Commander popularity says little about a land in another deck; only archetype evidence counts.
         meta: ctx.usage ? meta.score : 0,
+        fit: 0,
       };
       weights = ctx.usage ? LAND_WEIGHTS : { ...LAND_WEIGHTS, meta: 0 };
     } else {
+      themes = this.themeFit(card);
       breakdown = {
         role,
         text: 0,
@@ -430,10 +476,12 @@ export class SubstituteFinder {
         cost: costScore(target, card),
         color: colorScore(target, card),
         meta: meta.score,
+        fit: targetThemes.fit > 0 ? Math.min(1, themes.fit / targetThemes.fit) : 0,
       };
       // Untagged cards (the newest set, usually) are judged on rules text instead.
       const untagged = target.tags.length === 0 || card.tags.length === 0;
       weights = untagged ? UNTAGGED_SPELL_WEIGHTS : SPELL_WEIGHTS;
+      if (targetThemes.fit > 0) weights = { ...weights, fit: THEME_FIT_WEIGHT };
     }
 
     return {
@@ -444,6 +492,7 @@ export class SubstituteFinder {
       uncovered: [],
       metaShare: meta.share,
       partial: weigh(breakdown, weights, ['text']),
+      themes,
     };
   }
 }

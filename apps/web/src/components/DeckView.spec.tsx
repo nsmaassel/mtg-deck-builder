@@ -161,6 +161,42 @@ describe('DeckView', () => {
     expect(document.querySelector('.target-suggestions')).toBeNull();
   });
 
+  it('says what a build aimed at a bracket left out, put in and eased off', () => {
+    const result = makeResult({
+      bracketTuning: {
+        target: 2,
+        reached: 2,
+        untuned: 4,
+        leftOut: [{ name: 'Rhystic Study', reason: 'On the Game Changers list' }],
+        added: [],
+        fewerStaples: true,
+      },
+    });
+    render(<DeckView result={result} />);
+    const tuning = document.querySelector('.bracket-tuning')!;
+    expect(tuning.textContent).toContain('Built for Bracket 2');
+    expect(tuning.querySelector('.tuning-left-out')!.textContent).toBe('Left out: Rhystic Study (On the Game Changers list)');
+    expect(tuning.querySelector('.tuning-added')).toBeNull();
+    expect(tuning.querySelector('.tuning-staples')).not.toBeNull();
+  });
+
+  it('says so when the build could not get to the bracket, and when it had nothing to change', () => {
+    const short = makeResult({ bracketTuning: { target: 4, reached: 3, untuned: 3, leftOut: [], added: [], fewerStaples: false } });
+    const { unmount } = render(<DeckView result={short} />);
+    expect(document.querySelector('.bracket-tuning')!.textContent).toContain('Aimed at Bracket 4; the closest this build gets is Bracket 3');
+    expect(document.querySelector('.bracket-tuning')!.textContent).toContain('nothing this build may use moves it up');
+    unmount();
+
+    const already = makeResult({ bracketTuning: { target: 3, reached: 3, untuned: 3, leftOut: [], added: [], fewerStaples: false } });
+    render(<DeckView result={already} />);
+    expect(document.querySelector('.bracket-tuning')!.textContent).toContain('nothing was changed');
+  });
+
+  it('shows no tuning box for a build with no target', () => {
+    render(<DeckView result={makeResult()} />);
+    expect(document.querySelector('.bracket-tuning')).toBeNull();
+  });
+
   // 7. Swap alternative chips say how widely played and how well fitting, in words
   it('shows swap alternative chips with card names and how widely each is played', () => {
     render(<DeckView result={makeResult()} />);

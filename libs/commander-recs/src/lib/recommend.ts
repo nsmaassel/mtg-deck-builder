@@ -250,6 +250,7 @@ export function scoreFor(index: CardIndex, profile: CommanderProfile, card: Inde
   };
   if (card.usd !== undefined) recommendation.usd = card.usd;
   if (land) recommendation.colorFit = land.fit;
+  if (card.gameChanger) recommendation.gameChanger = true;
   return recommendation;
 }
 

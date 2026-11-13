@@ -60,7 +60,7 @@ Untapped.gg, MTGGoldfish, AetherHub and Moxfield are not used: their terms forbi
 |---------|--------|-------------|
 | 🃏 **Build from commander** | ✅ Shipped | Pick any legendary creature, get the best 99 from your collection plus the top picks for what that commander does |
 | ⚡ **Power level assessment** | ✅ Shipped | Official Commander Brackets 1–5: Game Changers, tutors, combo detection via Commander Spellbook |
-| 🔄 **Bracket targeting** | ✅ Shipped | Target a bracket — get named swap suggestions with ranked alternatives |
+| 🔄 **Bracket targeting** | ✅ Shipped | Pick a bracket and the build is steered to it: it names the Game Changers, tutors and combo pieces it left out or put in, and suggests swaps for whatever distance is left |
 | 📊 **Gap analysis** | ✅ Shipped | Cards the deck leans on that you do not own, with the reason each is there, its price and its slot |
 | 🤖 **AI explanations** | ✅ Shipped | Claude explains strategy, key synergies, and top upgrade targets |
 | 🔒 **Owned-only mode** | ✅ Shipped | Build strictly from your collection — no unowned recommendations |
@@ -157,6 +157,10 @@ What it cannot know: how often a card is played *with this commander*. No open d
 | 5 | cEDH | 6+ GC + 2 Tier-A tutors + avg CMC <2.0 |
 
 "Spells averaging N" is the mean popularity of the deck's nonland cards, out of 100, from Scryfall's EDHREC rank: a stand-in for how tuned a list is when it has no Game Changers, tutors or combos to go by. Two-card combos are found in Commander Spellbook's data, read locally (`libs/combos`); the build makes no request to them.
+
+Game Changers are the cards Scryfall's card data marks as on the list (`game_changer`), so the list is as current as the card index. Tutor tiers are a hand-kept list (`libs/power-level`).
+
+**Building to a bracket.** With a target, the build changes one card at a time until the assessment above agrees with it (`buildDeckForBracket` in `libs/deck-builder`). To come down it leaves out a piece of a two-card combo, a Game Changer or a tutor, whichever lowers the bracket; when nothing of that kind is left and the deck is still too strong on widely played cards alone, staples give way to cards fewer decks play, the ones that do nothing for the commander first. To go up it puts in Game Changers and tutors the build may use (owned ones in an owned-only build). It never goes above the target, and it says so when it cannot get there. The bracket is this project's estimate from the signals in the table, not a ruling: a pod's own sense of a deck still decides.
 
 Swap suggestions rank alternatives by a blend of popularity and synergy. The candidates are this commander's own recommendations that did not make the deck, so colour identity is correct by construction.
 

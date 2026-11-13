@@ -127,6 +127,7 @@ function StepRow({ step }: { step: PlanStepView }) {
           <CardLink name={step.substitute.card.name} />
           <span className={`quality quality-${step.substitute.quality}`}>{QUALITY_LABEL[step.substitute.quality]}</span>
           <span className="step-note">{step.substitute.reasons.join(' · ')}</span>
+          {step.comboLost && <span className="step-warning">{step.comboLost}</span>}
         </span>
       </li>
     );
@@ -137,6 +138,7 @@ function StepRow({ step }: { step: PlanStepView }) {
       <span className="step-body">
         {step.count}× <CardLink name={step.target} />
         <span className="step-note">{step.note}</span>
+        {step.comboLost && <span className="step-warning">{step.comboLost}</span>}
       </span>
     </li>
   );
@@ -296,6 +298,19 @@ export function DeckCheckView({ check, context, hasCollection, craft, onCraftCha
             {check.issues.map(issue => <li key={issue.message}>{issue.message}</li>)}
           </ul>
         </div>
+      )}
+
+      {check.themes.length > 0 && (
+        <p className="deck-themes">
+          <strong>Built around:</strong>{' '}
+          {check.themes.map((theme, i) => (
+            <span key={theme.slug}>
+              {i > 0 && '; '}
+              {theme.name} <small>({theme.because})</small>
+            </span>
+          ))}
+          <small className="deck-themes-note"> A stand-in for a card that serves one of these is judged on serving it too.</small>
+        </p>
       )}
 
       {!hasCollection && (

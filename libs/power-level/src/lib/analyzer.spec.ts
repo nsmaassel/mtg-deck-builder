@@ -2,6 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { assessPowerLevel } from './analyzer';
 import type { DeckList, DeckAnalysis } from '@mtg/deck-builder';
 
+/** Cards these tests treat as Game Changers. Real decks carry the flag from Scryfall's card data. */
+const GAME_CHANGERS = new Set(["jeweled lotus", "mana crypt", "thassa's oracle", "demonic consultation", "dockside extortionist", "demonic tutor", "vampiric tutor", "fierce guardianship", "rhystic study", "smothering tithe", "cyclonic rift", "force of will", "mana drain"]);
+
 function makeDeck(cardNames: string[], rampCmcs: number[] = []): DeckList {
   const makeCard = (name: string, slot: string, cmc = 2) =>
     ({
@@ -16,6 +19,7 @@ function makeDeck(cardNames: string[], rampCmcs: number[] = []): DeckList {
       type_line: 'Sorcery',
       usdPrice: null,
       reasons: [],
+      gameChanger: GAME_CHANGERS.has(name.toLowerCase()),
     } as import('@mtg/deck-builder').DeckCard);
 
   const rampCards = rampCmcs.map((cmc, i) => makeCard(`Ramp Card ${i}`, 'ramp', cmc));
@@ -168,8 +172,8 @@ describe('assessPowerLevel', () => {
     const analysis = makeAnalysis(3.0, 20);
     // Supply a candidate pool including a Game Changer
     const candidates = [
-      { name: 'Rhystic Study', popularity: 0.63, slot: 'draw' },
-      { name: 'Cyclonic Rift', popularity: 0.61, slot: 'interaction' },
+      { name: 'Rhystic Study', popularity: 0.63, slot: 'draw', gameChanger: true },
+      { name: 'Cyclonic Rift', popularity: 0.61, slot: 'interaction', gameChanger: true },
     ];
     const result = assessPowerLevel(deck, analysis, 3, candidates);
     expect(result.targetSuggestions).toBeDefined();

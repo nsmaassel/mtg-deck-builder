@@ -61,6 +61,7 @@ export type {
   DeckPlan,
   MatchQuality,
   PlanAction,
+  DeckThemeView,
   PlanStep,
   ScoreBreakdown,
   Substitute,

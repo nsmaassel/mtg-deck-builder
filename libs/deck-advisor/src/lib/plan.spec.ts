@@ -4,11 +4,12 @@ import { parseDeckText } from './deck-text';
 import { craftCost, planDeck } from './plan';
 import type { PlanOptions } from './plan';
 import { TextModel } from './similarity';
-import { buildTestIndex, collectionOf, oracleId } from './testing/fixtures';
+import { buildTestCombos, buildTestIndex, collectionOf, oracleId } from './testing/fixtures';
 import type { DeckLine, Wildcards } from './types';
 
 const index = buildTestIndex();
 const text = new TextModel(index);
+const combos = buildTestCombos(index);
 
 function plan(deckText: string, owned: Record<string, number>, wildcards?: Wildcards, options?: PlanOptions, format: Format = 'standard') {
   return planDeck(parseDeckText(deckText), collectionOf(owned, wildcards), index, format, text, options);
@@ -197,6 +198,98 @@ describe('planDeck', () => {
     expect(chosen()).toEqual(['Elvish Mystic']);
     const usage = { archetype: 'Mono-Green', mainShare: (id: string) => (id === oracleId('Fyndhorn Elves') ? 0.7 : 0), sideShare: () => 0 };
     expect(chosen({ usage })).toEqual(['Fyndhorn Elves']);
+  });
+});
+
+describe('planDeck and combos', () => {
+  const DECK = '4 Opt\n4 Shock\n4 Negate\n12 Island\n';
+  const OWNED = { Opt: 4, 'Lightning Strike': 4, 'Essence Scatter': 4 };
+
+  it('says which combo the list loses when a stand-in takes a combo piece\'s place', () => {
+    const result = plan(DECK, OWNED, undefined, { combos });
+    const shock = result.steps.find(step => step.target === 'Shock')!;
+    expect(shock).toMatchObject({ action: 'substitute', substitute: { card: { name: 'Lightning Strike' } } });
+    expect(shock.comboLost).toBe('Without Shock the deck loses its combo with Opt (infinite damage).');
+    // Negate is in no combo.
+    expect(result.steps.find(step => step.target === 'Negate')!.comboLost).toBeUndefined();
+  });
+
+  it('spends the wildcards on the combo piece, however close its stand-in', () => {
+    const wildcards = { ...NO_WILDCARDS, common: 4 };
+    const without = plan(DECK, OWNED, wildcards);
+    const withCombos = plan(DECK, OWNED, wildcards, { combos });
+    const crafted = (result: typeof without) => result.steps.filter(step => step.action === 'craft').map(step => step.target);
+    expect(crafted(withCombos)).toEqual(['Shock']);
+    expect(withCombos.steps.find(step => step.action === 'craft')!.note).toBe(
+      "Worth the wildcard: it is part of the deck's combo with Opt (infinite damage), and no other card keeps that.",
+    );
+    expect(withCombos.steps.some(step => step.comboLost)).toBe(false);
+    // Without the combo data nothing marks Shock out: Lightning Strike is close enough to keep the wildcards.
+    expect(crafted(without)).toEqual([]);
+  });
+
+  it('does not count a combo that needs more than its named cards as one the list would lose', () => {
+    // Shock + Lightning Strike is a combo only beside two sacrifice outlets.
+    const result = plan('4 Shock\n4 Lightning Strike\n12 Mountain\n', { Shock: 4, Abrade: 4 }, undefined, { combos });
+    expect(result.steps.find(step => step.target === 'Lightning Strike')!.comboLost).toBeUndefined();
+  });
+
+  it('leaves a combo alone that the copies owned still make', () => {
+    const wildcards = { ...NO_WILDCARDS, common: 4 };
+    const result = plan(DECK, { ...OWNED, Shock: 2 }, wildcards, { combos });
+    expect(result.steps.some(step => step.comboLost)).toBe(false);
+    expect(result.steps.filter(step => step.action === 'craft')).toEqual([]);
+  });
+
+  it('gives a combo piece no priority when its other half is missing too', () => {
+    const wildcards = { ...NO_WILDCARDS, common: 4 };
+    const result = plan(DECK, { 'Lightning Strike': 4, 'Essence Scatter': 4, Consider: 4 }, wildcards, { combos });
+    for (const step of result.steps.filter(s => s.action === 'craft')) expect(step.note).not.toMatch(/combo/);
+  });
+
+  it('points out a stand-in that finishes a combo with cards already held', () => {
+    const result = plan('4 Opt\n4 Lightning Strike\n12 Island\n', { Opt: 4, Shock: 4 }, undefined, { combos });
+    const step = result.steps.find(s => s.target === 'Lightning Strike')!;
+    expect(step.substitute!.card.name).toBe('Shock');
+    expect(step.substitute!.reasons).toContain('Finishes a combo with Opt (infinite damage)');
+  });
+
+  it('claims no combo that needs more than its named cards, or cards the player lacks', () => {
+    // Shock + Lightning Strike also needs two sacrifice outlets; Opt is not owned here.
+    const result = plan('4 Opt\n4 Lightning Strike\n4 Negate\n12 Island\n', { 'Lightning Strike': 4, Shock: 4 }, undefined, { combos });
+    for (const stand of [...result.standIns.values()].flat()) {
+      expect(stand.reasons.join(' ')).not.toMatch(/combo/);
+    }
+  });
+});
+
+describe('planDeck and themes', () => {
+  const DECK = '4 Slickshot Show-Off\n4 Tempest Angler\n4 Opt\n12 Island\n';
+
+  it('reads what a list is built around from its own cards', () => {
+    expect(plan(DECK, {}).themes).toEqual([
+      { slug: 'spellslinger', name: 'Spellslinger', because: '8 of its cards reward casting spells' },
+    ]);
+    expect(plan('4 Hulking Raptor\n4 Llanowar Elves\n12 Forest\n', {}).themes).toEqual([]);
+  });
+
+  it('takes a commander deck\'s themes from its commander', () => {
+    const result = plan('Commander\n1 Niv-Mizzet, Parun\n\nDeck\n1 Opt\n1 Shock\n', {}, undefined, undefined, 'brawl');
+    for (const theme of result.themes) expect(theme.because).toMatch(/^its commander /);
+  });
+
+  it('judges a stand-in for a card that serves the theme on serving it too', () => {
+    const result = plan(DECK, { 'Tempest Angler': 4, Opt: 4, 'Crackling Cyclops': 4, 'Vampire Nighthawk': 4, 'Hulking Raptor': 4 });
+    const stands = [...result.standIns.values()].flat();
+    const cyclops = stands.find(stand => stand.card.name === 'Crackling Cyclops')!;
+    expect(cyclops.breakdown.fit).toBe(1);
+    expect(cyclops.reasons).toContain("Fits the deck's Spellslinger theme: rewards casting spells");
+    const raptor = stands.find(stand => stand.card.name === 'Hulking Raptor');
+    if (raptor) {
+      expect(raptor.breakdown.fit).toBe(0);
+      expect(raptor.reasons).toContain("Does nothing for the deck's Spellslinger theme, which the original serves");
+      expect(raptor.score).toBeLessThan(cyclops.score);
+    }
   });
 });
 
