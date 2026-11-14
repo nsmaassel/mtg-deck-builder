@@ -96,7 +96,7 @@ The meta snapshot is 45 days of tournaments ending at build time. Redeploy every
 
 ## Known gaps
 
-- The in-app daily ceiling is forgotten when the instance restarts, which Cloud Run does after about fifteen idle minutes and on every deploy. Someone patient could spend the daily amount several times a day, until the month's cap on Vertex AI pauses the chat. Keeping the day's count outside the instance would fix that and is not built.
+- The in-app daily ceiling is forgotten when the instance restarts, which Cloud Run does after about fifteen idle minutes and on every deploy. Someone patient could spend the daily amount and the turns under way, up to $2.00 for one instance, several times a day, until the month's cap on Vertex AI pauses the chat. Keeping the day's count outside the instance would fix that and is not built.
 - The evals ran against the Gemini API with a key, not against Vertex AI. Same model, different endpoint: after the first deploy, run `pnpm eval:agent` once with `GOOGLE_GENAI_USE_ENTERPRISE=true`, `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_LOCATION` set.
 - Old images accumulate in the repository. Delete them by hand or add a cleanup policy.
 - Every build downloads Scryfall's bulk files and Commander Spellbook's variants again: Cloud Build keeps no layers between builds. Both sources ask for about one fetch a day, so do not rebuild in a loop; redeploy an existing image with `IMAGE=...` when only settings change.
