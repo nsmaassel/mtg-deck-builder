@@ -4,6 +4,7 @@ import type { AdvisorData } from '@mtg/deck-advisor';
 import { ComboIndex, CombosBuilder } from '@mtg/combos';
 import { buildCommanderTestIndex } from '@mtg/commander-recs/testing';
 import { buildApp } from '../app.js';
+import { ChatBudget } from '../chat-budget.js';
 
 // ---------------------------------------------------------------------------
 // vi.hoisted ensures these vi.fn() instances are available when vi.mock
@@ -12,6 +13,9 @@ import { buildApp } from '../app.js';
 const mocks = vi.hoisted(() => ({
   getCardByName: vi.fn(),
   assessPowerLevel: vi.fn(),
+  explainDeck: vi.fn(),
+  explainDeckCallsModel: vi.fn(),
+  explainDeckPromptTokensAtMost: vi.fn(),
 }));
 
 // Scryfall is only asked to spell a commander name the index does not know.
@@ -32,7 +36,10 @@ vi.mock('@mtg/power-level', async importOriginal => ({
 }));
 
 vi.mock('@mtg/ai-advisor', () => ({
-  explainDeck: vi.fn().mockResolvedValue({ explanation: 'test', keyCards: [], suggestedUpgrades: [] }),
+  explainDeck: mocks.explainDeck,
+  explainDeckCallsModel: mocks.explainDeckCallsModel,
+  explainDeckPromptTokensAtMost: mocks.explainDeckPromptTokensAtMost,
+  EXPLAIN_DECK_MAX_OUTPUT_TOKENS: 1024,
 }));
 
 // ---------------------------------------------------------------------------
@@ -366,6 +373,87 @@ describe('POST /api/decks/build-from-commander', () => {
     expect(res.statusCode).toBe(400);
     const body = res.json<{ error: string }>();
     expect(body.error).toMatch(/owned only/i);
+  });
+});
+
+describe('POST /api/ai/explain-deck', () => {
+  const deck = { slots: { ramp: [{ name: 'Sol Ring' }], lands: [{ name: 'Mountain' }] } };
+  const explain = (app: ReturnType<typeof buildApp>, payload: Record<string, unknown> = { deck, commanderName: 'Krenko, Mob Boss' }) =>
+    app.inject({ method: 'POST', url: '/api/ai/explain-deck', payload });
+
+  beforeEach(() => {
+    mocks.explainDeck.mockReset().mockResolvedValue({ explanation: 'test', keyCards: [], suggestedUpgrades: [] });
+    mocks.explainDeckCallsModel.mockReset().mockReturnValue(true);
+    mocks.explainDeckPromptTokensAtMost.mockReset().mockReturnValue(1000);
+  });
+
+  it('counts a paid explanation against the chat budget and refuses once the day is spent', async () => {
+    const budget = new ChatBudget({ perDay: 50, perMinute: 50, usdPerDay: 0.01, price: { input: 1, output: 10 } });
+    const app = buildApp({ advisor, chatBudget: budget });
+
+    expect((await explain(app)).statusCode).toBe(200);
+    // 1,024 output tokens at $10 a million is already past a cent.
+    expect(budget.spentToday).toBeGreaterThan(0.01);
+
+    const refused = await explain(app);
+    expect(refused.statusCode).toBe(429);
+    expect(mocks.explainDeck).toHaveBeenCalledTimes(1);
+  });
+
+  it('charges a call that failed, frees its place, and keeps the provider\'s words to the log', async () => {
+    const budget = new ChatBudget({ perDay: 50, perMinute: 50, usdPerDay: 1, maxConcurrent: 1, price: { input: 1, output: 10 } });
+    const app = buildApp({ advisor, chatBudget: budget });
+    mocks.explainDeck.mockRejectedValueOnce(new Error('Gemini API error 429: quota for project 1234'));
+
+    const failed = await explain(app);
+    expect(failed.statusCode).toBe(502);
+    expect(failed.body).not.toContain('1234');
+    expect(budget.spentToday).toBeGreaterThan(0);
+    expect((await explain(app)).statusCode).toBe(200);
+  });
+
+  it('leaves the budget alone when no model is called', async () => {
+    mocks.explainDeckCallsModel.mockReturnValue(false);
+    const budget = new ChatBudget({ perDay: 1, perMinute: 50, usdPerDay: 0.01, price: { input: 1, output: 10 } });
+    const app = buildApp({ advisor, chatBudget: budget });
+
+    expect((await explain(app)).statusCode).toBe(200);
+    expect((await explain(app)).statusCode).toBe(200);
+    expect(budget.spentToday).toBe(0);
+  });
+
+  it('refuses a deck too large to be one, before any model call', async () => {
+    const app = buildApp({ advisor });
+    const many = { slots: { ramp: Array.from({ length: 151 }, (_, i) => ({ name: `Card ${i}` })) } };
+    const longName = { slots: { ramp: [{ name: 'x'.repeat(151) }] } };
+
+    expect((await explain(app, { deck: many, commanderName: 'Krenko, Mob Boss' })).statusCode).toBe(400);
+    expect((await explain(app, { deck: longName, commanderName: 'Krenko, Mob Boss' })).statusCode).toBe(400);
+    expect((await explain(app, { deck: { slots: { ramp: 'Sol Ring' } }, commanderName: 'Krenko, Mob Boss' })).statusCode).toBe(400);
+    expect(mocks.explainDeck).not.toHaveBeenCalled();
+  });
+
+  it('refuses slot names that would pad the prompt', async () => {
+    const app = buildApp({ advisor });
+    const longSlot = { slots: { ['x'.repeat(41)]: [] } };
+    const manySlots = { slots: Object.fromEntries(Array.from({ length: 21 }, (_, i) => [`slot${i}`, []])) };
+
+    expect((await explain(app, { deck: longSlot, commanderName: 'Krenko, Mob Boss' })).statusCode).toBe(400);
+    expect((await explain(app, { deck: manySlots, commanderName: 'Krenko, Mob Boss' })).statusCode).toBe(400);
+    expect((await explain(app, { deck: { slots: [[{ name: 'Sol Ring' }]] }, commanderName: 'Krenko, Mob Boss' })).statusCode).toBe(400);
+    expect((await explain(app, { deck: { slots: { ramp: [{ name: 'x'.repeat(300_000) }] } }, commanderName: 'K' })).statusCode).toBe(413);
+    expect(mocks.explainDeck).not.toHaveBeenCalled();
+  });
+
+  it('charges the prompt at its upper bound and the output at its cap', async () => {
+    // A dollar a prompt token and a thousand dollars an output token keep the two apart in the sum.
+    const budget = new ChatBudget({ perDay: 50, perMinute: 50, usdPerDay: 1e9, price: { input: 1e6, output: 1e9 } });
+    const app = buildApp({ advisor, chatBudget: budget });
+    mocks.explainDeckPromptTokensAtMost.mockReturnValue(70_610);
+
+    expect((await explain(app)).statusCode).toBe(200);
+    expect(mocks.explainDeckPromptTokensAtMost).toHaveBeenCalledWith({ deck, commanderName: 'Krenko, Mob Boss' });
+    expect(budget.spentToday).toBeCloseTo(70_610 + 1024 * 1000);
   });
 });
 

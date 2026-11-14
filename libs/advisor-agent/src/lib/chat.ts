@@ -9,7 +9,7 @@ import {
   isFinalResponse,
   stringifyContent,
 } from '@google/adk';
-import type { BaseLlm } from '@google/adk';
+import type { BaseLlm, LlmRequest } from '@google/adk';
 import type { AdvisorData, Collection } from '@mtg/deck-advisor';
 import { ADVISOR_INSTRUCTION } from './instruction';
 import type { ThinkingLevel } from './thinking';
@@ -37,6 +37,20 @@ export interface AdvisorChatOptions {
   maxLlmCallsPerTurn?: number;
   /** Tool runs allowed in one turn; each result is carried in every later model call. Default 6. */
   maxToolCallsPerTurn?: number;
+  /**
+   * The most one model call may write, thinking included, in tokens. Default 4,096.
+   * Without it a visitor asking for a very long answer sets the price of a turn.
+   */
+  maxOutputTokensPerCall?: number;
+  /**
+   * What one turn may send to the model over all its calls, in bytes of request: instruction,
+   * tool descriptions, history and every tool result, each time they are sent. It is checked
+   * before a call is made, and a token is at least a byte, so it is a ceiling on a turn's
+   * prompt tokens whatever the model does with its tools. Default 400,000; English and JSON
+   * run at three to four bytes a token, so that is about 115,000 tokens, seven times the
+   * largest turn the evals have seen.
+   */
+  maxPromptBytesPerTurn?: number;
   /** Turns allowed in one conversation. Default 30. */
   maxTurnsPerSession?: number;
   /**
@@ -101,6 +115,20 @@ export interface TurnTrace {
   ms: number;
 }
 
+const TURN_TOO_LARGE = 'That question needed more reading than one answer allows. Ask about one deck at a time.';
+
+/**
+ * The size of everything a model call sends, in bytes: at least its prompt tokens. A request
+ * that cannot be measured counts as too large for any turn.
+ */
+function requestBytes(request: LlmRequest): number {
+  try {
+    return Buffer.byteLength(JSON.stringify([request.contents, request.config]) ?? '', 'utf8');
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
 export class AdvisorChatError extends Error {
   constructor(
     message: string,
@@ -108,7 +136,7 @@ export class AdvisorChatError extends Error {
      * `limit`: the conversation is over its turn budget. `busy`: it is still
      * answering the previous message. `model`: the model call failed.
      */
-    public readonly kind: 'limit' | 'busy' | 'model',
+    public readonly kind: 'limit' | 'turn' | 'busy' | 'model',
     /** Tokens a failed turn used before it failed. They are billed all the same. */
     public readonly usage?: ChatUsage,
   ) {
@@ -164,6 +192,8 @@ export class AdvisorChat {
     this.options = {
       maxLlmCallsPerTurn: 8,
       maxToolCallsPerTurn: 6,
+      maxOutputTokensPerCall: 4096,
+      maxPromptBytesPerTurn: 400_000,
       maxTurnsPerSession: 30,
       maxContextTokens: 40_000,
       sessionTtlMs: 60 * 60 * 1000,
@@ -215,16 +245,29 @@ export class AdvisorChat {
     record: SessionRecord,
   ): Promise<ChatTurn> {
     // The tools close over this turn's collection, so the agent is built per turn. It is cheap.
+    // Counted before each call, so the call that would pass the limit is never made or paid for.
+    let sentBytes = 0;
+    let tooLarge = false;
     const agent = new LlmAgent({
       name: 'deck_advisor',
       description: 'Advises MTG Arena players on which deck to build with the cards they own.',
       model: this.options.model,
       instruction: ADVISOR_INSTRUCTION,
       tools: createAdvisorTools(this.options.data, { collection }, { maxCalls: this.options.maxToolCallsPerTurn }),
-      ...(this.options.thinkingLevel && {
-        // The API's own spelling of the level; typed as a string enum in the SDK the ADK wraps.
-        generateContentConfig: { thinkingConfig: { thinkingLevel: this.options.thinkingLevel.toUpperCase() as never } },
-      }),
+      beforeModelCallback: ({ request }) => {
+        sentBytes += requestBytes(request);
+        if (sentBytes <= this.options.maxPromptBytesPerTurn) return undefined;
+        tooLarge = true;
+        // Any reply returned here stands in for the model's and ends the turn.
+        return { content: { role: 'model', parts: [{ text: TURN_TOO_LARGE }] } };
+      },
+      generateContentConfig: {
+        maxOutputTokens: this.options.maxOutputTokensPerCall,
+        ...(this.options.thinkingLevel && {
+          // The API's own spelling of the level; typed as a string enum in the SDK the ADK wraps.
+          thinkingConfig: { thinkingLevel: this.options.thinkingLevel.toUpperCase() as never },
+        }),
+      },
     });
     const runner = new Runner({ appName: APP_NAME, agent, sessionService: this.sessionService });
 
@@ -268,6 +311,7 @@ export class AdvisorChat {
       }
     }
 
+    if (tooLarge) throw new AdvisorChatError(TURN_TOO_LARGE, 'turn');
     if (!reply) throw new AdvisorChatError('The model returned no answer.', 'model');
     // What the player is shown is what ran: a call the turn's limit refused did nothing.
     const steps = tools

@@ -213,6 +213,7 @@ GOOGLE_API_KEY=...             # Gemini API key
 ADVISOR_AGENT_MODEL=gemini-3.8-flash   # default
 ADVISOR_AGENT_THINKING=low             # default; minimal, low, medium, high, or "default" to send none (for a model that takes no level)
 ADVISOR_AGENT_DAILY_USD=0.30           # model spend per UTC day, all visitors, at the prices below
+ADVISOR_AGENT_MAX_OUTPUT_TOKENS=4096   # the most one model call may write, thinking included
 ADVISOR_AGENT_PRICE_IN=1.50            # USD per million prompt tokens (default: gemini-3.8-flash from 2027-01-01)
 ADVISOR_AGENT_PRICE_OUT=7.50           # USD per million output tokens
 ADVISOR_AGENT_DAILY_LIMIT=100          # chat messages per UTC day, all visitors
@@ -317,7 +318,7 @@ scripts/
 | `GET` | `/api/themes` | List supported archetypes |
 | `POST` | `/api/decks/build-from-commander` | **Core:** Build 100-card Commander deck |
 | `POST` | `/api/decks/build-from-theme` | Theme-based commander discovery (API only — no UI yet) |
-| `POST` | `/api/ai/explain-deck` | AI strategy explanation via Claude |
+| `POST` | `/api/ai/explain-deck` | AI strategy explanation via Gemini or Claude when a key is set; counts against the chat's daily ceiling |
 | `GET` | `/api/advisor/status` | What data the advisor is running on: card count, meta formats, sources |
 | `GET` | `/api/advisor/collection/sample?profile=` | A made-up collection (`newcomer`, `regular`, `veteran`) for trying the advisor |
 | `POST` | `/api/advisor/collection/import` | `{ texts: string[] }` → collection keyed by card, wildcards, saved decks |
@@ -384,21 +385,15 @@ The API keeps nothing between requests. The collection lives in the browser and 
 
 ## Deployment
 
-### Render (Free Tier)
+### Cloud Run
 
-This project includes a `Dockerfile` and `render.yaml` for one-click deployment to Render's free tier.
+The app is one container. [`deploy/README.md`](./deploy/README.md) has the scripts and the guide for Google Cloud Run: a keyless identity with the Vertex AI role it needs to call Gemini, one instance at most, a first deploy that stays private until it has been checked, and the spending limits, of which Google's spend cap budgets are the hard stop.
 
-1. **Push to GitHub** (or connect your repo to Render)
-2. **Create a new Web Service** on Render, select "Docker" as runtime
-3. **Configure**:
-   - Build Command: (handled by Dockerfile)
-   - Start Command: (handled by Dockerfile `CMD`)
-   - Port: 3000
-4. **Add Environment Variables** in Render dashboard:
-   - `ANTHROPIC_API_KEY` — optional, for AI deck explanations
-   - `LOG_LEVEL=info`
-   - `CORS_ORIGIN=*` (or your specific domain)
-5. **Deploy** — Render will build the Docker image and start the service
+### Render
+
+`render.yaml` describes the same container on Render. As written it has no model access, so the advisor's chat is off there, nothing costs money per request, and everything else works. Give it a Gemini key and the chat and the Commander Builder's deck explanation turn on with the in-app limits only: there is no spend cap behind them on that route.
+
+### The image
 
 The Dockerfile uses a multi-stage build:
 - **Builder stage**: Installs all dependencies, runs `pnpm build` to compile TypeScript and build the React SPA
@@ -411,7 +406,7 @@ The data is a snapshot taken when the data stage last ran. To refresh cards and 
 docker build --build-arg DATA_DATE=$(date +%F) -t mtg-deck-builder .
 ```
 
-The process holds about 300 MB with the card index loaded.
+The process holds about 330 MB with the card index and the combos loaded; give it 1 GB.
 
 **Local Docker test:**
 ```bash

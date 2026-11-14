@@ -64,7 +64,7 @@ COPY --from=builder /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 # Install only production dependencies for the bundled runtime
 RUN corepack enable && pnpm install --prod --frozen-lockfile
 
-# Expose port (Render injects PORT)
+# The server listens on PORT (Cloud Run and Render set it; 3000 otherwise)
 EXPOSE 3000
 
 # Start the API server (which also serves the web SPA)

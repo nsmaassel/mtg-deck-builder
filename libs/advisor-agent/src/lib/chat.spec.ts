@@ -6,6 +6,8 @@ import type { MetaArchetype, MetaSnapshot, TournamentDeck } from '@mtg/meta-deck
 import type { LlmResponse } from '@google/adk';
 import { AdvisorChat, AdvisorChatError } from './chat';
 import type { TurnTrace } from './chat';
+import { MAX_RESULT_BYTES, createAdvisorTools } from './tools';
+import { ADVISOR_INSTRUCTION } from './instruction';
 import { ScriptedLlm, callTool, lastToolResult, say } from './testing';
 
 const index = buildTestIndex();
@@ -109,6 +111,67 @@ describe('AdvisorChat', () => {
     await expect(chat.send({ message: 'hello', collection: null })).rejects.toBeInstanceOf(AdvisorChatError);
 
     expect(traces).toEqual([]);
+  });
+
+  describe('what a turn may send', () => {
+    /** The size of a turn's first request, found by letting one through and stopping the next. */
+    const firstRequestBytes = async (): Promise<number> => {
+      for (let budget = 1024; ; budget += 1024) {
+        const model = new ScriptedLlm([say('hello')]);
+        const sent = await new AdvisorChat({ data, model, maxPromptBytesPerTurn: budget })
+          .send({ message: 'hi', collection: null }).then(() => true, () => false);
+        if (sent) return budget;
+      }
+    };
+
+    it('counts the instruction and the tool descriptions, not only the conversation', async () => {
+      // The seven tools' descriptions and parameters are several kilobytes on top of the instruction.
+      expect(await firstRequestBytes()).toBeGreaterThan(Buffer.byteLength(ADVISOR_INSTRUCTION, 'utf8') + 3000);
+    });
+
+    it('does not make the call that would pass the limit, and reports what the turn used', async () => {
+      const first = await firstRequestBytes();
+      const model = new ScriptedLlm([
+        { ...callTool('collection_summary'), usageMetadata: { promptTokenCount: 600, candidatesTokenCount: 10 } },
+        say('never reached'),
+      ]);
+      // Room for the first call, not for a second that carries the first again with a tool result.
+      const chat = new AdvisorChat({ data, model, maxPromptBytesPerTurn: first + 1024 });
+
+      await expect(chat.send({ message: 'hi', collection: null })).rejects.toMatchObject({
+        kind: 'turn',
+        usage: { llmCalls: 1, promptTokens: 600 },
+      });
+      expect(model.requests).toHaveLength(1);
+    });
+
+    it('counts results the tools never produced: calls to names that do not exist', async () => {
+      const first = await firstRequestBytes();
+      const flood: LlmResponse = {
+        content: { role: 'model', parts: Array.from({ length: 200 }, (_, i) => ({ functionCall: { name: `no_such_tool_${i}`, args: {} } })) },
+      };
+      const model = new ScriptedLlm([flood, say('never reached')]);
+      const chat = new AdvisorChat({ data, model, maxPromptBytesPerTurn: first * 2 + 8192 });
+
+      await expect(chat.send({ message: 'hi', collection: null })).rejects.toMatchObject({ kind: 'turn' });
+      expect(model.requests).toHaveLength(1);
+    });
+
+    it('lets an ordinary turn through at the default', async () => {
+      const model = new ScriptedLlm([callTool('collection_summary'), say('here you go')]);
+      await expect(new AdvisorChat({ data, model }).send({ message: 'hi', collection: null }))
+        .resolves.toMatchObject({ reply: 'here you go' });
+    });
+  });
+
+  it('caps what each model call may write', async () => {
+    const byDefault = new ScriptedLlm([say('hello')]);
+    await new AdvisorChat({ data, model: byDefault }).send({ message: 'hi', collection: null });
+    expect(byDefault.requests[0]!.config?.maxOutputTokens).toBe(4096);
+
+    const set = new ScriptedLlm([say('hello')]);
+    await new AdvisorChat({ data, model: set, maxOutputTokensPerCall: 512, thinkingLevel: 'low' }).send({ message: 'hi', collection: null });
+    expect(set.requests[0]!.config).toMatchObject({ maxOutputTokens: 512, thinkingConfig: { thinkingLevel: 'LOW' } });
   });
 
   it('gives the model the instruction and every tool', async () => {
@@ -409,6 +472,20 @@ describe('advisor tools', () => {
     expect(plan.steps.some(s => s['action'] === 'craft')).toBe(false);
 
     expect((await toolResult('check_meta_deck', { format: 'standard', archetype: 'nope' }))['error']).toMatch(/list_meta_decks/);
+  });
+
+  it('hands the model no result larger than the limit, and says so instead', async () => {
+    const run = (maxResultBytes: number) => {
+      const tool = createAdvisorTools(data, { collection: owned }, { maxResultBytes }).find(t => t.name === 'check_decklist')!;
+      return (tool as unknown as { execute: (args: unknown) => Record<string, unknown> })
+        .execute({ deckText: '4 Steam Vents\n4 Shock\n4 Opt\n', format: 'standard' });
+    };
+    const whole = run(MAX_RESULT_BYTES);
+    expect(whole['error']).toBeUndefined();
+    const bytes = Buffer.byteLength(JSON.stringify(whole), 'utf8');
+
+    expect(run(bytes)['error']).toBeUndefined();
+    expect(run(bytes - 1)).toEqual({ error: expect.stringMatching(/too large/) });
   });
 
   it('check_decklist reads a pasted list in any format', async () => {

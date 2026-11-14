@@ -384,6 +384,42 @@ describe('POST /api/advisor/chat', () => {
     expect(budget.spentToday).toBeCloseTo(0.05, 10);
   });
 
+  it('frees its place when a turn is over, answered or not', async () => {
+    const model = new ScriptedLlm([say('one'), { errorCode: '503', errorMessage: 'overloaded' }, say('three')]);
+    const instance = withChat(model, new ChatBudget({ perDay: 50, perMinute: 50, maxConcurrent: 1 }));
+
+    expect((await post('/api/advisor/chat', { message: 'first' }, instance)).status).toBe(200);
+    expect((await post('/api/advisor/chat', { message: 'second' }, instance)).status).toBe(502);
+    // With one place only, a turn that never gave its place back would turn this one away.
+    expect((await post('/api/advisor/chat', { message: 'third' }, instance)).status).toBe(200);
+  });
+
+  it('keeps a place taken while its turn is under way: a message turned away does not free it', async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const model = new ScriptedLlm([say('slow answer'), say('next answer')]);
+    const original = model.generateContentAsync.bind(model);
+    let calls = 0;
+    model.generateContentAsync = async function* (request) {
+      calls += 1;
+      if (calls === 1) await held;
+      yield* original(request);
+    };
+    const instance = withChat(model, new ChatBudget({ perDay: 50, perMinute: 50, maxConcurrent: 1 }));
+
+    const pending = post('/api/advisor/chat', { message: 'slow one' }, instance);
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    // Both are turned away, the second too: the first refusal gave no place back.
+    expect((await post('/api/advisor/chat', { message: 'impatient' }, instance)).status).toBe(429);
+    expect((await post('/api/advisor/chat', { message: 'still impatient' }, instance)).status).toBe(429);
+    expect(calls).toBe(1);
+
+    release();
+    expect((await pending).status).toBe(200);
+    expect((await post('/api/advisor/chat', { message: 'after' }, instance)).status).toBe(200);
+  });
+
   it('hides the provider\'s error text when the model fails', async () => {
     const model = new ScriptedLlm([{ errorCode: '429', errorMessage: 'Quota exceeded for project secret-project-123' }]);
     const { status, body } = await post<{ error: string; message: string }>('/api/advisor/chat', { message: 'hi' }, withChat(model));

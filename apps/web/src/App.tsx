@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { AdvisorPage } from './advisor/AdvisorPage';
 import { BuildForm } from './components/BuildForm';
 import { DeckView } from './components/DeckView';
-import { api } from './api';
+import { api, ApiError } from './api';
 import type { BuildDeckResult } from './api';
 
 type View = 'advisor' | 'commander';
@@ -34,8 +34,9 @@ function CommanderBuilder() {
     try {
       const exp = await api.explainDeck(result.deck, result.deck.commander.name);
       setExplanation(exp.explanation);
-    } catch {
-      setExplanation('AI explanation unavailable. Check that ANTHROPIC_API_KEY is configured.');
+    } catch (err) {
+      const message = err instanceof ApiError ? (err.body as { message?: string } | undefined)?.message : undefined;
+      setExplanation(message ?? 'The explanation is not available just now.');
     } finally {
       setExplaining(false);
     }

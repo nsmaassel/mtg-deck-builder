@@ -6,7 +6,7 @@ import { getCardByName, ScryfallNotFoundError } from '@mtg/scryfall';
 import { buildDeck, buildDeckForBracket, candidatesFor, comboLines } from '@mtg/deck-builder';
 import type { Bracket } from '@mtg/power-level';
 import { assessPowerLevel, bracketMethod } from '@mtg/power-level';
-import { explainDeck } from '@mtg/ai-advisor';
+import { explainDeck, explainDeckCallsModel, explainDeckPromptTokensAtMost, EXPLAIN_DECK_MAX_OUTPUT_TOKENS } from '@mtg/ai-advisor';
 import { unavailable } from './commander-data';
 import type { CommanderRouteOptions } from './commander-data';
 
@@ -26,7 +26,36 @@ async function findCommander(index: CardIndex, name: string): Promise<IndexedCar
   }
 }
 
-export async function deckRoutes(app: FastifyInstance, { index, combos }: CommanderRouteOptions): Promise<void> {
+/** A Commander deck is 100 cards; the room above that is for a list still being cut. */
+const EXPLAIN_MAX_CARDS = 150;
+const EXPLAIN_MAX_NAME_LENGTH = 150;
+/** The builder uses eight slots; a slot's name is a word. */
+const EXPLAIN_MAX_SLOTS = 20;
+const EXPLAIN_MAX_SLOT_NAME_LENGTH = 40;
+
+/**
+ * Whether a deck sent for an explanation is one a model should be paid to read. The commander,
+ * the slot names and the card names are all of it that reaches the prompt, so their number and
+ * length are what bound a call's cost.
+ */
+function isExplainable(deck: unknown, commanderName: string): boolean {
+  const slots = (deck as { slots?: unknown } | null)?.slots;
+  if (!slots || typeof slots !== 'object' || Array.isArray(slots)) return false;
+  const slotNames = Object.keys(slots);
+  if (slotNames.length > EXPLAIN_MAX_SLOTS || slotNames.some(slot => slot.length > EXPLAIN_MAX_SLOT_NAME_LENGTH)) return false;
+  const names = [commanderName];
+  for (const cards of Object.values(slots)) {
+    if (!Array.isArray(cards)) return false;
+    for (const card of cards) {
+      const name = (card as { name?: unknown } | null)?.name;
+      if (typeof name !== 'string') return false;
+      names.push(name);
+    }
+  }
+  return names.length <= EXPLAIN_MAX_CARDS + 1 && names.every(name => name.length <= EXPLAIN_MAX_NAME_LENGTH);
+}
+
+export async function deckRoutes(app: FastifyInstance, { index, combos, chatBudget }: CommanderRouteOptions): Promise<void> {
   // How a bracket is worked out and where each signal comes from, sent with every build so the page can show it.
   const method = bracketMethod(
     index
@@ -151,6 +180,8 @@ export async function deckRoutes(app: FastifyInstance, { index, combos }: Comman
   app.post<{
     Body: { deck: unknown; commanderName: string };
   }>('/api/ai/explain-deck', {
+    // A built deck with all its card details is about a tenth of this.
+    bodyLimit: 256 * 1024,
     schema: {
       body: {
         type: 'object',
@@ -163,11 +194,47 @@ export async function deckRoutes(app: FastifyInstance, { index, combos }: Comman
     },
     handler: async (request, reply) => {
       const { deck, commanderName } = request.body;
-      const result = await explainDeck({
-        deck: deck as Parameters<typeof explainDeck>[0]['deck'],
-        commanderName,
-      });
-      return reply.send(result);
+      if (!isExplainable(deck, commanderName)) {
+        return reply.status(400).send({
+          error: 'Not a deck',
+          message: `An explanation needs a deck of at most ${EXPLAIN_MAX_CARDS} named cards, grouped into at most ${EXPLAIN_MAX_SLOTS} slots.`,
+        });
+      }
+
+      // With a model key this is a paid call, so it counts against the same ceiling as the chat.
+      const paid = explainDeckCallsModel();
+      const decision = paid ? chatBudget?.spend() : undefined;
+      if (decision && !decision.allowed) {
+        return reply.status(429).send({
+          error: 'Budget reached',
+          message: decision.reason === 'day'
+            ? 'The explanation is not available again today: the daily budget for model calls is used up. The deck itself is unaffected.'
+            : 'A lot of questions are being answered right now. Try again in a minute.',
+        });
+      }
+
+      const input = { deck: deck as Parameters<typeof explainDeck>[0]['deck'], commanderName };
+      try {
+        return reply.send(await explainDeck(input));
+      } catch (err) {
+        // The provider's own error text can name keys, projects and quotas: log it, do not send it.
+        request.log.error({ err }, 'deck explanation failed');
+        return reply.status(502).send({
+          error: 'Explanation unavailable',
+          message: 'The explanation could not be written just now. The deck itself is unaffected; try again in a moment.',
+        });
+      } finally {
+        // The call's own token counts are not passed back, so charge the most it can have used, answered or not.
+        // It is priced as the chat's model is (ADVISOR_AGENT_PRICE_IN and _OUT), whichever model explains.
+        if (paid) {
+          chatBudget?.charge({
+            promptTokens: explainDeckPromptTokensAtMost(input),
+            outputTokens: EXPLAIN_DECK_MAX_OUTPUT_TOKENS,
+            thinkingTokens: 0,
+          });
+          chatBudget?.done();
+        }
+      }
     },
   });
 }
